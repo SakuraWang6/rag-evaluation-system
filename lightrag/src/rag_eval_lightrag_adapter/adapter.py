@@ -1,0 +1,557 @@
+"""Honest, run-scoped LightRAG adapter behind Wire Protocol 0.1."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import importlib.metadata
+import json
+import os
+import socket
+import subprocess
+import sys
+from pathlib import Path
+from time import monotonic
+from typing import Any, Literal
+
+import httpx
+from pydantic import BaseModel, ConfigDict, Field
+from rag_eval.contracts.adapter import (
+    AdapterCapabilities,
+    DocumentInput,
+    HealthReport,
+    IngestionResult,
+    PrepareContext,
+    PreparedSystem,
+    RAGEvidenceItem,
+    RAGQuery,
+    RAGResult,
+    ResetResult,
+)
+from rag_eval.contracts.wire import HandshakeResponse
+from rag_eval.worker.app import WorkerDefinition
+
+ADAPTER_VERSION = "0.1.0"
+CAPABILITIES = AdapterCapabilities(
+    answer=True,
+    raw_retrieval=True,
+    ranked_retrieval=True,
+    final_context=True,
+    object_provenance=False,
+    prompt_trace=False,
+    rerank_trace=False,
+    latency_breakdown=True,
+    token_usage=False,
+    reset=False,
+)
+
+
+class ChunkingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    strategy: Literal["fixed_token"] = "fixed_token"
+    chunk_token_size: int = Field(default=1200, ge=1)
+    chunk_overlap_token_size: int = Field(default=100, ge=0)
+
+
+class LightRAGAdapterConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: Literal["legacy", "structured"] = "legacy"
+    query_mode: Literal["naive"] = "naive"
+    chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
+    retrieval_candidate_k: int = Field(default=20, ge=1)
+    final_context_k: int = Field(default=5, ge=1)
+    max_context_tokens: int = Field(default=12000, ge=1)
+    enable_rerank: bool = False
+    ranking_strategy: Literal["none", "structured"] = "none"
+    exact_id_types: list[str] = Field(default_factory=list)
+    table_preceding_context: bool = False
+    table_structured_envelope: bool = False
+    table_view: bool = False
+    table_row_view: bool = False
+    entity_extraction_instruction_profile: Literal["legacy", "structured_fidelity"] = (
+        "legacy"
+    )
+    server_start_timeout_seconds: float = Field(default=90.0, gt=0)
+    ingestion_timeout_seconds: float = Field(default=900.0, gt=0)
+    query_timeout_seconds: float = Field(default=180.0, gt=0)
+    poll_interval_seconds: float = Field(default=0.25, gt=0)
+
+    def validate_invariants(self) -> None:
+        if self.chunking.chunk_overlap_token_size >= self.chunking.chunk_token_size:
+            raise ValueError("chunk overlap must be smaller than chunk token size")
+        invalid = [
+            value
+            for value in self.exact_id_types
+            if not value or not value.replace("_", "").isalnum()
+        ]
+        if invalid:
+            raise ValueError(f"invalid exact-ID prefixes: {invalid}")
+
+
+def resolve_config(raw: dict[str, Any]) -> LightRAGAdapterConfig:
+    profile = str(raw.get("profile", "legacy"))
+    defaults: dict[str, Any] = {}
+    if profile == "structured":
+        defaults = {
+            "ranking_strategy": "structured",
+            "exact_id_types": ["FACT", "EQ", "REF"],
+            "table_preceding_context": True,
+            "entity_extraction_instruction_profile": "structured_fidelity",
+        }
+    config = LightRAGAdapterConfig.model_validate({**defaults, **raw})
+    config.validate_invariants()
+    return config
+
+
+class LightRAGAdapter:
+    def __init__(self) -> None:
+        self._config: LightRAGAdapterConfig | None = None
+        self._context: PrepareContext | None = None
+        self._server: subprocess.Popen[str] | None = None
+        self._server_log = None
+        self._client: httpx.AsyncClient | None = None
+        self._endpoint: str | None = None
+        self._closed = False
+        self._source_by_file: dict[str, str] = {}
+        self._index_fingerprint: str | None = None
+
+    async def prepare(
+        self, context: PrepareContext, config: dict[str, Any]
+    ) -> PreparedSystem:
+        if self._closed:
+            raise RuntimeError("adapter is closed")
+        if self._config is not None:
+            raise RuntimeError("adapter is already prepared")
+        effective = resolve_config(config)
+        work_dir = Path(context.work_dir).resolve()
+        if work_dir.exists() and any(work_dir.iterdir()):
+            raise RuntimeError(
+                "run work directory is not empty; refusing stale index reuse"
+            )
+        work_dir.mkdir(parents=True, exist_ok=True)
+        (work_dir / "inputs").mkdir()
+        (work_dir / "storage").mkdir()
+
+        self._context = context
+        self._config = effective
+        await self._start_server(work_dir)
+        return PreparedSystem(
+            effective_config={
+                **effective.model_dump(mode="json"),
+                "runtime": safe_runtime_identity(),
+                "isolation": "run_scoped_managed_process",
+            },
+            capabilities=CAPABILITIES,
+            system_version=system_version(),
+        )
+
+    async def health(self) -> HealthReport:
+        if self._closed:
+            return HealthReport(status="closed", ready=False)
+        if self._server is None:
+            return HealthReport(
+                status="initialized", ready=True, details={"prepared": False}
+            )
+        if self._server.poll() is not None:
+            return HealthReport(
+                status="failed",
+                ready=False,
+                details={"server_exit_code": self._server.returncode},
+            )
+        try:
+            payload = await self._get_json("/health", timeout=2.0)
+        except Exception as exc:  # noqa: BLE001
+            return HealthReport(
+                status="starting", ready=False, details={"reason": str(exc)}
+            )
+        return HealthReport(
+            status=str(payload.get("status") or "ready"),
+            ready=True,
+            details={"endpoint": "loopback", "prepared": True},
+        )
+
+    async def ingest(self, documents: list[DocumentInput]) -> IngestionResult:
+        config = self._require_prepared()
+        digest = hashlib.sha256()
+        digest.update(
+            json.dumps(
+                ingestion_identity(config), sort_keys=True, separators=(",", ":")
+            ).encode()
+        )
+        failures: list[dict[str, str]] = []
+        for index, document in enumerate(documents):
+            digest.update(document.document_id.encode())
+            digest.update(b"\0")
+            digest.update(document.content.encode())
+            digest.update(b"\0")
+            source_name = safe_source_name(index, document.document_id)
+            self._source_by_file[source_name] = document.document_id
+            try:
+                response = await self._post_document(
+                    source_name,
+                    document.content.encode("utf-8"),
+                    document.mime_type,
+                )
+                track_id = response.get("track_id")
+                if not isinstance(track_id, str) or not track_id:
+                    raise RuntimeError("LightRAG ingestion did not return a track_id")
+                await self._wait_for_ingestion(track_id)
+            except Exception as exc:  # noqa: BLE001
+                failures.append(
+                    {"document_id": document.document_id, "message": str(exc)}
+                )
+                break
+        if failures:
+            raise RuntimeError(f"LightRAG ingestion failed: {failures}")
+        self._index_fingerprint = digest.hexdigest()
+        return IngestionResult(
+            ingested_documents=len(documents),
+            index_fingerprint=self._index_fingerprint,
+            details={"failed_documents": 0},
+        )
+
+    async def query(self, request: RAGQuery) -> RAGResult:
+        config = self._require_prepared()
+        candidate_k = request.retrieval_candidate_k or config.retrieval_candidate_k
+        context_k = request.final_context_k or config.final_context_k
+        max_tokens = request.max_context_tokens or config.max_context_tokens
+        payload = {
+            "query": request.question,
+            "mode": config.query_mode,
+            "retrieval_candidate_k": candidate_k,
+            "chunk_top_k": context_k,
+            "max_total_tokens": max_tokens,
+            "enable_rerank": config.enable_rerank,
+            "evaluation_trace": True,
+            "include_references": True,
+            "include_chunk_content": True,
+            "stream": False,
+        }
+        started = monotonic()
+        endpoint = "/query" if request.generate_answer else "/query/data"
+        response = await self._post_json(endpoint, payload)
+        elapsed = monotonic() - started
+        trace = response.get("evaluation_trace")
+        if not isinstance(trace, dict):
+            raise RuntimeError("LightRAG did not return the requested evaluation trace")
+        stages = trace.get("retrieval_stages")
+        if not isinstance(stages, dict):
+            raise RuntimeError("LightRAG evaluation trace lacks retrieval stages")
+        raw_items = self._evidence_items(stages.get("raw_retrieval"), "raw")
+        ranked_items = self._evidence_items(stages.get("ranked_retrieval"), "ranked")
+        final_items = self._evidence_items(stages.get("final_context"), "context")
+        answer = response.get("response") if request.generate_answer else None
+        if request.generate_answer and not isinstance(answer, str):
+            raise RuntimeError("LightRAG answer response is malformed")
+        return RAGResult(
+            answer=answer,
+            raw_retrieval=raw_items,
+            ranked_retrieval=ranked_items,
+            final_context=final_items,
+            latency={"query_seconds": elapsed},
+            trace=None,
+            native_metadata={
+                "query_mode": config.query_mode,
+                "index_fingerprint": self._index_fingerprint,
+                "core_trace_schema": trace.get("schema_version"),
+            },
+        )
+
+    async def reset(self) -> ResetResult:
+        return ResetResult(
+            supported=False,
+            reset=False,
+            details={"reason": "adapter instances are run-scoped"},
+        )
+
+    async def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        client, self._client = self._client, None
+        if client is not None:
+            await client.aclose()
+        server, self._server = self._server, None
+        if server is not None and server.poll() is None:
+            server.terminate()
+            try:
+                await asyncio.to_thread(server.wait, 5)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                await asyncio.to_thread(server.wait, 5)
+        if self._server_log is not None:
+            self._server_log.close()
+            self._server_log = None
+
+    async def _start_server(self, work_dir: Path) -> None:
+        assert self._config is not None
+        port = reserve_loopback_port()
+        self._endpoint = f"http://127.0.0.1:{port}"
+        self._server_log = (work_dir / "lightrag-server.log").open(
+            "a", encoding="utf-8"
+        )
+        environment = build_server_environment(self._config, work_dir)
+        command = [
+            sys.executable,
+            "-m",
+            "lightrag.api.lightrag_server",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--working-dir",
+            str(work_dir / "storage"),
+            "--input-dir",
+            str(work_dir / "inputs"),
+            "--workspace",
+            f"eval_{self._context.run_id}",
+            "--workers",
+            "1",
+        ]
+        self._server = subprocess.Popen(
+            command,
+            cwd=work_dir,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=self._server_log,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        self._client = httpx.AsyncClient(base_url=self._endpoint, timeout=180.0)
+        deadline = monotonic() + self._config.server_start_timeout_seconds
+        while monotonic() < deadline:
+            if self._server.poll() is not None:
+                raise RuntimeError(
+                    f"managed LightRAG server exited with code {self._server.returncode}"
+                )
+            try:
+                health = await self._get_json("/health", timeout=2.0)
+                if str(health.get("status", "")).lower() == "healthy":
+                    return
+            except (httpx.HTTPError, ValueError):
+                pass
+            await asyncio.sleep(0.2)
+        raise TimeoutError("managed LightRAG server did not become healthy")
+
+    async def _wait_for_ingestion(self, track_id: str) -> None:
+        assert self._config is not None
+        deadline = monotonic() + self._config.ingestion_timeout_seconds
+        while monotonic() < deadline:
+            payload = await self._get_json(
+                f"/documents/track_status/{track_id}", timeout=30.0
+            )
+            documents = payload.get("documents")
+            if isinstance(documents, list) and documents:
+                statuses = {
+                    str(item.get("status", "")).lower()
+                    for item in documents
+                    if isinstance(item, dict)
+                }
+                if statuses and statuses <= {"processed"}:
+                    return
+                if "failed" in statuses:
+                    messages = [
+                        str(item.get("error_msg") or "failed")
+                        for item in documents
+                        if isinstance(item, dict)
+                    ]
+                    raise RuntimeError(
+                        f"LightRAG document processing failed: {messages}"
+                    )
+            await asyncio.sleep(self._config.poll_interval_seconds)
+        raise TimeoutError(f"LightRAG ingestion timed out for track {track_id}")
+
+    async def _get_json(self, path: str, *, timeout: float) -> dict[str, Any]:
+        if self._client is None:
+            raise RuntimeError("LightRAG client is not initialized")
+        response = await self._client.get(path, timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise RuntimeError("LightRAG returned a non-object response")
+        return payload
+
+    async def _post_json(
+        self, path: str, payload: dict[str, Any], *, timeout: float | None = None
+    ) -> dict[str, Any]:
+        if self._client is None:
+            raise RuntimeError("LightRAG client is not initialized")
+        request_timeout = (
+            timeout
+            if timeout is not None
+            else self._require_prepared().query_timeout_seconds
+        )
+        response = await self._client.post(path, json=payload, timeout=request_timeout)
+        response.raise_for_status()
+        body = response.json()
+        if not isinstance(body, dict):
+            raise RuntimeError("LightRAG returned a non-object response")
+        return body
+
+    async def _post_document(
+        self, filename: str, content: bytes, mime_type: str
+    ) -> dict[str, Any]:
+        if self._client is None:
+            raise RuntimeError("LightRAG client is not initialized")
+        config = self._require_prepared()
+        response = await self._client.post(
+            "/documents/upload",
+            files={"file": (filename, content, mime_type)},
+            data={"process_options": ""},
+            timeout=config.ingestion_timeout_seconds,
+        )
+        response.raise_for_status()
+        body = response.json()
+        if not isinstance(body, dict):
+            raise RuntimeError("LightRAG returned a non-object response")
+        return body
+
+    def _evidence_items(self, raw: Any, stage: str) -> list[RAGEvidenceItem]:
+        if not isinstance(raw, list):
+            raise RuntimeError(f"LightRAG trace stage {stage!r} is not observable")
+        items: list[RAGEvidenceItem] = []
+        for expected_rank, value in enumerate(raw, start=1):
+            if not isinstance(value, dict):
+                raise RuntimeError(f"LightRAG trace stage {stage!r} is malformed")
+            file_path = str(value.get("file_path") or "")
+            document_id = self._source_by_file.get(Path(file_path).name)
+            item_id = str(value.get("item_id") or f"{stage}-{expected_rank}")
+            items.append(
+                RAGEvidenceItem(
+                    item_id=f"{stage}:{item_id}",
+                    rank=expected_rank,
+                    content=str(value.get("content") or ""),
+                    document_id=document_id,
+                    score=value.get("score")
+                    if isinstance(value.get("score"), (int, float))
+                    else None,
+                    native_id=str(value.get("native_id"))
+                    if value.get("native_id") is not None
+                    else None,
+                    metadata={
+                        "file_path": file_path or None,
+                        "source_type": value.get("source_type"),
+                    },
+                )
+            )
+        return items
+
+    def _require_prepared(self) -> LightRAGAdapterConfig:
+        if self._closed:
+            raise RuntimeError("adapter is closed")
+        if self._config is None or self._server is None:
+            raise RuntimeError("adapter is not prepared")
+        if self._server.poll() is not None:
+            raise RuntimeError(
+                f"managed LightRAG server exited with code {self._server.returncode}"
+            )
+        return self._config
+
+
+def build_server_environment(
+    config: LightRAGAdapterConfig, work_dir: Path
+) -> dict[str, str]:
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "NO_PROXY": "127.0.0.1,localhost",
+            "no_proxy": "127.0.0.1,localhost",
+            "LIGHTRAG_DISABLE_EVAL_JOBS": "1",
+            "LIGHTRAG_DISABLE_WEBUI": "1",
+            "AUTH_ACCOUNTS": "",
+            "LIGHTRAG_API_KEY": "",
+            "LIGHTRAG_KV_STORAGE": "JsonKVStorage",
+            "LIGHTRAG_DOC_STATUS_STORAGE": "JsonDocStatusStorage",
+            "LIGHTRAG_GRAPH_STORAGE": "NetworkXStorage",
+            "LIGHTRAG_VECTOR_STORAGE": "NanoVectorDBStorage",
+            "WORKING_DIR": str(work_dir / "storage"),
+            "INPUT_DIR": str(work_dir / "inputs"),
+            "CHUNK_SIZE": str(config.chunking.chunk_token_size),
+            "CHUNK_OVERLAP_SIZE": str(config.chunking.chunk_overlap_token_size),
+            "LIGHTRAG_PARSER": "*:native-!",
+            "LIGHTRAG_EXACT_ID_TYPES": ",".join(
+                value.upper() for value in config.exact_id_types
+            ),
+            "LIGHTRAG_RANKING_STRATEGY": config.ranking_strategy,
+            "LIGHTRAG_TABLE_PRECEDING_CONTEXT": bool_env(
+                config.table_preceding_context
+            ),
+            "LIGHTRAG_TABLE_STRUCTURED_ENVELOPE": bool_env(
+                config.table_structured_envelope
+            ),
+            "LIGHTRAG_TABLE_VIEW": bool_env(config.table_view),
+            "LIGHTRAG_TABLE_ROW_VIEW": bool_env(config.table_row_view),
+            "ENTITY_EXTRACTION_INSTRUCTION_PROFILE": config.entity_extraction_instruction_profile,
+            "RERANK_BY_DEFAULT": bool_env(config.enable_rerank),
+            "RERANK_BINDING": "cohere" if config.enable_rerank else "null",
+            "RERANK_MODEL": ""
+            if not config.enable_rerank
+            else os.getenv("RERANK_MODEL", ""),
+        }
+    )
+    return environment
+
+
+def ingestion_identity(config: LightRAGAdapterConfig) -> dict[str, Any]:
+    return {
+        "chunking": config.chunking.model_dump(mode="json"),
+        "profile": config.profile,
+        "ranking_strategy": config.ranking_strategy,
+        "exact_id_types": config.exact_id_types,
+        "embedding_binding": os.getenv("EMBEDDING_BINDING"),
+        "embedding_model": os.getenv("EMBEDDING_MODEL"),
+        "system_version": system_version(),
+    }
+
+
+def safe_runtime_identity() -> dict[str, str | None]:
+    return {
+        name.lower(): os.getenv(name)
+        for name in (
+            "LLM_BINDING",
+            "LLM_MODEL",
+            "QUERY_LLM_BINDING",
+            "QUERY_LLM_MODEL",
+            "EMBEDDING_BINDING",
+            "EMBEDDING_MODEL",
+        )
+    }
+
+
+def safe_source_name(index: int, document_id: str) -> str:
+    suffix = hashlib.sha256(document_id.encode()).hexdigest()[:12]
+    return f"source-{index:05d}-{suffix}.txt"
+
+
+def bool_env(value: bool) -> str:
+    return "1" if value else "0"
+
+
+def reserve_loopback_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def system_version() -> str:
+    for distribution in ("lightrag-hku", "lightrag"):
+        try:
+            return importlib.metadata.version(distribution)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+    return "unknown"
+
+
+def create_worker_definition() -> WorkerDefinition:
+    return WorkerDefinition(
+        adapter=LightRAGAdapter(),
+        handshake=HandshakeResponse(
+            adapter_id="lightrag",
+            adapter_version=ADAPTER_VERSION,
+            system_id="lightrag",
+            system_version=system_version(),
+            capabilities=CAPABILITIES,
+        ),
+    )
