@@ -1,4 +1,4 @@
-"""Authenticated loopback implementation of Wire Protocol 0.1."""
+"""Authenticated loopback implementation of Wire Protocol 1.0."""
 
 from __future__ import annotations
 

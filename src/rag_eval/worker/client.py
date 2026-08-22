@@ -1,4 +1,4 @@
-"""Strict client for Adapter Worker Wire Protocol 0.1."""
+"""Strict client for Adapter Worker Wire Protocol 1.0."""
 
 from __future__ import annotations
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import shutil
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -307,15 +309,22 @@ def source_only_documents(
     source_dir.mkdir(parents=True, exist_ok=True)
     inputs: list[DocumentInput] = []
     for document in bundle.manifest.documents:
-        content = (bundle.root / document.path).read_text(encoding="utf-8")
-        sandbox_path = source_dir / f"{document.document_id}.txt"
-        sandbox_path.write_text(content, encoding="utf-8")
+        original = bundle.root / document.path
+        suffix = original.suffix.lower()
+        safe_digest = hashlib.sha256(document.document_id.encode()).hexdigest()[:12]
+        sandbox_path = source_dir / f"source-{len(inputs):05d}-{safe_digest}{suffix}"
+        shutil.copyfile(original, sandbox_path)
+        content = None
+        if document.mime_type.startswith("text/"):
+            content = original.read_text(encoding="utf-8")
         inputs.append(
             DocumentInput(
                 document_id=document.document_id,
                 content=content,
+                source_path=sandbox_path.name,
+                sha256=document.sha256,
                 mime_type=document.mime_type,
-                metadata={"source_path": sandbox_path.name},
+                metadata={"original_name": original.name},
             )
         )
     return inputs

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rag_eval.contracts.dataset import EvidenceLocator
 
@@ -47,9 +47,25 @@ class HealthReport(ContractModel):
 
 class DocumentInput(ContractModel):
     document_id: str = Field(min_length=1)
-    content: str
+    content: str | None = None
+    source_path: str | None = None
+    sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     mime_type: str = "text/plain"
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_source(self) -> DocumentInput:
+        if self.content is None and self.source_path is None:
+            raise ValueError("document input requires inline text or a source-only path")
+        if self.source_path is not None:
+            parts = self.source_path.replace("\\", "/").split("/")
+            if (
+                self.source_path.startswith(("/", "\\"))
+                or ":" in parts[0]
+                or any(part in {"", ".", ".."} for part in parts)
+            ):
+                raise ValueError("source_path must be a safe relative path")
+        return self
 
 
 class IngestionResult(ContractModel):

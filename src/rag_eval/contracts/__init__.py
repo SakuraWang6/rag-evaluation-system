@@ -42,11 +42,13 @@ from rag_eval.contracts.wire import (
     WireResponse,
 )
 
-PROTOCOL_VERSION = "0.1"
+CONTRACT_VERSION = "1.0"
+PROTOCOL_VERSION = "1.0"
 SCHEMA_VERSION = 2
 PRODUCER = "rag_eval_platform"
 
 __all__ = [
+    "CONTRACT_VERSION",
     "PRODUCER",
     "PROTOCOL_VERSION",
     "SCHEMA_VERSION",

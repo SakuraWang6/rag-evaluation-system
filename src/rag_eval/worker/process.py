@@ -54,6 +54,11 @@ class WorkerProcess:
             self._log_file = self.log_path.open("a", encoding="utf-8")
             environment = os.environ.copy()
             environment.update(self.command.environment)
+            executable_bin = str(Path(self.command.python_executable).parent)
+            inherited_path = environment.get("PATH", "")
+            environment["PATH"] = os.pathsep.join(
+                value for value in (executable_bin, inherited_path) if value
+            )
             environment["RAG_EVAL_WORKER_TOKEN"] = self.token
             argv = [
                 self.command.python_executable,

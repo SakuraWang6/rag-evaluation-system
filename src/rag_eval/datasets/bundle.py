@@ -40,8 +40,13 @@ class DatasetBundle:
     def source_documents(self) -> dict[str, str]:
         documents: dict[str, str] = {}
         for document in self.manifest.documents:
-            path = self.root / document.path
-            documents[document.document_id] = path.read_text(encoding="utf-8")
+            path = self.root / (document.canonical_path or document.path)
+            try:
+                documents[document.document_id] = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                raise BundleIntegrityError(
+                    f"binary document {document.document_id!r} requires canonical_path"
+                ) from exc
         return documents
 
     def question_by_id(self) -> dict[str, Question]:
@@ -197,6 +202,16 @@ def _validate_references(
             raise BundleIntegrityError(f"missing document: {document.path}")
         if hashlib.sha256(path.read_bytes()).hexdigest() != document.sha256:
             raise BundleIntegrityError(f"document checksum mismatch: {document.path}")
+        if document.canonical_path is not None:
+            canonical_path = root / document.canonical_path
+            if not canonical_path.is_file():
+                raise BundleIntegrityError(
+                    f"missing canonical document: {document.canonical_path}"
+                )
+        elif not document.mime_type.startswith("text/"):
+            raise BundleIntegrityError(
+                f"binary document {document.document_id!r} requires canonical_path"
+            )
     for question in questions:
         if question.gold_answer_id not in answers:
             raise BundleIntegrityError(

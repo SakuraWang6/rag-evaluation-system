@@ -71,6 +71,7 @@ EvidenceLocator = Annotated[
 class DocumentManifest(ContractModel):
     document_id: str = Field(min_length=1)
     path: str = Field(min_length=1)
+    canonical_path: str | None = None
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     mime_type: str = "text/plain"
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -159,6 +160,11 @@ class DatasetBundleManifest(ContractModel):
             raise ValueError("document IDs must be unique")
         if len(paths) != len(set(paths)):
             raise ValueError("document paths must be unique")
-        if any(path.startswith("/") or ".." in path.split("/") for path in paths):
+        all_paths = paths + [
+            document.canonical_path
+            for document in self.documents
+            if document.canonical_path is not None
+        ]
+        if any(path.startswith("/") or ".." in path.split("/") for path in all_paths):
             raise ValueError("document paths must be safe relative paths")
         return self

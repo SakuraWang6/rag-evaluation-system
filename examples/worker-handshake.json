@@ -1,5 +1,5 @@
 {
-  "protocol_version": "0.1",
+  "protocol_version": "1.0",
   "adapter_id": "fake",
   "adapter_version": "0.1.0",
   "system_id": "fake-rag",

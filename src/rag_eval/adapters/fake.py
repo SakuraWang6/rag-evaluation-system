@@ -76,6 +76,8 @@ class FakeAdapter:
         self._documents = list(documents)
         digest = hashlib.sha256()
         for document in self._documents:
+            if document.content is None:
+                raise ValueError("FakeAdapter only supports inline text documents")
             digest.update(document.document_id.encode())
             digest.update(b"\0")
             digest.update(document.content.encode())
@@ -95,6 +97,8 @@ class FakeAdapter:
         query_tokens = {token.casefold() for token in _TOKEN_RE.findall(request.question)}
         scored: list[tuple[int, int, DocumentInput]] = []
         for index, document in enumerate(self._documents):
+            if document.content is None:
+                raise ValueError("FakeAdapter only supports inline text documents")
             document_tokens = {
                 token.casefold() for token in _TOKEN_RE.findall(document.content)
             }
@@ -136,6 +140,8 @@ class FakeAdapter:
     def _item(
         self, document: DocumentInput, *, rank: int, score: float
     ) -> RAGEvidenceItem:
+        if document.content is None:
+            raise ValueError("FakeAdapter only supports inline text documents")
         return RAGEvidenceItem(
             item_id=f"{document.document_id}:{rank}",
             rank=rank,

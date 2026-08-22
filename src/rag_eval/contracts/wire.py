@@ -1,4 +1,4 @@
-"""Adapter Worker Wire Protocol 0.1 envelopes."""
+"""Adapter Worker Wire Protocol 1.0 envelopes."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ class WireModel(BaseModel):
 
 
 class HandshakeResponse(WireModel):
-    protocol_version: Literal["0.1"] = "0.1"
+    protocol_version: Literal["1.0"] = "1.0"
     adapter_id: str = Field(min_length=1)
     adapter_version: str = Field(min_length=1)
     system_id: str = Field(min_length=1)
@@ -29,14 +29,14 @@ class WireError(WireModel):
 
 
 class WireRequest(WireModel):
-    protocol_version: str = Field(default="0.1", min_length=1)
+    protocol_version: str = Field(default="1.0", min_length=1)
     request_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class WireResponse(WireModel):
-    protocol_version: Literal["0.1"] = "0.1"
+    protocol_version: Literal["1.0"] = "1.0"
     request_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
     status: Literal["ok", "error"]

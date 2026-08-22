@@ -1,0 +1,259 @@
+{
+  "$defs": {
+    "AdapterCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "answer": {
+          "default": false,
+          "title": "Answer",
+          "type": "boolean"
+        },
+        "raw_retrieval": {
+          "default": false,
+          "title": "Raw Retrieval",
+          "type": "boolean"
+        },
+        "ranked_retrieval": {
+          "default": false,
+          "title": "Ranked Retrieval",
+          "type": "boolean"
+        },
+        "final_context": {
+          "default": false,
+          "title": "Final Context",
+          "type": "boolean"
+        },
+        "object_provenance": {
+          "default": false,
+          "title": "Object Provenance",
+          "type": "boolean"
+        },
+        "prompt_trace": {
+          "default": false,
+          "title": "Prompt Trace",
+          "type": "boolean"
+        },
+        "rerank_trace": {
+          "default": false,
+          "title": "Rerank Trace",
+          "type": "boolean"
+        },
+        "latency_breakdown": {
+          "default": false,
+          "title": "Latency Breakdown",
+          "type": "boolean"
+        },
+        "token_usage": {
+          "default": false,
+          "title": "Token Usage",
+          "type": "boolean"
+        },
+        "reset": {
+          "default": false,
+          "title": "Reset",
+          "type": "boolean"
+        }
+      },
+      "title": "AdapterCapabilities",
+      "type": "object"
+    },
+    "RunStatus": {
+      "enum": [
+        "queued",
+        "preparing",
+        "ingesting",
+        "running",
+        "cancelling",
+        "cancelled",
+        "completed",
+        "failed",
+        "interrupted"
+      ],
+      "title": "RunStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 2,
+      "default": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "producer": {
+      "const": "rag_eval_platform",
+      "default": "rag_eval_platform",
+      "title": "Producer",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/RunStatus"
+    },
+    "bundle_id": {
+      "minLength": 1,
+      "title": "Bundle Id",
+      "type": "string"
+    },
+    "case_selection_id": {
+      "minLength": 1,
+      "title": "Case Selection Id",
+      "type": "string"
+    },
+    "platform_version": {
+      "minLength": 1,
+      "title": "Platform Version",
+      "type": "string"
+    },
+    "adapter_id": {
+      "minLength": 1,
+      "title": "Adapter Id",
+      "type": "string"
+    },
+    "adapter_version": {
+      "minLength": 1,
+      "title": "Adapter Version",
+      "type": "string"
+    },
+    "system_id": {
+      "minLength": 1,
+      "title": "System Id",
+      "type": "string"
+    },
+    "system_version": {
+      "minLength": 1,
+      "title": "System Version",
+      "type": "string"
+    },
+    "declared_config": {
+      "additionalProperties": true,
+      "title": "Declared Config",
+      "type": "object"
+    },
+    "effective_config": {
+      "additionalProperties": true,
+      "title": "Effective Config",
+      "type": "object"
+    },
+    "scorer_id": {
+      "minLength": 1,
+      "title": "Scorer Id",
+      "type": "string"
+    },
+    "scorer_version": {
+      "minLength": 1,
+      "title": "Scorer Version",
+      "type": "string"
+    },
+    "scorer_digest": {
+      "minLength": 1,
+      "title": "Scorer Digest",
+      "type": "string"
+    },
+    "declared_capabilities": {
+      "$ref": "#/$defs/AdapterCapabilities"
+    },
+    "observed_capabilities": {
+      "$ref": "#/$defs/AdapterCapabilities"
+    },
+    "seed": {
+      "title": "Seed",
+      "type": "integer"
+    },
+    "repetitions": {
+      "minimum": 1,
+      "title": "Repetitions",
+      "type": "integer"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "completed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    },
+    "execution_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Execution Counts",
+      "type": "object"
+    },
+    "artifacts": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Artifacts",
+      "type": "object"
+    },
+    "index_fingerprint": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Index Fingerprint"
+    },
+    "failure_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure Reason"
+    }
+  },
+  "required": [
+    "run_id",
+    "experiment_id",
+    "status",
+    "bundle_id",
+    "case_selection_id",
+    "platform_version",
+    "adapter_id",
+    "adapter_version",
+    "system_id",
+    "system_version",
+    "declared_config",
+    "effective_config",
+    "scorer_id",
+    "scorer_version",
+    "scorer_digest",
+    "declared_capabilities",
+    "observed_capabilities",
+    "seed",
+    "repetitions",
+    "started_at"
+  ],
+  "title": "RunManifest",
+  "type": "object"
+}
