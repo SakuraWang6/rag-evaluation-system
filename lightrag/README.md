@@ -1,7 +1,7 @@
 # LightRAG evaluation adapter
 
 This package runs inside an Adapter Worker process. It owns a run-scoped
-LightRAG API child process and translates Wire Protocol 0.1 requests into
+LightRAG API child process and translates Wire Protocol 1.0 requests into
 LightRAG ingestion and query calls.
 
 The platform never imports this package or `lightrag`. Register the factory as:

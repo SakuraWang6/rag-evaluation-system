@@ -1,4 +1,4 @@
-"""Honest, run-scoped LightRAG adapter behind Wire Protocol 0.1."""
+"""Honest, run-scoped LightRAG adapter behind Wire Protocol 1.0."""
 
 from __future__ import annotations
 
@@ -182,6 +182,8 @@ class LightRAGAdapter:
         )
         failures: list[dict[str, str]] = []
         for index, document in enumerate(documents):
+            if document.content is None:
+                raise ValueError("LightRAGAdapter only supports text source documents")
             digest.update(document.document_id.encode())
             digest.update(b"\0")
             digest.update(document.content.encode())
