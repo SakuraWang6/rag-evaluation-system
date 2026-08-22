@@ -31,6 +31,8 @@ class PrepareContext(ContractModel):
     work_dir: str = Field(min_length=1)
     source_dir: str = Field(min_length=1)
     platform_version: str = Field(min_length=1)
+    seed: int = 0
+    repetition: int = Field(default=1, ge=1)
 
 
 class PreparedSystem(ContractModel):

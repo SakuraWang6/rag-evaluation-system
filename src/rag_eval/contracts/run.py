@@ -93,6 +93,20 @@ class CaseResult(ContractModel):
     error: CaseError | None = None
     started_at: datetime
     completed_at: datetime
+    repetition: int = Field(default=1, ge=1)
+    seed: int = 0
+
+
+class ReproducibilityRecord(ContractModel):
+    platform_git_commit: str | None = None
+    platform_dirty: bool
+    dirty_patch_digest: str | None = None
+    dependency_lock_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    environment_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_digests: dict[str, str] = Field(default_factory=dict)
+    prompt_digests: dict[str, str] = Field(default_factory=dict)
+    dependency_lock_artifact: str
+    environment_artifact: str
 
 
 class RunManifest(ContractModel):
@@ -121,7 +135,12 @@ class RunManifest(ContractModel):
     completed_at: datetime | None = None
     execution_counts: dict[str, int] = Field(default_factory=dict)
     artifacts: dict[str, str] = Field(default_factory=dict)
+    artifact_checksums: dict[str, str] = Field(default_factory=dict)
     index_fingerprint: str | None = None
+    index_fingerprints: list[str] = Field(default_factory=list)
+    repetition_seeds: list[int] = Field(default_factory=list)
+    reproducibility: ReproducibilityRecord | None = None
+    replay_of_run_id: str | None = None
     failure_reason: str | None = None
 
     @classmethod

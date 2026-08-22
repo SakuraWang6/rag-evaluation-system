@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 from rag_eval.contracts.run import CaseResult, ExperimentSpec, RunManifest
@@ -40,9 +42,41 @@ class RunStore:
         )
 
     def write_case(self, run_id: str, result: CaseResult) -> Path:
-        path = self.root / safe_id(run_id) / "cases" / f"{safe_id(result.case_id)}.json"
+        path = (
+            self.root
+            / safe_id(run_id)
+            / "cases"
+            / f"rep-{result.repetition:04d}-{safe_id(result.case_id)}.json"
+        )
         atomic_write_json(path, result.model_dump(mode="json"))
         return path
+
+    def experiment(self, run_id: str) -> ExperimentSpec:
+        path = self.root / safe_id(run_id) / "experiment.json"
+        return ExperimentSpec.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def artifact_hashes(self, run_id: str) -> dict[str, str]:
+        return artifact_file_hashes(self.root / safe_id(run_id))
+
+    def verify_artifacts(self, run_id: str) -> ArtifactVerification:
+        manifest = self.get(run_id)
+        actual = self.artifact_hashes(run_id)
+        expected = manifest.artifact_checksums
+        missing = tuple(sorted(set(expected) - set(actual)))
+        unexpected = tuple(sorted(set(actual) - set(expected)))
+        mismatched = tuple(
+            sorted(
+                path
+                for path in set(expected).intersection(actual)
+                if expected[path] != actual[path]
+            )
+        )
+        return ArtifactVerification(
+            valid=not missing and not unexpected and not mismatched,
+            missing=missing,
+            unexpected=unexpected,
+            mismatched=mismatched,
+        )
 
     def get(self, run_id: str) -> RunManifest:
         path = self.root / safe_id(run_id) / "run.json"
@@ -75,3 +109,24 @@ def safe_id(value: str) -> str:
     if not value or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for char in value):
         raise ValueError(f"unsafe identifier: {value!r}")
     return value
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactVerification:
+    valid: bool
+    missing: tuple[str, ...]
+    unexpected: tuple[str, ...]
+    mismatched: tuple[str, ...]
+
+
+def artifact_file_hashes(run_dir: Path) -> dict[str, str]:
+    """Hash immutable run artifacts, excluding mutable manifest and work index."""
+    hashes: dict[str, str] = {}
+    if not run_dir.is_dir():
+        raise FileNotFoundError(run_dir)
+    for path in sorted(item for item in run_dir.rglob("*") if item.is_file()):
+        relative = path.relative_to(run_dir).as_posix()
+        if relative == "run.json" or relative.startswith("work/"):
+            continue
+        hashes[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashes

@@ -1,0 +1,98 @@
+{
+  "$defs": {
+    "GoldAnswerKind": {
+      "enum": [
+        "text",
+        "numeric",
+        "formula",
+        "set",
+        "abstain"
+      ],
+      "title": "GoldAnswerKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "gold_answer_id": {
+      "minLength": 1,
+      "title": "Gold Answer Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/GoldAnswerKind"
+    },
+    "canonical": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Canonical"
+    },
+    "accepted_values": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Accepted Values",
+      "type": "array"
+    },
+    "locale": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Locale"
+    },
+    "unit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Unit"
+    },
+    "tolerance": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tolerance"
+    }
+  },
+  "required": [
+    "gold_answer_id",
+    "kind"
+  ],
+  "title": "GoldAnswer",
+  "type": "object"
+}

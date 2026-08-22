@@ -32,6 +32,7 @@ from rag_eval.contracts.run import (
     ExperimentSpec,
     MetricResult,
     MetricStatus,
+    ReproducibilityRecord,
     RunManifest,
     RunStatus,
 )
@@ -77,6 +78,7 @@ __all__ = [
     "RAGEvidenceItem",
     "RAGQuery",
     "RAGResult",
+    "ReproducibilityRecord",
     "ResetResult",
     "RunManifest",
     "RunStatus",

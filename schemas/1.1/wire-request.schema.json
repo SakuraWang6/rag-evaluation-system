@@ -1,0 +1,32 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "default": "1.0",
+      "minLength": 1,
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "request_id": {
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    }
+  },
+  "required": [
+    "request_id",
+    "run_id"
+  ],
+  "title": "WireRequest",
+  "type": "object"
+}

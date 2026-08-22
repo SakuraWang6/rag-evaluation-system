@@ -19,6 +19,11 @@ rag-eval export-schemas ./schemas
 - Dataset and run artifacts remain `schema_version = 2`; their producer is
   `rag_eval_platform`. Artifact schema and Wire versions are independent.
 
+`schemas/1.0/` is the frozen Adapter/Wire release. `schemas/1.1/` is an
+additive artifact-contract release used by Phase 5: it adds repetition identity,
+full reproducibility records, replay lineage, and artifact checksums without
+changing Wire Protocol 1.0 or the Adapter lifecycle.
+
 ## Source-only document boundary
 
 `DocumentInput` contains inline UTF-8 text when available and a checked,

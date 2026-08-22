@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,6 @@ from pydantic import BaseModel, ConfigDict
 
 from rag_eval.comparison import validate_comparison
 from rag_eval.contracts.run import ComparisonTier, ExperimentSpec
-from rag_eval.report import markdown_report
 from rag_eval.service import PlatformService
 
 
@@ -153,6 +153,25 @@ def create_app(
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/v1/runs/{run_id}/summary")
+    async def run_summary(run_id: str) -> dict[str, Any]:
+        try:
+            service.runs.get(run_id)
+            path = service.paths.runs / run_id / "summary.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(value, dict):
+                raise ValueError("run summary is malformed")
+            return value
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/v1/runs/{run_id}/artifacts/verify")
+    async def verify_run_artifacts(run_id: str) -> dict[str, Any]:
+        try:
+            return asdict(service.runs.verify_artifacts(run_id))
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.get("/api/v1/runs/{run_id}/cases/{case_id}")
     async def run_case(run_id: str, case_id: str) -> dict[str, Any]:
         for item in await run_cases(run_id):
@@ -163,11 +182,10 @@ def create_app(
     @app.get("/api/v1/runs/{run_id}/report", response_class=PlainTextResponse)
     async def report(run_id: str) -> str:
         try:
-            manifest = service.runs.get(run_id)
-            cases = service.runs.cases(run_id)
-            summary_path = service.paths.runs / run_id / "summary.json"
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-            return markdown_report(manifest, cases, summary)
+            service.runs.get(run_id)
+            return (service.paths.runs / run_id / "report.md").read_text(
+                encoding="utf-8"
+            )
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -183,6 +201,13 @@ def create_app(
             "compatible": decision.compatible,
             "reasons": decision.reasons,
             "may_declare_winner": decision.may_declare_winner,
+            "runs": [
+                {
+                    "run": manifest.model_dump(mode="json"),
+                    "summary": await run_summary(manifest.run_id),
+                }
+                for manifest in manifests
+            ],
         }
 
     return app

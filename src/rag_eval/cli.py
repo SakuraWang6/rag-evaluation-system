@@ -50,6 +50,13 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("tier", choices=[item.value for item in ComparisonTier])
     compare.add_argument("run_ids", nargs="+")
 
+    verify = subparsers.add_parser("verify-run")
+    verify.add_argument("run_id")
+
+    replay = subparsers.add_parser("replay")
+    replay.add_argument("run_id")
+    replay.add_argument("--new-run-id")
+
     schemas = subparsers.add_parser("export-schemas")
     schemas.add_argument("output", type=Path)
 
@@ -105,6 +112,25 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(asdict(decision), default=str, indent=2))
         return 0 if decision.compatible else 2
+    elif args.command == "verify-run":
+        verification = service.runs.verify_artifacts(args.run_id)
+        print(json.dumps(asdict(verification), indent=2))
+        return 0 if verification.valid else 2
+    elif args.command == "replay":
+        verification = service.runs.verify_artifacts(args.run_id)
+        if not verification.valid:
+            print(json.dumps(asdict(verification), indent=2), file=sys.stderr)
+            return 2
+        original = service.runs.get(args.run_id)
+        experiment = service.runs.experiment(args.run_id)
+        registration = service.systems.get(experiment.system_id)
+        replayed = service.executor.execute(
+            experiment,
+            registration.worker_command(),
+            run_id=args.new_run_id,
+            replay_of_run_id=original.run_id,
+        )
+        print(replayed.model_dump_json(indent=2))
     elif args.command == "export-schemas":
         for path in export_json_schemas(args.output):
             print(path)
