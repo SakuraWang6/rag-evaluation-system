@@ -14,3 +14,12 @@ run configuration; Gold data and scorer configuration remain platform-side.
 Both adapters must pass the same Worker TCK. Capabilities are observational:
 `None` means a stage cannot be observed, while `[]` means it was observed
 and returned no evidence.
+
+The repository intentionally has no shared runtime environment. Install each
+adapter from its own directory into a dedicated Worker venv. For local tests,
+install `rag-eval-platform` separately (or keep its repository as a sibling)
+and run:
+
+```bash
+pytest -q tests/rag_eval_adapters
+```
