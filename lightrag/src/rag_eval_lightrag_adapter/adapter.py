@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import os
 import socket
@@ -137,10 +138,15 @@ class LightRAGAdapter:
         self._context = context
         self._config = effective
         await self._start_server(work_dir)
+        runtime_identity = safe_runtime_identity()
         return PreparedSystem(
             effective_config={
                 **effective.model_dump(mode="json"),
-                "runtime": safe_runtime_identity(),
+                "runtime": runtime_identity,
+                "model_digests": await ollama_model_digests(runtime_identity),
+                "prompt_digests": {
+                    "lightrag_prompt_sources": package_prompt_digest("lightrag")
+                },
                 "isolation": "run_scoped_managed_process",
             },
             capabilities=CAPABILITIES,
@@ -520,6 +526,70 @@ def safe_runtime_identity() -> dict[str, str | None]:
             "EMBEDDING_MODEL",
         )
     }
+
+
+async def ollama_model_digests(
+    identity: dict[str, str | None],
+) -> dict[str, str]:
+    roles = {
+        "llm": (
+            identity.get("query_llm_binding") or identity.get("llm_binding"),
+            identity.get("query_llm_model") or identity.get("llm_model"),
+            os.getenv("QUERY_LLM_BINDING_HOST")
+            or os.getenv("LLM_BINDING_HOST")
+            or os.getenv("OLLAMA_HOST")
+            or "http://127.0.0.1:11434",
+        ),
+        "embedding": (
+            identity.get("embedding_binding"),
+            identity.get("embedding_model"),
+            os.getenv("EMBEDDING_BINDING_HOST")
+            or os.getenv("OLLAMA_HOST")
+            or "http://127.0.0.1:11434",
+        ),
+    }
+    results: dict[str, str] = {}
+    for role, (binding, model, host) in roles.items():
+        if not model:
+            continue
+        digest = None
+        if str(binding or "").lower() == "ollama":
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(f"{str(host).rstrip('/')}/api/tags")
+                    response.raise_for_status()
+                    for item in response.json().get("models", []):
+                        name = str(item.get("name") or item.get("model") or "")
+                        if name == model or name.split(":", 1)[0] == model.split(":", 1)[0]:
+                            digest = str(item.get("digest") or "") or None
+                            break
+            except (httpx.HTTPError, AttributeError, ValueError):
+                digest = None
+        results[role] = digest or identity_digest(str(binding), str(model))
+    return results
+
+
+def identity_digest(binding: str, model: str) -> str:
+    return "identity-sha256:" + hashlib.sha256(
+        f"{binding}\0{model}".encode()
+    ).hexdigest()
+
+
+def package_prompt_digest(package: str) -> str:
+    spec = importlib.util.find_spec(package)
+    if spec is None or spec.origin is None:
+        return identity_digest("package", package)
+    root = Path(spec.origin).parent
+    files = sorted(
+        path for path in root.rglob("*.py") if "prompt" in path.name.lower()
+    )
+    digest = hashlib.sha256()
+    for path in files:
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\n")
+    return "sha256:" + digest.hexdigest()
 
 
 def safe_source_name(index: int, document_id: str) -> str:

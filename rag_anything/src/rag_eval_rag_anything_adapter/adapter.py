@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import importlib.metadata
+import importlib.util
 import os
 from functools import partial
 from pathlib import Path
 from time import monotonic
 from typing import Any, Literal, Protocol
 
+import httpx
 from pydantic import BaseModel, ConfigDict, Field
 from rag_eval.contracts.adapter import (
     AdapterCapabilities,
@@ -90,6 +92,8 @@ def resolve_config(raw: dict[str, Any]) -> RAGAnythingAdapterConfig:
 class Runtime(Protocol):
     system_version: str
     core_version: str
+    model_digests: dict[str, str]
+    prompt_digests: dict[str, str]
 
     async def insert_text(
         self, content: str, *, document_id: str, file_name: str
@@ -115,11 +119,15 @@ class OfficialRAGAnythingRuntime:
         *,
         system_version: str,
         core_version: str,
+        model_digests: dict[str, str],
+        prompt_digests: dict[str, str],
         output_dir: Path,
     ) -> None:
         self.rag = rag
         self.system_version = system_version
         self.core_version = core_version
+        self.model_digests = model_digests
+        self.prompt_digests = prompt_digests
         self.output_dir = output_dir
 
     @classmethod
@@ -190,6 +198,11 @@ class OfficialRAGAnythingRuntime:
             rag,
             system_version=installed_version,
             core_version=distribution_version("lightrag-hku"),
+            model_digests=await ollama_model_digests(config.model),
+            prompt_digests={
+                "raganything_prompt_sources": package_prompt_digest("raganything"),
+                "lightrag_prompt_sources": package_prompt_digest("lightrag"),
+            },
             output_dir=output_dir,
         )
 
@@ -270,6 +283,8 @@ class RAGAnythingAdapter:
                     "lightrag_version": self._runtime.core_version,
                     "isolation": "run_scoped_worker_process",
                 },
+                "model_digests": self._runtime.model_digests,
+                "prompt_digests": self._runtime.prompt_digests,
             },
             capabilities=CAPABILITIES,
             system_version=self._runtime.system_version,
@@ -438,6 +453,52 @@ def distribution_version(name: str) -> str:
         return importlib.metadata.version(name)
     except importlib.metadata.PackageNotFoundError as exc:
         raise RuntimeError(f"required distribution is not installed: {name}") from exc
+
+
+async def ollama_model_digests(config: OllamaModelConfig) -> dict[str, str]:
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{config.host.rstrip('/')}/api/tags")
+            response.raise_for_status()
+            rows = response.json().get("models", [])
+    except (httpx.HTTPError, AttributeError, ValueError):
+        rows = []
+    results: dict[str, str] = {}
+    for role, model in (
+        ("llm", config.llm_model),
+        ("embedding", config.embedding_model),
+    ):
+        digest = None
+        for item in rows:
+            name = str(item.get("name") or item.get("model") or "")
+            if name == model or name.split(":", 1)[0] == model.split(":", 1)[0]:
+                digest = str(item.get("digest") or "") or None
+                break
+        results[role] = digest or identity_digest(config.binding, model)
+    return results
+
+
+def identity_digest(binding: str, model: str) -> str:
+    return "identity-sha256:" + hashlib.sha256(
+        f"{binding}\0{model}".encode()
+    ).hexdigest()
+
+
+def package_prompt_digest(package: str) -> str:
+    spec = importlib.util.find_spec(package)
+    if spec is None or spec.origin is None:
+        return identity_digest("package", package)
+    root = Path(spec.origin).parent
+    files = sorted(
+        path for path in root.rglob("*.py") if "prompt" in path.name.lower()
+    )
+    digest = hashlib.sha256()
+    for path in files:
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\n")
+    return "sha256:" + digest.hexdigest()
 
 
 def create_worker_definition() -> WorkerDefinition:
