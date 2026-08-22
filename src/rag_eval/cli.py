@@ -1,0 +1,119 @@
+"""Local CLI for the standalone RAG evaluation platform."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from dataclasses import asdict
+from pathlib import Path
+
+import uvicorn
+
+from rag_eval.api import create_app
+from rag_eval.comparison import validate_comparison
+from rag_eval.contracts.run import ComparisonTier, ExperimentSpec
+from rag_eval.contracts.schema import export_json_schemas
+from rag_eval.service import PlatformService
+from rag_eval.storage.layout import PlatformPaths
+from rag_eval.systems import SystemRegistration
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--home", type=Path)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("init")
+
+    dataset = subparsers.add_parser("register-dataset")
+    dataset.add_argument("path", type=Path)
+
+    system = subparsers.add_parser("register-system")
+    system.add_argument("system_id")
+    system.add_argument("adapter_id")
+    system.add_argument("adapter_factory")
+    system.add_argument("--python", default=sys.executable)
+    system.add_argument("--environment-json", default="{}")
+    system.add_argument("--timeout", type=float, default=180.0)
+
+    fake = subparsers.add_parser("register-fake")
+    fake.add_argument("--python", default=sys.executable)
+    fake.add_argument("--pythonpath")
+
+    experiment = subparsers.add_parser("create-experiment")
+    experiment.add_argument("spec", type=Path)
+
+    run = subparsers.add_parser("run")
+    run.add_argument("experiment_id")
+
+    compare = subparsers.add_parser("compare")
+    compare.add_argument("tier", choices=[item.value for item in ComparisonTier])
+    compare.add_argument("run_ids", nargs="+")
+
+    schemas = subparsers.add_parser("export-schemas")
+    schemas.add_argument("output", type=Path)
+
+    serve = subparsers.add_parser("serve")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8765)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    paths = PlatformPaths(args.home.expanduser() if args.home else PlatformPaths.from_environment().home)
+    service = PlatformService(paths)
+    if args.command == "init":
+        print(paths.home)
+    elif args.command == "register-dataset":
+        print(service.datasets.register(args.path).bundle_id)
+    elif args.command == "register-system":
+        environment = json.loads(args.environment_json)
+        registration = SystemRegistration(
+            system_id=args.system_id,
+            adapter_id=args.adapter_id,
+            adapter_factory=args.adapter_factory,
+            python_executable=str(Path(args.python).resolve()),
+            environment=environment,
+            request_timeout_seconds=args.timeout,
+        )
+        print(service.systems.register(registration))
+    elif args.command == "register-fake":
+        environment = {}
+        if args.pythonpath:
+            environment["PYTHONPATH"] = args.pythonpath
+        registration = SystemRegistration(
+            system_id="fake-rag",
+            adapter_id="fake",
+            adapter_factory="rag_eval.adapters.fake:create_worker_definition",
+            python_executable=str(Path(args.python).resolve()),
+            environment=environment,
+        )
+        print(service.systems.register(registration))
+    elif args.command == "create-experiment":
+        experiment = ExperimentSpec.model_validate_json(args.spec.read_text(encoding="utf-8"))
+        print(service.experiments.create(experiment))
+    elif args.command == "run":
+        experiment = service.experiments.get(args.experiment_id)
+        job = service.jobs.create(experiment)
+        service.supervisor.run_once()
+        print(service.jobs.get(job.job_id).model_dump_json(indent=2))
+    elif args.command == "compare":
+        decision = validate_comparison(
+            [service.runs.get(run_id) for run_id in args.run_ids],
+            ComparisonTier(args.tier),
+        )
+        print(json.dumps(asdict(decision), default=str, indent=2))
+        return 0 if decision.compatible else 2
+    elif args.command == "export-schemas":
+        for path in export_json_schemas(args.output):
+            print(path)
+    elif args.command == "serve":
+        if args.host != "127.0.0.1":
+            raise SystemExit("the local-first server binds only to 127.0.0.1")
+        uvicorn.run(create_app(service), host=args.host, port=args.port)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
