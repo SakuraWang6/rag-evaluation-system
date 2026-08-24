@@ -24,6 +24,31 @@ The initial storage backend is an atomic file store rooted at
 `RAG_EVAL_HOME` (default: `~/.rag_eval_platform`). Legacy LightRAG evaluation
 directories are never scanned.
 
+## Start the local system
+
+From the Platform checkout, start the local API and the sibling standalone
+WebUI together:
+
+```bash
+./scripts/start-local.sh
+```
+
+The API binds to `127.0.0.1:8765` and the WebUI to `127.0.0.1:4178`. The
+script starts no legacy `memory_eval` service and no persistent Adapter Worker:
+Workers are isolated and created by the Platform for each evaluation run.
+Override the storage home or ports without changing the script:
+
+```bash
+RAG_EVAL_HOME=/path/to/eval-home \
+RAG_EVAL_API_PORT=8765 \
+RAG_EVAL_WEBUI_PORT=4178 \
+./scripts/start-local.sh
+```
+
+It expects an installed Platform environment (`.venv/bin/rag-eval` or
+`rag-eval` on `PATH`) and an installed sibling WebUI (`npm ci` in
+`../rag-eval-webui`). Use `RAG_EVAL_WEBUI_DIR` when that checkout is elsewhere.
+
 Completed runs contain a frozen `experiment.json`, per-repetition case files,
 `summary.json` with mean/standard deviation and execution-failure rate,
 `report.md`, worker logs, dependency/environment snapshots, model and prompt
