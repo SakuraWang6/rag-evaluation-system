@@ -661,7 +661,7 @@ async def ollama_model_artifacts(
                             break
             except (httpx.HTTPError, AttributeError, ValueError):
                 digest = None
-        resolved = digest if digest and digest.startswith("sha256:") else None
+        resolved = normalize_ollama_digest(digest)
         results[role] = {
             "display_name": str(model).split(":", 1)[0],
             "requested_ref": str(model),
@@ -681,6 +681,19 @@ def model_digests(artifacts: dict[str, dict[str, Any]]) -> dict[str, str]:
         ))
         for role, value in artifacts.items()
     }
+
+
+def normalize_ollama_digest(value: str | None) -> str | None:
+    """Normalize Ollama's bare `/api/tags` digest to a contract SHA-256 URI."""
+
+    candidate = str(value or "").strip()
+    if candidate.startswith("sha256:"):
+        candidate = candidate.removeprefix("sha256:")
+    if len(candidate) != 64 or any(
+        character not in "0123456789abcdef" for character in candidate
+    ):
+        return None
+    return f"sha256:{candidate}"
 
 
 def apply_model_environment(environment: dict[str, str], model: ModelConfig) -> None:

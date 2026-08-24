@@ -9,10 +9,19 @@ from rag_eval_lightrag_adapter.adapter import (
     LightRAGAdapter,
     build_server_environment,
     ingestion_identity,
+    normalize_ollama_digest,
     resolve_config,
     safe_runtime_identity,
     safe_source_name,
 )
+
+
+def test_ollama_bare_digest_is_normalized_for_formal_model_lock() -> None:
+    bare = "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0"
+
+    assert normalize_ollama_digest(bare) == f"sha256:{bare}"
+    assert normalize_ollama_digest(f"sha256:{bare}") == f"sha256:{bare}"
+    assert normalize_ollama_digest("not-a-digest") is None
 
 
 def test_legacy_profile_preserves_original_defaults(tmp_path) -> None:

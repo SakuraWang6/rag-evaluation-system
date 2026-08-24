@@ -12,8 +12,22 @@ from rag_eval_rag_anything_adapter.adapter import (
     RAGAnythingAdapter,
     resolve_config,
     force_run_scoped_environment,
+    model_artifacts,
+    normalize_ollama_digest,
     verified_source_path,
 )
+
+
+def test_ollama_bare_digest_is_normalized_for_formal_model_lock() -> None:
+    bare = "7907646426070047a77226ac3e684fbbe8410524f7b4a74d02837e43f2146bab"
+    artifacts = model_artifacts(
+        resolve_config({}).model,
+        {"llm": bare, "embedding": bare},
+    )
+
+    assert normalize_ollama_digest(bare) == f"sha256:{bare}"
+    assert artifacts["llm"]["resolved_digest"] == f"sha256:{bare}"
+    assert artifacts["embedding"]["verified"] is True
 
 
 class FakeRuntime:

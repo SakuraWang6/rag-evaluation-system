@@ -527,7 +527,9 @@ async def ollama_model_digests(config: OllamaModelConfig) -> dict[str, str]:
         for item in rows:
             name = str(item.get("name") or item.get("model") or "")
             if name == model or name.split(":", 1)[0] == model.split(":", 1)[0]:
-                digest = str(item.get("digest") or "") or None
+                digest = normalize_ollama_digest(
+                    str(item.get("digest") or "") or None
+                )
                 break
         results[role] = digest or identity_digest(config.binding, model)
     return results
@@ -537,13 +539,17 @@ def model_artifacts(
     config: OllamaModelConfig, digests: dict[str, str]
 ) -> dict[str, dict[str, Any]]:
     values: dict[str, dict[str, Any]] = {}
-    for role, requested in (("llm", config.llm_model), ("embedding", config.embedding_model)):
+    for role, requested in (
+        ("llm", config.llm_model),
+        ("embedding", config.embedding_model),
+    ):
         digest = digests.get(role)
-        verified = bool(digest and digest.startswith("sha256:") and len(digest) == 71)
+        normalized_digest = normalize_ollama_digest(digest)
+        verified = normalized_digest is not None
         values[role] = {
             "display_name": requested.split(":", 1)[0],
             "requested_ref": requested,
-            "resolved_digest": digest if verified else None,
+            "resolved_digest": normalized_digest,
             "revision": None,
             "resolver": config.binding,
             "resolved_at": datetime.now(UTC).isoformat(),
@@ -564,6 +570,19 @@ def generation_options(
     if config.generation.user_prompt is not None:
         options.setdefault("user_prompt", config.generation.user_prompt)
     return options
+
+
+def normalize_ollama_digest(value: str | None) -> str | None:
+    """Normalize Ollama's bare `/api/tags` digest to a contract SHA-256 URI."""
+
+    candidate = str(value or "").strip()
+    if candidate.startswith("sha256:"):
+        candidate = candidate.removeprefix("sha256:")
+    if len(candidate) != 64 or any(
+        character not in "0123456789abcdef" for character in candidate
+    ):
+        return None
+    return f"sha256:{candidate}"
 
 
 def directory_digest(root: Path) -> str:
