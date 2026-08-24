@@ -112,7 +112,9 @@ def main(argv: list[str] | None = None) -> int:
             system_id=args.system_id,
             adapter_id=args.adapter_id,
             adapter_factory=args.adapter_factory,
-            python_executable=str(Path(args.python).resolve()),
+            # Keep a virtual-environment interpreter symlink intact. Resolving it
+            # selects the base interpreter and silently loses worker-only packages.
+            python_executable=str(Path(args.python).expanduser().absolute()),
             environment=environment,
             request_timeout_seconds=args.timeout,
         )
