@@ -44,6 +44,18 @@ def markdown_report(
                 f"- Generated answer: `{case.rag_result.answer if case.rag_result else None}`",
                 f"- Failure reason: `{case.error.message if case.error else None}`",
                 "",
+                "#### Failure Assessment",
+                "",
+                "```json",
+                json.dumps(
+                    case.failure_assessment.model_dump(mode="json")
+                    if case.failure_assessment
+                    else None,
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                "```",
+                "",
                 "#### Gold Evidence",
                 "",
                 "```json",

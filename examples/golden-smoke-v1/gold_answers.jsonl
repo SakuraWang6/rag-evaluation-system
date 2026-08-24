@@ -1,0 +1,24 @@
+{"gold_answer_id":"answer-plain-01","kind":"text","canonical":"08:30","accepted_values":[]}
+{"gold_answer_id":"answer-plain-02","kind":"text","canonical":"level 3","accepted_values":[]}
+{"gold_answer_id":"answer-plain-03","kind":"text","canonical":"Nia Perez","accepted_values":[]}
+{"gold_answer_id":"answer-plain-04","kind":"text","canonical":"Birch-17","accepted_values":[]}
+{"gold_answer_id":"answer-numeric-01","kind":"numeric","canonical":"18.5","accepted_values":[],"unit":"liters","tolerance":"0"}
+{"gold_answer_id":"answer-numeric-02","kind":"numeric","canonical":"2.75","accepted_values":[],"unit":"newton-meters","tolerance":"0"}
+{"gold_answer_id":"answer-numeric-03","kind":"numeric","canonical":"915","accepted_values":[],"unit":"MHz","tolerance":"0"}
+{"gold_answer_id":"answer-numeric-04","kind":"numeric","canonical":"12","accepted_values":[],"unit":"kilograms","tolerance":"0"}
+{"gold_answer_id":"answer-table-01","kind":"numeric","canonical":"47","accepted_values":[],"tolerance":"0"}
+{"gold_answer_id":"answer-table-02","kind":"numeric","canonical":"31","accepted_values":[],"tolerance":"0"}
+{"gold_answer_id":"answer-table-03","kind":"text","canonical":"Thursday","accepted_values":[]}
+{"gold_answer_id":"answer-table-04","kind":"text","canonical":"Monday","accepted_values":[]}
+{"gold_answer_id":"answer-id-01","kind":"text","canonical":"Office of Transit","accepted_values":[]}
+{"gold_answer_id":"answer-id-02","kind":"text","canonical":"Civic Archive","accepted_values":[]}
+{"gold_answer_id":"answer-id-03","kind":"text","canonical":"Greenhouse Lab","accepted_values":[]}
+{"gold_answer_id":"answer-id-04","kind":"text","canonical":"Harbor Board","accepted_values":[]}
+{"gold_answer_id":"answer-multi-01","kind":"text","canonical":"17:00 to 21:00","accepted_values":[]}
+{"gold_answer_id":"answer-multi-02","kind":"text","canonical":"60 sample jars; 8 hours","accepted_values":[]}
+{"gold_answer_id":"answer-multi-03","kind":"text","canonical":"slate forms; 14 days","accepted_values":[]}
+{"gold_answer_id":"answer-multi-04","kind":"text","canonical":"24 seats; rainfall","accepted_values":[]}
+{"gold_answer_id":"answer-abstain-01","kind":"abstain","canonical":null,"accepted_values":[]}
+{"gold_answer_id":"answer-abstain-02","kind":"abstain","canonical":null,"accepted_values":[]}
+{"gold_answer_id":"answer-abstain-03","kind":"abstain","canonical":null,"accepted_values":[]}
+{"gold_answer_id":"answer-abstain-04","kind":"abstain","canonical":null,"accepted_values":[]}
