@@ -4,14 +4,17 @@
 bundles, evaluation semantics, immutable run artifacts, job state, comparison,
 and reports. It deliberately has no dependency on LightRAG or RAG-Anything.
 
-Artifact Contract **1.2** is under internal hardening while Wire Protocol stays
-at **1.0**. A formal run requires verified model artifact identities: display
-names and mutable tags such as `latest` are resolver inputs, never benchmark
-identities. See [Artifact Contract 1.2](docs/ARTIFACT_CONTRACT_1_2.md).
+Artifact Contract **1.2** and Wire Protocol **1.0** are frozen. A formal run
+requires verified model artifact identities: display names and mutable tags such
+as `latest` are resolver inputs, never benchmark identities. See
+[Artifact Contract 1.2](docs/ARTIFACT_CONTRACT_1_2.md) and the
+[Wire Protocol Contract](CONTRACT.md).
 
-Formal benchmark support is contract-ready but no benchmark result is implied
-by this repository. Formal work additionally requires the sealed public/Gold
-role boundary in the [Blind Benchmark Protocol](docs/BLIND_BENCHMARK_PROTOCOL.md),
+Phase 8 Golden Smoke real-model validation passed; its model lock, accepted
+runs, checksums, and independent AI review are recorded in
+[the Phase 8 validation report](docs/PHASE_8_REAL_MODEL_VALIDATION_REPORT.md).
+Future formal benchmark work additionally requires the sealed public/Gold role
+boundary in the [Blind Benchmark Protocol](docs/BLIND_BENCHMARK_PROTOCOL.md),
 case-clustered (not case×seed) analysis, and a frozen latency lifecycle.
 
 RAG systems run behind isolated adapter workers. The platform communicates

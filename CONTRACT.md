@@ -1,8 +1,10 @@
-# RAG Evaluation Contract 1.0
+# Wire Protocol Contract 1.0
 
-Contract 1.0 was frozen after the Fake, LightRAG, and RAG-Anything adapters
-passed the same lifecycle and execution boundary. Public Pydantic models live
-under `rag_eval.contracts`; machine-readable JSON Schema is exported with:
+Wire Protocol 1.0 was frozen after the Fake, LightRAG, and RAG-Anything
+adapters passed the same lifecycle and execution boundary. It is distinct from
+the Artifact Contract 1.2, which governs immutable benchmark/run artifacts.
+Public Pydantic models live under `rag_eval.contracts`; machine-readable JSON
+Schema is exported with:
 
 ```bash
 rag-eval export-schemas ./schemas
@@ -20,9 +22,10 @@ rag-eval export-schemas ./schemas
   `rag_eval_platform`. Artifact schema and Wire versions are independent.
 
 `schemas/1.0/` is the frozen Adapter/Wire release. `schemas/1.1/` is an
-additive artifact-contract release used by Phase 5: it adds repetition identity,
-full reproducibility records, replay lineage, and artifact checksums without
-changing Wire Protocol 1.0 or the Adapter lifecycle.
+additive compatibility record: it adds repetition identity, full
+reproducibility records, replay lineage, and artifact checksums without
+changing Wire Protocol 1.0 or the Adapter lifecycle. The current artifact
+schemas are under `schemas/1.2/`.
 
 ## Source-only document boundary
 
