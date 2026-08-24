@@ -26,8 +26,9 @@ export function MetricCell({ id, metric }: { id: string; metric: MetricResult | 
       </div>
       <strong>{presentation.text}</strong>
       {'standard_deviation' in metric && metric.standard_deviation !== undefined && (
-        <small>σ {metric.standard_deviation.toFixed(3)} · n {metric.denominator}</small>
+        <small>σ {metric.standard_deviation.toFixed(3)} · n {metric.denominator}{metric.coverage !== undefined ? ` · coverage ${(metric.coverage * 100).toFixed(0)}%` : ''}</small>
       )}
+      {'status_counts' in metric && metric.status_counts && metric.status_counts.needs_review ? <small>{metric.status_counts.needs_review} needs review</small> : null}
       {'reason' in metric && metric.reason && <small>{metric.reason}</small>}
     </div>
   )

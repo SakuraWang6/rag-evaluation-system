@@ -27,13 +27,14 @@ export const stageOfMetric = (id: string): 'raw' | 'ranked' | 'context' | 'answe
 
 export interface MetricPresentation {
   text: string
-  state: 'value' | 'unavailable' | 'not-applicable' | 'error'
+  state: 'value' | 'unavailable' | 'not-applicable' | 'error' | 'needs-review'
 }
 
 export const presentMetric = (metric: MetricResult | SummaryMetric): MetricPresentation => {
   if (metric.status === 'unavailable') return { text: 'Unavailable', state: 'unavailable' }
   if (metric.status === 'not_applicable') return { text: 'Not applicable', state: 'not-applicable' }
   if (metric.status === 'error') return { text: 'Error', state: 'error' }
+  if (metric.status === 'needs_review') return { text: 'Needs review', state: 'needs-review' }
   if (metric.value === null || metric.value === undefined) return { text: 'Unavailable', state: 'unavailable' }
   return { text: metric.value.toFixed(3), state: 'value' }
 }

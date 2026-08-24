@@ -6,6 +6,7 @@ describe('evaluation semantics', () => {
     expect(presentMetric({ status: 'observed', value: 0, denominator: 1 }).text).toBe('0.000')
     expect(presentMetric({ status: 'unavailable', value: null, denominator: 0 }).state).toBe('unavailable')
     expect(presentMetric({ status: 'error', value: null, denominator: 1 }).state).toBe('error')
+    expect(presentMetric({ status: 'needs_review', value: null, denominator: 0 }).state).toBe('needs-review')
   })
 
   it('uses stage-specific names and deterministic groundedness', () => {

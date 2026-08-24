@@ -1,4 +1,4 @@
-export type MetricStatus = 'observed' | 'unavailable' | 'not_applicable' | 'error'
+export type MetricStatus = 'observed' | 'unavailable' | 'not_applicable' | 'error' | 'needs_review'
 
 export interface MetricResult {
   metric_id: string
@@ -54,6 +54,12 @@ export interface CaseResult {
   rag_result: RAGResult | null
   metrics: MetricResult[]
   error: { code: string; message: string; retryable: boolean } | null
+  failure_assessment: {
+    labels: string[]
+    certainty: 'deterministic' | 'reviewed' | 'unknown'
+    reasons: string[]
+    review_required: boolean
+  } | null
 }
 
 export interface RunManifest {
@@ -86,6 +92,8 @@ export interface SummaryMetric {
   standard_deviation?: number
   denominator: number
   errors?: number
+  coverage?: number
+  status_counts?: Record<string, number>
   repetition_values?: number[]
 }
 
@@ -139,5 +147,12 @@ export interface ComparisonResponse {
   compatible: boolean
   reasons: string[]
   may_declare_winner: boolean
+  metric_decisions: Array<{
+    metric_id: string
+    comparable: boolean
+    reasons: string[]
+    coverage_by_run: Record<string, number>
+    winner_eligible: boolean
+  }>
   runs: Array<{ run: RunManifest; summary: RunSummary }>
 }

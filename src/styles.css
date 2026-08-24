@@ -87,7 +87,9 @@ input:focus, select:focus, textarea:focus { box-shadow: inset 4px 0 0 var(--teal
 .state--completed, .state--observed, .state--ok { color: var(--teal); }
 .state--failed, .state--error, .state--system-error { color: var(--red); background: rgba(168,38,32,.08); }
 .state--timeout, .state--interrupted { color: var(--orange); }
-.state--unavailable, .state--not-applicable, .state--immutable { color: #696c64; }
+.state--unavailable, .state--not-applicable, .state--immutable, .state--not-comparable { color: #696c64; }
+.state--needs-review { color: #735b86; background: rgba(115,91,134,.08); }
+.state--comparable { color: var(--teal); }
 
 .system-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1px; background: var(--ink); border: 1px solid var(--ink); }
 .system-card { min-height: 330px; padding: 24px; background: var(--paper-hi); position: relative; overflow: hidden; }
@@ -136,6 +138,7 @@ dt { text-transform: uppercase; color: #70736b; }
 .metric--unavailable { background: repeating-linear-gradient(135deg, #ded8cc, #ded8cc 5px, #e9e3d7 5px, #e9e3d7 10px); }
 .metric--error { box-shadow: inset 0 -5px var(--red); }
 .metric--not-applicable { opacity: .65; }
+.metric--needs-review { background: repeating-linear-gradient(135deg, #eee7f0, #eee7f0 5px, #f6f0f7 5px, #f6f0f7 10px); box-shadow: inset 0 -5px #735b86; }
 .stage { padding: 3px 4px; background: var(--ink); color: white; font: .52rem monospace; text-transform: uppercase; }
 .stage--raw { background: var(--blue); }.stage--ranked { background: var(--teal); }.stage--context { background: var(--orange); }.stage--answer { background: var(--ink); }.stage--derived { background: #735b86; }
 
@@ -171,6 +174,8 @@ dt { text-transform: uppercase; color: #70736b; }
 .comparison-result { margin-top: 30px; }.comparison-contract { padding: 18px; display: flex; justify-content: space-between; align-items: center; background: var(--red); color: white; }.comparison-contract--ok { background: var(--teal); }.comparison-contract > div { display: flex; gap: 12px; align-items: center; }.comparison-contract b, .comparison-contract small { display: block; }.comparison-contract small { opacity: .7; text-transform: uppercase; }.comparison-contract > strong { font: .75rem monospace; text-transform: uppercase; }
 .reason-list { margin: 0; padding: 15px 15px 15px 40px; border: 1px solid var(--red); color: var(--red); font-size: .75rem; }
 .comparison-table { margin-top: 20px; min-width: 700px; overflow: auto; border-top: 2px solid var(--ink); }.comparison-row { display: grid; grid-template-columns: minmax(180px, .8fr) repeat(4, minmax(170px, 1fr)); border-bottom: 1px solid var(--ink); }.comparison-row > span { padding: 10px; border-right: 1px solid var(--line); min-width: 0; }.comparison-row--head { background: var(--ink); color: white; font-size: .68rem; text-transform: uppercase; }.comparison-row--head small { display: block; color: #8f9388; margin-top: 4px; }.comparison-row .metric { min-height: 95px; }
+.comparison-metric-label { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; font-size: .67rem; overflow-wrap: anywhere; }.comparison-metric-label small { color: #676a62; font: .56rem monospace; }.comparison-metric-label details { width: 100%; color: var(--red); font-size: .6rem; }.comparison-metric-label details ul { margin: 5px 0 0; padding-left: 15px; color: #65685f; }
+.failure-assessment { margin: 18px 0; border: 1px solid var(--teal); padding: 12px; background: rgba(8,127,124,.05); }.failure-assessment--review { border-color: #735b86; background: rgba(115,91,134,.07); }.failure-assessment header { display: flex; justify-content: space-between; align-items: center; }.failure-assessment header > span { font: .6rem monospace; text-transform: uppercase; }.failure-assessment p { margin: 10px 0 5px; font: 700 .72rem monospace; }.failure-assessment small { display: block; color: #5f625b; font-size: .68rem; }
 
 .error-banner { margin: 16px 4vw; padding: 12px 14px; display: flex; gap: 10px; align-items: center; background: var(--red); color: white; font-size: .75rem; position: relative; z-index: 16; }
 .page-enter > .error-banner, .case-detail > .error-banner { margin-left: 0; margin-right: 0; }

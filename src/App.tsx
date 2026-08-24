@@ -298,6 +298,7 @@ function CaseDetail({ value }: { value: CaseResult }) {
   return <>
     <section className="question-block"><span>QUESTION / REP {value.repetition} / SEED {value.seed}</span><h2>{value.question}</h2></section>
     {value.error && <ErrorBanner message={`${value.error.code}: ${value.error.message}`} />}
+    {value.failure_assessment && <section className={value.failure_assessment.review_required ? 'failure-assessment failure-assessment--review' : 'failure-assessment'}><header><span>Failure assessment</span><StateMark state={value.failure_assessment.review_required ? 'needs_review' : value.failure_assessment.certainty} /></header><p>{value.failure_assessment.labels.length ? value.failure_assessment.labels.join(' · ') : 'No deterministic failure label'}</p>{value.failure_assessment.reasons.map((reason) => <small key={reason}>{reason}</small>)}</section>}
     <div className="answer-pair"><article><span>Gold answer</span><p>{Array.isArray(answer) ? answer.join(' · ') : answer ?? '—'} {value.gold_answer?.unit || ''}</p></article><article><span>Generated answer</span><p>{value.rag_result?.answer === '' ? '∅ empty answer' : value.rag_result?.answer ?? 'Unavailable'}</p></article></div>
     <section className="gold-evidence"><header><h4>Gold evidence groups</h4><span>all groups required · any item within group</span></header>{value.gold_evidence_set?.required_groups.map((group, index) => <div key={index}><b>G{index + 1}</b><span>{group.join(' OR ')}</span></div>) || <p>Unavailable</p>}{value.gold_evidence_set?.evidence.map((evidence) => <article key={evidence.evidence_id}><code>{evidence.evidence_id}</code><p>{evidence.quote_anchor || evidence.canonical_value}</p><small>{evidence.document_id} · {JSON.stringify(evidence.locator)}</small></article>)}</section>
     <EvidenceList title="Raw retrieved evidence" items={value.rag_result?.raw_retrieval ?? null} />
@@ -305,6 +306,7 @@ function CaseDetail({ value }: { value: CaseResult }) {
     <EvidenceList title="Final context sent to generation" items={value.rag_result?.final_context ?? null} />
     <section className="metric-breakdown"><h4>Metric breakdown</h4><div className="metric-grid">{value.metrics.map((metric) => <MetricCell key={metric.metric_id} id={metric.metric_id} metric={metric} />)}</div></section>
     <div className="telemetry"><span>Latency <code>{JSON.stringify(value.rag_result?.latency ?? null)}</code></span><span>Token usage <code>{JSON.stringify(value.rag_result?.token_usage ?? null)}</code></span></div>
+    <p className="semantic-note">End-to-end query latency is Platform wall-clock from query dispatch through response validation. Native retrieval/generation timings, when present, are adapter diagnostics rather than cross-system speed claims.</p>
   </>
 }
 
@@ -319,14 +321,17 @@ function ComparePage({ runs }: { runs: RunManifest[] }) {
   }
   const metricIds = useMemo(() => Array.from(new Set(result?.runs.flatMap((entry) => Object.keys(entry.summary.metrics)) || [])).sort(), [result])
   return <>
-    <PageIntro index="06" title="Comparison with an explicit contract">Exploratory analysis never declares a winner. Strict comparison refuses controlled drift.</PageIntro>
+    <PageIntro index="06" title="Comparison with an explicit contract">Every metric declares its own coverage and comparability. Exploratory analysis never declares a winner; strict comparison requires a preregistered ComparisonSpec.</PageIntro>
     <div className="compare-controls"><label>Comparable tier<select value={tier} onChange={(event) => setTier(event.target.value)}><option value="task_comparable">Task comparable</option><option value="strict_controlled">Strict controlled</option><option value="exploratory">Exploratory</option></select></label><button className="primary" disabled={selected.length < 2} onClick={() => void compare()}><GitCompareArrows size={16} /> Validate & compare</button></div>
     <div className="run-picker">{runs.map((run) => <label key={run.run_id}><input type="checkbox" checked={selected.includes(run.run_id)} onChange={(event) => setSelected(event.target.checked ? [...selected, run.run_id] : selected.filter((id) => id !== run.run_id))} /><span><b>{run.experiment_id}</b><small>{run.adapter_id} · {run.run_id}</small></span></label>)}</div>
     {error && <ErrorBanner message={error} />}
     {result && <section className="comparison-result">
-      <header className={result.compatible ? 'comparison-contract comparison-contract--ok' : 'comparison-contract'}><div>{result.compatible ? <CheckCircle2 /> : <Archive />}<span><b>{result.compatible ? 'Comparison contract satisfied' : 'Comparison rejected'}</b><small>{result.tier.replaceAll('_', ' ')}</small></span></div><strong>{result.may_declare_winner ? 'Ranking allowed' : 'No winner declaration'}</strong></header>
+      <header className={result.compatible ? 'comparison-contract comparison-contract--ok' : 'comparison-contract'}><div>{result.compatible ? <CheckCircle2 /> : <Archive />}<span><b>{result.compatible ? 'Comparison contract satisfied' : 'Comparison rejected'}</b><small>{result.tier.replaceAll('_', ' ')}</small></span></div><strong>{result.may_declare_winner ? 'Primary metric winner eligible' : 'No global winner declaration'}</strong></header>
       {!!result.reasons.length && <ul className="reason-list">{result.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}
-      <div className="comparison-table"><div className="comparison-row comparison-row--head"><span>Metric / stage</span>{result.runs.map((entry) => <span key={entry.run.run_id}>{entry.run.adapter_id}<small>{entry.run.run_id.slice(0, 8)}</small></span>)}</div>{metricIds.map((id) => <div className="comparison-row" key={id}><span>{id}</span>{result.runs.map((entry) => <span key={entry.run.run_id}>{entry.summary.metrics[id] ? <MetricCell id={id} metric={entry.summary.metrics[id]} /> : <StateMark state="not_applicable" />}</span>)}</div>)}</div>
+      <div className="comparison-table"><div className="comparison-row comparison-row--head"><span>Metric / stage / contract</span>{result.runs.map((entry) => <span key={entry.run.run_id}>{entry.run.adapter_id}<small>{entry.run.run_id.slice(0, 8)}</small></span>)}</div>{metricIds.map((id) => {
+        const decision = result.metric_decisions.find((item) => item.metric_id === id)
+        return <div className="comparison-row" key={id}><span className="comparison-metric-label"><b>{id}</b><StateMark state={decision?.comparable ? 'comparable' : 'not_comparable'} /><small>{decision?.winner_eligible ? 'winner eligible' : 'not winner eligible'}</small>{decision && Object.entries(decision.coverage_by_run).map(([runId, coverage]) => <small key={runId}>{runId.slice(0, 8)} coverage {(coverage * 100).toFixed(0)}%</small>)}{!!decision?.reasons.length && <details><summary>Why unavailable</summary><ul>{decision.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></details>}</span>{result.runs.map((entry) => <span key={entry.run.run_id}>{entry.summary.metrics[id] ? <MetricCell id={id} metric={entry.summary.metrics[id]} /> : <StateMark state="not_applicable" />}</span>)}</div>
+      })}</div>
     </section>}
   </>
 }
