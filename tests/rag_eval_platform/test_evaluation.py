@@ -69,6 +69,28 @@ def test_typed_numeric_scorer_rejects_substring_and_honours_tolerance() -> None:
     assert score_answer("The value is 42 milliseconds", answer).verdict == (
         AnswerVerdict.FAIL
     )
+    assert score_answer("The value is either 42 ms or 43 ms", answer).verdict == (
+        AnswerVerdict.NEEDS_REVIEW
+    )
+
+
+def test_text_formula_and_set_scorers_fail_closed() -> None:
+    text = GoldAnswer(
+        gold_answer_id="text", kind=GoldAnswerKind.TEXT, canonical="北京"
+    )
+    assert score_answer("北京", text).verdict == AnswerVerdict.PASS
+    assert score_answer("答案是北京", text).verdict == AnswerVerdict.NEEDS_REVIEW
+
+    formula = GoldAnswer(
+        gold_answer_id="formula", kind=GoldAnswerKind.FORMULA, canonical="x = 1"
+    )
+    assert score_answer("x = 10", formula).verdict == AnswerVerdict.NEEDS_REVIEW
+
+    answer_set = GoldAnswer(
+        gold_answer_id="set", kind=GoldAnswerKind.SET, canonical=["A", "B"]
+    )
+    assert score_answer("A, B", answer_set).verdict == AnswerVerdict.PASS
+    assert score_answer("A, B, C", answer_set).verdict == AnswerVerdict.FAIL
 
 
 def test_bare_answer_quote_with_wrong_document_is_not_gold_evidence() -> None:
@@ -156,7 +178,7 @@ def test_retrieval_only_marks_answer_metrics_not_applicable() -> None:
     )
 
 
-def test_repetition_statistics_keep_execution_errors_in_denominator() -> None:
+def test_repetition_statistics_keep_execution_errors_out_of_metric_denominator() -> None:
     now = datetime.now(UTC)
     observed = MetricResult(
         metric_id="answer_accuracy",
@@ -200,7 +222,10 @@ def test_repetition_statistics_keep_execution_errors_in_denominator() -> None:
     summary = aggregate_metrics(results, repetitions=2, expected=2)
 
     accuracy = summary["metrics"]["answer_accuracy"]
-    assert accuracy["mean"] == 0.5
-    assert accuracy["standard_deviation"] == 0.5
-    assert accuracy["repetition_values"] == [1.0, 0.0]
+    assert accuracy["mean"] == 1.0
+    assert accuracy["standard_deviation"] == 0.0
+    assert accuracy["repetition_values"] == [1.0]
+    assert accuracy["denominator"] == 1
     assert summary["execution"]["execution_failure_rate"] == 0.5
+    assert accuracy["coverage"] == 0.5
+    assert accuracy["status_counts"]["error"] == 1

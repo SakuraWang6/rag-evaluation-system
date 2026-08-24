@@ -1,0 +1,88 @@
+{
+  "additionalProperties": false,
+  "description": "Final append-only record for a sealed, formal blind benchmark.",
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sealed_at": {
+      "format": "date-time",
+      "title": "Sealed At",
+      "type": "string"
+    },
+    "sealed_bundle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Sealed Bundle Digest",
+      "type": "string"
+    },
+    "curator_id": {
+      "minLength": 1,
+      "title": "Curator Id",
+      "type": "string"
+    },
+    "config_frozen_at": {
+      "format": "date-time",
+      "title": "Config Frozen At",
+      "type": "string"
+    },
+    "code_commit": {
+      "pattern": "^[0-9a-f]{40,64}$",
+      "title": "Code Commit",
+      "type": "string"
+    },
+    "model_lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Model Lock Digest",
+      "type": "string"
+    },
+    "comparison_spec_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Comparison Spec Digest",
+      "type": "string"
+    },
+    "analysis_contract_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Analysis Contract Digest",
+      "type": "string"
+    },
+    "formal_runs_started_at": {
+      "format": "date-time",
+      "title": "Formal Runs Started At",
+      "type": "string"
+    },
+    "formal_runs_completed_at": {
+      "format": "date-time",
+      "title": "Formal Runs Completed At",
+      "type": "string"
+    },
+    "gold_revealed_at": {
+      "format": "date-time",
+      "title": "Gold Revealed At",
+      "type": "string"
+    },
+    "evaluator_id": {
+      "minLength": 1,
+      "title": "Evaluator Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "sealed_at",
+    "sealed_bundle_digest",
+    "curator_id",
+    "config_frozen_at",
+    "code_commit",
+    "model_lock_digest",
+    "comparison_spec_digest",
+    "analysis_contract_digest",
+    "formal_runs_started_at",
+    "formal_runs_completed_at",
+    "gold_revealed_at",
+    "evaluator_id"
+  ],
+  "title": "BlindProtocol",
+  "type": "object"
+}

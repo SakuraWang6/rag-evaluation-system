@@ -15,8 +15,13 @@ from rag_eval.contracts.dataset import (
     DatasetBundleManifest,
     GoldAnswer,
     GoldEvidenceSet,
+    ObjectLocator,
+    PageRegionLocator,
     Question,
+    TableCellLocator,
+    TextSpanLocator,
 )
+from rag_eval.evaluation.answers import normalize_text
 from rag_eval.storage.atomic import atomic_write_json
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -222,6 +227,8 @@ def _validate_references(
                 f"{question.case_id} references unknown evidence set "
                 f"{question.gold_evidence_set_id}"
             )
+    canonical_documents = _canonical_documents(manifest, root)
+    formal_profile = manifest.metadata.get("validation_profile") == "formal"
     for evidence_set in evidence_sets.values():
         unknown_documents = {
             item.document_id
@@ -232,6 +239,144 @@ def _validate_references(
             raise BundleIntegrityError(
                 f"evidence references unknown documents: {sorted(unknown_documents)}"
             )
+        for evidence in evidence_set.evidence:
+            canonical = canonical_documents[evidence.document_id]
+            _validate_evidence_locator(evidence, canonical, formal_profile)
+            if (
+                formal_profile
+                and evidence.quote_anchor
+                and normalize_text(canonical).count(normalize_text(evidence.quote_anchor))
+                != 1
+            ):
+                raise BundleIntegrityError(
+                    f"{evidence.evidence_id}: quote_anchor must be unique within "
+                    f"document {evidence.document_id} for formal bundles"
+                )
+
+
+def _canonical_documents(
+    manifest: DatasetBundleManifest, root: Path
+) -> dict[str, str]:
+    contents: dict[str, str] = {}
+    for document in manifest.documents:
+        path = root / (document.canonical_path or document.path)
+        try:
+            contents[document.document_id] = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise BundleIntegrityError(
+                f"canonical content for {document.document_id!r} is not UTF-8 text"
+            ) from exc
+    return contents
+
+
+def _validate_evidence_locator(evidence, canonical: str, formal_profile: bool) -> None:
+    locator = evidence.locator
+    if isinstance(locator, TextSpanLocator):
+        if locator.end > len(canonical):
+            raise BundleIntegrityError(
+                f"{evidence.evidence_id}: text_span is outside canonical content"
+            )
+        span = canonical[locator.start : locator.end]
+        if evidence.quote_anchor and normalize_text(span) != normalize_text(evidence.quote_anchor):
+            raise BundleIntegrityError(
+                f"{evidence.evidence_id}: text_span does not match quote_anchor"
+            )
+        if evidence.canonical_value and normalize_text(evidence.canonical_value) not in normalize_text(span):
+            raise BundleIntegrityError(
+                f"{evidence.evidence_id}: text_span does not cover canonical_value"
+            )
+        return
+    if not formal_profile:
+        return
+    if not isinstance(locator, (ObjectLocator, TableCellLocator, PageRegionLocator)):
+        return
+    if not _canonical_has_structured_witness(canonical, locator, evidence.canonical_value):
+        raise BundleIntegrityError(
+            f"{evidence.evidence_id}: formal structured evidence requires one canonical "
+            "JSON record containing the complete locator and canonical_value"
+        )
+
+
+def _canonical_has_structured_witness(
+    canonical: str,
+    locator: ObjectLocator | TableCellLocator | PageRegionLocator,
+    canonical_value: str | None,
+) -> bool:
+    """Check an exact structured locator and value in one canonical JSON record.
+
+    A formal Bundle cannot establish a table cell or object identity by finding
+    independent strings somewhere in a large document.  Canonical files may be
+    JSON or JSON Lines and must provide a record carrying all locator fields.
+    """
+
+    for record in _canonical_json_records(canonical):
+        if not _record_matches_locator(record, locator):
+            continue
+        if canonical_value is None:
+            return True
+        rendered = json.dumps(record, ensure_ascii=False, sort_keys=True)
+        if normalize_text(canonical_value) in normalize_text(rendered):
+            return True
+    return False
+
+
+def _canonical_json_records(canonical: str) -> list[dict[str, object]]:
+    values: list[object] = []
+    try:
+        values.append(json.loads(canonical))
+    except json.JSONDecodeError:
+        for line in canonical.splitlines():
+            if not line.strip():
+                continue
+            try:
+                values.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    records: list[dict[str, object]] = []
+    for value in values:
+        records.extend(_walk_json_records(value))
+    return records
+
+
+def _walk_json_records(value: object) -> list[dict[str, object]]:
+    if isinstance(value, dict):
+        records = [value]
+        for child in value.values():
+            records.extend(_walk_json_records(child))
+        return records
+    if isinstance(value, list):
+        return [record for child in value for record in _walk_json_records(child)]
+    return []
+
+
+def _record_matches_locator(
+    record: dict[str, object],
+    locator: ObjectLocator | TableCellLocator | PageRegionLocator,
+) -> bool:
+    if isinstance(locator, ObjectLocator):
+        return (
+            _same_json_value(record.get("object_type"), locator.object_type)
+            and _same_json_value(record.get("object_id"), locator.object_id)
+        )
+    if isinstance(locator, TableCellLocator):
+        return (
+            _same_json_value(record.get("table_id"), locator.table_id)
+            and _same_json_value(record.get("row"), locator.row)
+            and _same_json_value(record.get("column"), locator.column)
+        )
+    return (
+        _same_json_value(record.get("page"), locator.page)
+        and _same_json_value(record.get("x0"), locator.x0)
+        and _same_json_value(record.get("y0"), locator.y0)
+        and _same_json_value(record.get("x1"), locator.x1)
+        and _same_json_value(record.get("y1"), locator.y1)
+    )
+
+
+def _same_json_value(actual: object, expected: object) -> bool:
+    if isinstance(expected, float):
+        return isinstance(actual, (int, float)) and float(actual) == expected
+    return actual == expected
 
 
 class BundleIntegrityError(ValueError):

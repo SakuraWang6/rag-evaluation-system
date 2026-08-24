@@ -14,6 +14,14 @@ from rag_eval.contracts.dataset import (
     GoldEvidenceSet,
     Question,
 )
+from rag_eval.contracts.research import (
+    AnalysisContract,
+    BlindProtocol,
+    ComparisonSpec,
+    LatencyProtocol,
+    ModelArtifactIdentity,
+    ModelLock,
+)
 from rag_eval.contracts.run import CaseResult, ExperimentSpec, RunManifest
 from rag_eval.contracts.wire import HandshakeResponse, WireRequest, WireResponse
 
@@ -27,6 +35,12 @@ PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "experiment-spec": ExperimentSpec,
     "case-result": CaseResult,
     "run-manifest": RunManifest,
+    "comparison-spec": ComparisonSpec,
+    "analysis-contract": AnalysisContract,
+    "blind-protocol": BlindProtocol,
+    "model-artifact-identity": ModelArtifactIdentity,
+    "model-lock": ModelLock,
+    "latency-protocol": LatencyProtocol,
     "worker-handshake": HandshakeResponse,
     "wire-request": WireRequest,
     "wire-response": WireResponse,

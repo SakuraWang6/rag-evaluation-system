@@ -1,0 +1,26 @@
+name: Required Platform Gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv venv
+      - run: uv pip install -e '.[test]'
+      - run: uv run pytest -q
+      - run: uv run rag-eval --home "$RUNNER_TEMP/rag-eval" export-schemas "$RUNNER_TEMP/schemas"
+      - run: diff -ru schemas/1.2 "$RUNNER_TEMP/schemas"
+      - run: uv build

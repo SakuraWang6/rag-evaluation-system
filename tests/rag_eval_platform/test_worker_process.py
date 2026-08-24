@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from rag_eval.contracts.adapter import DocumentInput, PrepareContext, RAGQuery
 from rag_eval.worker.process import WorkerCommand, WorkerProcess
 

@@ -1,0 +1,109 @@
+{
+  "additionalProperties": false,
+  "description": "Pre-registered controls and interpretation scope for a comparison.",
+  "properties": {
+    "comparison_id": {
+      "minLength": 1,
+      "title": "Comparison Id",
+      "type": "string"
+    },
+    "experiment_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 2,
+      "title": "Experiment Ids",
+      "type": "array"
+    },
+    "tier": {
+      "enum": [
+        "task_comparable",
+        "strict_controlled",
+        "exploratory"
+      ],
+      "title": "Tier",
+      "type": "string"
+    },
+    "controlled_factors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Controlled Factors",
+      "type": "array"
+    },
+    "treatment_factors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Treatment Factors",
+      "type": "array"
+    },
+    "primary_metrics": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Primary Metrics",
+      "type": "array"
+    },
+    "secondary_metrics": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Secondary Metrics",
+      "type": "array"
+    },
+    "minimum_metric_coverage": {
+      "default": 1.0,
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Minimum Metric Coverage",
+      "type": "number"
+    },
+    "model_lock_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Lock Digest"
+    },
+    "latency_protocol_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Latency Protocol Digest"
+    },
+    "analysis_contract_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Analysis Contract Digest"
+    }
+  },
+  "required": [
+    "comparison_id",
+    "experiment_ids",
+    "tier"
+  ],
+  "title": "ComparisonSpec",
+  "type": "object"
+}

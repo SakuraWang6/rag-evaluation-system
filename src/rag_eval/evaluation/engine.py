@@ -42,7 +42,7 @@ def evaluate_case(
 
     answer_score = score_answer(result.answer, gold_answer)
     if answer_score.verdict == AnswerVerdict.NEEDS_REVIEW:
-        metrics.append(answer_unavailable("answer_accuracy", answer_score.reason))
+        metrics.append(answer_needs_review("answer_accuracy", answer_score.reason))
     else:
         metrics.append(
             answer_observed("answer_accuracy", 1.0 if answer_score.passed else 0.0)
@@ -68,6 +68,19 @@ def evaluate_case(
         any(evidence_id in matches for evidence_id in group)
         for group in evidence_set.required_groups
     )
+    if answer_score.verdict == AnswerVerdict.NEEDS_REVIEW:
+        metrics.extend(
+            [
+                answer_needs_review(
+                    "answer_groundedness", answer_score.reason, grounding=True
+                ),
+                answer_needs_review(
+                    "unsupported_answer_rate", answer_score.reason, grounding=True
+                ),
+            ]
+        )
+        return metrics
+
     supported = answer_score.passed and evidence_complete
     metrics.extend(
         [
@@ -104,6 +117,20 @@ def answer_unavailable(
     return MetricResult(
         metric_id=metric_id,
         status=MetricStatus.UNAVAILABLE,
+        scorer_id=ANSWER_SCORER_ID,
+        scorer_version=ANSWER_SCORER_VERSION,
+        scorer_digest=ANSWER_SCORER_DIGEST,
+        evaluator_mode=GROUNDING_MODE if grounding else None,
+        reason=reason,
+    )
+
+
+def answer_needs_review(
+    metric_id: str, reason: str, *, grounding: bool = False
+) -> MetricResult:
+    return MetricResult(
+        metric_id=metric_id,
+        status=MetricStatus.NEEDS_REVIEW,
         scorer_id=ANSWER_SCORER_ID,
         scorer_version=ANSWER_SCORER_VERSION,
         scorer_digest=ANSWER_SCORER_DIGEST,

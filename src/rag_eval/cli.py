@@ -11,10 +11,20 @@ from pathlib import Path
 import uvicorn
 
 from rag_eval.api import create_app
+from rag_eval.artifact_contract import freeze_artifact
 from rag_eval.comparison import validate_comparison
+from rag_eval.contracts.research import (
+    AnalysisContract,
+    ComparisonSpec,
+    LatencyProtocol,
+    ModelLock,
+)
 from rag_eval.contracts.run import ComparisonTier, ExperimentSpec
 from rag_eval.contracts.schema import export_json_schemas
+from rag_eval.datasets.blind import validate_blind_layout
+from rag_eval.replay import replay_mismatches
 from rag_eval.service import PlatformService
+from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.layout import PlatformPaths
 from rag_eval.systems import SystemRegistration
 
@@ -49,6 +59,27 @@ def build_parser() -> argparse.ArgumentParser:
     compare = subparsers.add_parser("compare")
     compare.add_argument("tier", choices=[item.value for item in ComparisonTier])
     compare.add_argument("run_ids", nargs="+")
+    compare.add_argument("--spec", type=Path)
+
+    lock = subparsers.add_parser("freeze-model-lock")
+    lock.add_argument("source", type=Path)
+    lock.add_argument("destination", type=Path)
+
+    latency = subparsers.add_parser("freeze-latency-protocol")
+    latency.add_argument("source", type=Path)
+    latency.add_argument("destination", type=Path)
+
+    analysis = subparsers.add_parser("freeze-analysis-contract")
+    analysis.add_argument("source", type=Path)
+    analysis.add_argument("destination", type=Path)
+
+    comparison_spec = subparsers.add_parser("freeze-comparison-spec")
+    comparison_spec.add_argument("source", type=Path)
+    comparison_spec.add_argument("destination", type=Path)
+
+    blind = subparsers.add_parser("validate-blind-layout")
+    blind.add_argument("public_root", type=Path)
+    blind.add_argument("sealed_root", type=Path)
 
     verify = subparsers.add_parser("verify-run")
     verify.add_argument("run_id")
@@ -56,6 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     replay = subparsers.add_parser("replay")
     replay.add_argument("run_id")
     replay.add_argument("--new-run-id")
+    replay.add_argument("--allow-drift", action="store_true")
 
     schemas = subparsers.add_parser("export-schemas")
     schemas.add_argument("output", type=Path)
@@ -106,9 +138,25 @@ def main(argv: list[str] | None = None) -> int:
         service.supervisor.run_once()
         print(service.jobs.get(job.job_id).model_dump_json(indent=2))
     elif args.command == "compare":
+        spec = (
+            ComparisonSpec.model_validate_json(args.spec.read_text(encoding="utf-8"))
+            if args.spec
+            else None
+        )
+        manifests = [service.runs.get(run_id) for run_id in args.run_ids]
+        summaries = {
+            manifest.run_id: json.loads(
+                (service.paths.runs / manifest.run_id / "summary.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            for manifest in manifests
+        }
         decision = validate_comparison(
-            [service.runs.get(run_id) for run_id in args.run_ids],
+            manifests,
             ComparisonTier(args.tier),
+            summaries=summaries,
+            spec=spec,
         )
         print(json.dumps(asdict(decision), default=str, indent=2))
         return 0 if decision.compatible else 2
@@ -130,7 +178,65 @@ def main(argv: list[str] | None = None) -> int:
             run_id=args.new_run_id,
             replay_of_run_id=original.run_id,
         )
-        print(replayed.model_dump_json(indent=2))
+        mismatches = replay_mismatches(original, replayed)
+        report = {
+            "replay_of_run_id": original.run_id,
+            "run_id": replayed.run_id,
+            "allow_drift": args.allow_drift,
+            "mismatches": mismatches,
+        }
+        mismatch_path = service.paths.runs / replayed.run_id / "replay-mismatch.json"
+        atomic_write_json(mismatch_path, report)
+        replayed = replayed.model_copy(
+            update={
+                "artifacts": {
+                    **replayed.artifacts,
+                    "replay_mismatch": "replay-mismatch.json",
+                }
+            }
+        )
+        service.runs.write_manifest(replayed)
+        replayed = replayed.model_copy(
+            update={"artifact_checksums": service.runs.artifact_hashes(replayed.run_id)}
+        )
+        service.runs.write_manifest(replayed)
+        print(json.dumps({"manifest": replayed.model_dump(mode="json"), **report}, indent=2))
+        if mismatches and not args.allow_drift:
+            return 2
+    elif args.command == "freeze-model-lock":
+        lock = ModelLock.model_validate_json(args.source.read_text(encoding="utf-8"))
+        digest = freeze_artifact(lock, args.destination)
+        print(json.dumps({"path": str(args.destination), "digest": digest}, indent=2))
+    elif args.command == "freeze-latency-protocol":
+        protocol = LatencyProtocol.model_validate_json(
+            args.source.read_text(encoding="utf-8")
+        )
+        digest = freeze_artifact(protocol, args.destination)
+        print(json.dumps({"path": str(args.destination), "digest": digest}, indent=2))
+    elif args.command == "freeze-analysis-contract":
+        contract = AnalysisContract.model_validate_json(
+            args.source.read_text(encoding="utf-8")
+        )
+        digest = freeze_artifact(contract, args.destination)
+        print(json.dumps({"path": str(args.destination), "digest": digest}, indent=2))
+    elif args.command == "freeze-comparison-spec":
+        comparison_spec = ComparisonSpec.model_validate_json(
+            args.source.read_text(encoding="utf-8")
+        )
+        digest = freeze_artifact(comparison_spec, args.destination)
+        print(json.dumps({"path": str(args.destination), "digest": digest}, indent=2))
+    elif args.command == "validate-blind-layout":
+        report = validate_blind_layout(args.public_root, args.sealed_root)
+        print(
+            json.dumps(
+                {
+                    "public_root": str(report.public_root),
+                    "sealed_root": str(report.sealed_root),
+                    "sealed_bundle_digest": report.protocol.sealed_bundle_digest,
+                },
+                indent=2,
+            )
+        )
     elif args.command == "export-schemas":
         for path in export_json_schemas(args.output):
             print(path)

@@ -115,7 +115,9 @@ class GoldEvidence(ContractModel):
 
     @model_validator(mode="after")
     def validate_witness(self) -> GoldEvidence:
-        if not self.canonical_value and not self.quote_anchor:
+        if not (self.canonical_value or "").strip() and not (
+            self.quote_anchor or ""
+        ).strip():
             raise ValueError("gold evidence requires canonical_value or quote_anchor")
         return self
 
@@ -141,6 +143,12 @@ class GoldEvidenceSet(ContractModel):
         }
         if unknown:
             raise ValueError(f"required_groups reference unknown evidence: {sorted(unknown)}")
+        flattened = [evidence_id for group in self.required_groups for evidence_id in group]
+        if len(flattened) != len(set(flattened)):
+            raise ValueError(
+                "an evidence ID may occur in only one required group; duplicate "
+                "groups distort the recall denominator"
+            )
         return self
 
 

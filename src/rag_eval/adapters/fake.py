@@ -55,6 +55,7 @@ class FakeAdapter:
             "final_context_k": int(config.get("final_context_k", 3)),
             "delay_seconds": float(config.get("delay_seconds", 0)),
             "answer_mode": str(config.get("answer_mode", "first_context")),
+            "cache_policy": {"answer": False, "query": False, "llm": False},
         }
         self._prepared = True
         return PreparedSystem(

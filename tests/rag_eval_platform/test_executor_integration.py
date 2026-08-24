@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from rag_eval.cli import main as cli_main
 from rag_eval.contracts.run import ExperimentSpec, RunStatus
 from rag_eval.datasets.bundle import DatasetBundleStore, case_selection_id
@@ -14,7 +15,6 @@ from rag_eval.execution import RunExecutor
 from rag_eval.storage.runs import RunStore
 from rag_eval.systems import SystemRegistration, SystemRegistry
 from rag_eval.worker.process import WorkerCommand
-
 from tests.rag_eval_platform.test_bundle_store import write_bundle
 
 

@@ -1,0 +1,65 @@
+{
+  "additionalProperties": false,
+  "description": "An immutable model identity; names and tags are display-only metadata.",
+  "properties": {
+    "display_name": {
+      "minLength": 1,
+      "title": "Display Name",
+      "type": "string"
+    },
+    "requested_ref": {
+      "minLength": 1,
+      "title": "Requested Ref",
+      "type": "string"
+    },
+    "resolved_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resolved Digest"
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Revision"
+    },
+    "resolver": {
+      "minLength": 1,
+      "title": "Resolver",
+      "type": "string"
+    },
+    "resolved_at": {
+      "format": "date-time",
+      "title": "Resolved At",
+      "type": "string"
+    },
+    "verified": {
+      "default": false,
+      "title": "Verified",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "display_name",
+    "requested_ref",
+    "resolver",
+    "resolved_at"
+  ],
+  "title": "ModelArtifactIdentity",
+  "type": "object"
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "fresh_worker_per_repetition": true,
+  "fresh_run_scoped_index": true,
+  "warmup_queries": 1,
+  "answer_cache_enabled": false,
+  "query_cache_enabled": false,
+  "llm_cache_enabled": false,
+  "worker_ready_before_measurement": true,
+  "ingestion_before_measurement": true,
+  "concurrency": 1,
+  "preserve_model_and_index_warmth_between_cases": true,
+  "identical_case_order_across_treatments": true,
+  "measurement_scope": "query_dispatch_to_validated_response"
+}

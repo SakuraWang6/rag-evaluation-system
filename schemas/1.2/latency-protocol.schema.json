@@ -1,0 +1,83 @@
+{
+  "additionalProperties": false,
+  "description": "Frozen lifecycle conditions for Task-Comparable wall-clock latency.",
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "fresh_worker_per_repetition": {
+      "default": true,
+      "title": "Fresh Worker Per Repetition",
+      "type": "boolean"
+    },
+    "fresh_run_scoped_index": {
+      "default": true,
+      "title": "Fresh Run Scoped Index",
+      "type": "boolean"
+    },
+    "warmup_queries": {
+      "default": 1,
+      "minimum": 0,
+      "title": "Warmup Queries",
+      "type": "integer"
+    },
+    "warmup_question": {
+      "default": "RAG evaluation warmup.",
+      "minLength": 1,
+      "title": "Warmup Question",
+      "type": "string"
+    },
+    "answer_cache_enabled": {
+      "default": false,
+      "title": "Answer Cache Enabled",
+      "type": "boolean"
+    },
+    "query_cache_enabled": {
+      "default": false,
+      "title": "Query Cache Enabled",
+      "type": "boolean"
+    },
+    "llm_cache_enabled": {
+      "default": false,
+      "title": "Llm Cache Enabled",
+      "type": "boolean"
+    },
+    "worker_ready_before_measurement": {
+      "default": true,
+      "title": "Worker Ready Before Measurement",
+      "type": "boolean"
+    },
+    "ingestion_before_measurement": {
+      "default": true,
+      "title": "Ingestion Before Measurement",
+      "type": "boolean"
+    },
+    "concurrency": {
+      "const": 1,
+      "default": 1,
+      "title": "Concurrency",
+      "type": "integer"
+    },
+    "preserve_model_and_index_warmth_between_cases": {
+      "default": true,
+      "title": "Preserve Model And Index Warmth Between Cases",
+      "type": "boolean"
+    },
+    "identical_case_order_across_treatments": {
+      "default": true,
+      "title": "Identical Case Order Across Treatments",
+      "type": "boolean"
+    },
+    "measurement_scope": {
+      "const": "query_dispatch_to_validated_response",
+      "default": "query_dispatch_to_validated_response",
+      "title": "Measurement Scope",
+      "type": "string"
+    }
+  },
+  "title": "LatencyProtocol",
+  "type": "object"
+}

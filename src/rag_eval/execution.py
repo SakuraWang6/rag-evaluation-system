@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from statistics import pstdev
 from threading import Event, Thread
+from time import monotonic
 
 import httpx
 
@@ -23,6 +24,7 @@ from rag_eval.contracts.adapter import (
     RAGQuery,
 )
 from rag_eval.contracts.dataset import Question
+from rag_eval.contracts.research import LatencyProtocol, ModelArtifactIdentity
 from rag_eval.contracts.run import (
     CaseError,
     CaseResult,
@@ -50,6 +52,7 @@ from rag_eval.evaluation.evidence import (
     EVIDENCE_SCORER_VERSION,
     CorpusEvidenceIndex,
 )
+from rag_eval.evaluation.failures import assess_failure
 from rag_eval.report import markdown_report
 from rag_eval.reproducibility import capture_reproducibility
 from rag_eval.storage.atomic import atomic_write_json
@@ -81,12 +84,19 @@ class RunExecutor:
         cancelled = cancelled or (lambda: False)
         bundle = self.dataset_store.get(experiment.bundle_id)
         questions = select_questions(bundle, experiment)
+        question_orders = {
+            repetition_seed: order_questions(questions, repetition_seed)
+            for repetition_seed in (
+                experiment.seed + offset for offset in range(experiment.repetitions)
+            )
+        }
         run_dir = self.run_store.root / run_id
         manifest: RunManifest | None = None
         documents: list[DocumentInput] | None = None
         corpus: CorpusEvidenceIndex | None = None
         results: list[CaseResult] = []
         index_fingerprints: list[str] = []
+        index_artifact_digests: list[str] = []
         first_handshake = None
         effective_config: dict[str, object] | None = None
         repetition_seeds = [
@@ -179,6 +189,9 @@ class RunExecutor:
                                 "effective_config": current_effective,
                                 "observed_capabilities": prepared.capabilities,
                                 "reproducibility": reproducibility,
+                                "model_artifacts": prepared_model_artifacts(
+                                    prepared, experiment
+                                ),
                             }
                         )
                     elif current_effective != effective_config:
@@ -190,15 +203,36 @@ class RunExecutor:
                     if ingestion.index_fingerprint is None:
                         raise ValueError("adapter did not return an index fingerprint")
                     index_fingerprints.append(ingestion.index_fingerprint)
+                    artifact_digest = ingestion.details.get("index_artifact_digest")
+                    if artifact_digest is not None:
+                        if not isinstance(artifact_digest, str) or not artifact_digest.startswith(
+                            "sha256:"
+                        ):
+                            raise ValueError("adapter returned malformed index artifact digest")
+                        index_artifact_digests.append(artifact_digest)
                     manifest = manifest.model_copy(
                         update={
                             "status": RunStatus.RUNNING,
                             "index_fingerprint": index_fingerprints[0],
                             "index_fingerprints": index_fingerprints,
+                            "index_input_fingerprint": index_fingerprints[0],
+                            "index_artifact_digest": index_artifact_digests[0]
+                            if index_artifact_digests
+                            else None,
+                            "index_artifact_digests": index_artifact_digests,
                         }
                     )
                     self.run_store.write_manifest(manifest)
-                    for question in questions:
+                    if experiment.latency_protocol is not None:
+                        validate_latency_runtime(
+                            prepared.effective_config, experiment.latency_protocol
+                        )
+                        run_latency_warmup(
+                            client,
+                            prepared.capabilities,
+                            experiment,
+                        )
+                    for question in question_orders[repetition_seed]:
                         if cancelled():
                             manifest = manifest.model_copy(
                                 update={"status": RunStatus.CANCELLED}
@@ -249,12 +283,23 @@ class RunExecutor:
                 expected=expected_cases,
             )
             atomic_write_json(run_dir / "summary.json", summary)
+            atomic_write_json(
+                run_dir / "case-order.json",
+                {
+                    "policy": "seeded_sha256_case_order_v1",
+                    "orders": {
+                        str(seed): [question.case_id for question in ordered]
+                        for seed, ordered in question_orders.items()
+                    },
+                },
+            )
             manifest = manifest.model_copy(
                 update={
                     "completed_at": datetime.now(UTC),
                     "execution_counts": counts,
                     "artifacts": {
                         "summary": "summary.json",
+                        "case_order": "case-order.json",
                         "cases": "cases/",
                         "reproducibility": "reproducibility/",
                         "report": "report.md",
@@ -306,15 +351,34 @@ def initial_manifest(
             "adapter": experiment.adapter_config,
             "query": experiment.query_config,
             "metrics": experiment.metric_config,
+            "model_lock_digest": experiment.model_lock_digest,
+            "comparison_spec_digest": experiment.comparison_spec_digest,
+            "analysis_contract_digest": experiment.analysis_contract_digest,
+            "latency_protocol_digest": experiment.latency_protocol_digest,
+            "formal": experiment.formal,
         },
         effective_config={},
         scorer_id=ANSWER_SCORER_ID,
         scorer_version=ANSWER_SCORER_VERSION,
         scorer_digest=ANSWER_SCORER_DIGEST,
+        metric_scorers={
+            "typed_answer": {
+                "scorer_id": ANSWER_SCORER_ID,
+                "scorer_version": ANSWER_SCORER_VERSION,
+                "scorer_digest": ANSWER_SCORER_DIGEST,
+            },
+            "gold_evidence": {
+                "scorer_id": EVIDENCE_SCORER_ID,
+                "scorer_version": EVIDENCE_SCORER_VERSION,
+                "scorer_digest": EVIDENCE_SCORER_DIGEST,
+            },
+        },
+        model_artifacts=experiment.model_artifacts,
         declared_capabilities=handshake.capabilities,
         observed_capabilities=handshake.capabilities,
         seed=experiment.seed,
         repetitions=experiment.repetitions,
+        latency_protocol_digest=experiment.latency_protocol_digest,
         repetition_seeds=repetition_seeds,
         replay_of_run_id=replay_of_run_id,
         started_at=datetime.now(UTC),
@@ -350,6 +414,78 @@ def validate_prepared(
         previous_adapter = previous_effective.get("adapter")
         if prepared.effective_config != previous_adapter:
             raise ValueError("adapter effective config changed across repetitions")
+    if experiment.formal:
+        raw_artifacts = prepared.effective_config.get("model_artifacts")
+        if not isinstance(raw_artifacts, dict) or not raw_artifacts:
+            raise ValueError("formal worker prepare response lacks model artifact identities")
+        actual = prepared_model_artifacts(prepared, experiment)
+        if set(actual) != set(experiment.model_artifacts):
+            raise ValueError("worker model identities do not match the frozen model lock")
+        for name, expected in experiment.model_artifacts.items():
+            observed = actual[name]
+            if not observed.verified or observed.identity != expected.identity:
+                raise ValueError(
+                    f"worker model identity drift for {name}: expected {expected.identity}, "
+                    f"observed {observed.identity}"
+                )
+
+
+def validate_latency_runtime(
+    effective_config: dict[str, object], protocol: LatencyProtocol
+) -> None:
+    cache_policy = effective_config.get("cache_policy")
+    if not isinstance(cache_policy, dict):
+        raise TypeError("latency protocol requires an observed adapter cache_policy")
+    expected = {
+        "answer": protocol.answer_cache_enabled,
+        "query": protocol.query_cache_enabled,
+        "llm": protocol.llm_cache_enabled,
+    }
+    observed = {name: cache_policy.get(name) for name in expected}
+    if observed != expected:
+        raise ValueError(
+            "adapter cache policy differs from frozen latency protocol: "
+            f"expected {expected}, observed {observed}"
+        )
+
+
+def run_latency_warmup(
+    client,
+    capabilities: AdapterCapabilities,
+    experiment: ExperimentSpec,
+) -> None:
+    assert experiment.latency_protocol is not None
+    protocol = experiment.latency_protocol
+    for index in range(protocol.warmup_queries):
+        result = client.query(
+            RAGQuery(
+                case_id=f"__rag_eval_warmup_{index + 1}",
+                question=protocol.warmup_question,
+                generate_answer=False,
+                retrieval_candidate_k=experiment.query_config.get("retrieval_candidate_k"),
+                final_context_k=experiment.query_config.get("final_context_k"),
+                max_context_tokens=experiment.query_config.get("max_context_tokens"),
+                generation_options=experiment.query_config.get("generation_options", {}),
+            )
+        )
+        validate_result_capabilities(result, capabilities, generate_answer=False)
+
+
+def prepared_model_artifacts(
+    prepared: PreparedSystem, experiment: ExperimentSpec
+) -> dict[str, ModelArtifactIdentity]:
+    raw = prepared.effective_config.get("model_artifacts", {})
+    if not raw:
+        return experiment.model_artifacts
+    if not isinstance(raw, dict):
+        raise TypeError("adapter model_artifacts must be an object")
+    try:
+        return {
+            str(name): ModelArtifactIdentity.model_validate(value)
+            for name, value in raw.items()
+        }
+    except Exception as exc:
+        raise ValueError("adapter returned invalid model artifact identities") from exc
 
 
 def execute_case(
@@ -376,12 +512,16 @@ def execute_case(
         generation_options=experiment.query_config.get("generation_options", {}),
     )
     try:
+        query_started = monotonic()
         rag_result = client.query(query)
         validate_result_capabilities(
             rag_result,
             capabilities,
             generate_answer=query.generate_answer,
         )
+        latency = dict(rag_result.latency or {})
+        latency["end_to_end_query_latency"] = monotonic() - query_started
+        rag_result = rag_result.model_copy(update={"latency": latency})
         metrics = evaluate_case(
             rag_result,
             gold_answer,
@@ -398,6 +538,13 @@ def execute_case(
             gold_evidence_set=evidence_set,
             rag_result=rag_result,
             metrics=metrics,
+            failure_assessment=assess_failure(
+                status="completed",
+                result=rag_result,
+                evidence_set=evidence_set,
+                corpus=corpus,
+                metrics=metrics,
+            ),
             started_at=started,
             completed_at=datetime.now(UTC),
             repetition=repetition,
@@ -469,6 +616,16 @@ def select_questions(bundle: DatasetBundle, experiment: ExperimentSpec):
     if expected_selection_id != experiment.case_selection_id:
         raise ValueError("case_selection_id does not match selected cases/policy/seed")
     return [question_by_id[case_id] for case_id in case_ids]
+
+
+def order_questions(questions: list[Question], seed: int) -> list[Question]:
+    """Generate a stable, persisted per-seed order without changing selection."""
+
+    def order_key(question: Question) -> tuple[str, str]:
+        payload = f"{seed}\0{question.case_id}".encode()
+        return hashlib.sha256(payload).hexdigest(), question.case_id
+
+    return sorted(questions, key=order_key)
 
 
 def source_only_documents(
@@ -580,6 +737,13 @@ def failed_case(
         gold_evidence_set=evidence_set,
         metrics=metrics,
         error=CaseError(code=code, message=message),
+        failure_assessment=assess_failure(
+            status=status,
+            result=None,
+            evidence_set=evidence_set,
+            corpus=CorpusEvidenceIndex({}),
+            metrics=metrics,
+        ),
         started_at=started,
         completed_at=datetime.now(UTC),
         repetition=repetition,
@@ -622,13 +786,29 @@ def aggregate_metrics(
         applicable = [
             metric
             for metric in values
-            if metric.status in {MetricStatus.OBSERVED, MetricStatus.ERROR}
+            if metric.status == MetricStatus.OBSERVED
         ]
+        status_counts = {
+            status.value: sum(metric.status == status for metric in values)
+            for status in MetricStatus
+        }
         if not applicable:
+            status = (
+                "needs_review"
+                if status_counts[MetricStatus.NEEDS_REVIEW.value]
+                else "not_applicable"
+                if status_counts[MetricStatus.NOT_APPLICABLE.value]
+                else "error"
+                if status_counts[MetricStatus.ERROR.value]
+                else "unavailable"
+            )
             aggregate[metric_id] = {
-                "status": "unavailable",
+                "status": status,
                 "value": None,
                 "denominator": 0,
+                "coverage": 0.0,
+                "errors": status_counts[MetricStatus.ERROR.value],
+                "status_counts": status_counts,
             }
             continue
         numerator = sum(
@@ -644,14 +824,13 @@ def aggregate_metrics(
                 if result.repetition == repetition
                 for metric in result.metrics
                 if metric.metric_id == metric_id
-                and metric.status in {MetricStatus.OBSERVED, MetricStatus.ERROR}
+                and metric.status == MetricStatus.OBSERVED
             ]
             if repeated:
                 repetition_values.append(
                     sum(
                         metric.value or 0.0
                         for metric in repeated
-                        if metric.status == MetricStatus.OBSERVED
                     )
                     / len(repeated)
                 )
@@ -666,6 +845,8 @@ def aggregate_metrics(
             "numerator": numerator,
             "denominator": len(applicable),
             "errors": sum(metric.status == MetricStatus.ERROR for metric in applicable),
+            "coverage": len(applicable) / expected if expected else 0.0,
+            "status_counts": status_counts,
         }
     counts = execution_counts(results, expected=expected)
     expected_count = counts["expected"]

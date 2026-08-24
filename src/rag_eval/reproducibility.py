@@ -12,7 +12,11 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
+from pydantic import ValidationError
+
+from rag_eval.contracts.research import ModelArtifactIdentity, SourceIdentity
 from rag_eval.contracts.run import ReproducibilityRecord
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.worker.process import WorkerCommand
@@ -54,6 +58,7 @@ def capture_reproducibility(
     environment_path = target / "environment.json"
     atomic_write_json(environment_path, environment)
     git = git_identity(find_git_root(Path(__file__).resolve()))
+    source_identities = find_source_identities(effective_config, git)
     return ReproducibilityRecord(
         platform_git_commit=git["commit"],
         platform_dirty=git["dirty"],
@@ -62,6 +67,11 @@ def capture_reproducibility(
         environment_digest=sha256_bytes(environment_path.read_bytes()),
         model_digests=find_named_digests(effective_config, "model"),
         prompt_digests=find_named_digests(effective_config, "prompt"),
+        model_artifacts=find_model_artifacts(effective_config),
+        source_identities=source_identities,
+        hardware_digest=sha256_text(
+            json.dumps(hardware_identity(platform_snapshot), sort_keys=True)
+        ),
         dependency_lock_artifact=dependency_path.relative_to(run_dir).as_posix(),
         environment_artifact=environment_path.relative_to(run_dir).as_posix(),
     )
@@ -76,6 +86,7 @@ def local_environment_snapshot() -> dict[str, Any]:
         "machine": platform.machine(),
         "distributions": installed_distributions(),
         "safe_environment": safe_environment(os.environ),
+        "direct_urls": installed_direct_urls(),
     }
 
 
@@ -116,6 +127,25 @@ def installed_distributions() -> list[str]:
     return sorted(rows, key=str.casefold)
 
 
+def installed_direct_urls() -> dict[str, str]:
+    """Return PEP 610 origins without reading or serialising secrets."""
+
+    values: dict[str, str] = {}
+    for distribution in importlib.metadata.distributions():
+        raw = distribution.read_text("direct_url.json")
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        url = payload.get("url")
+        if isinstance(url, str) and url:
+            name = distribution.metadata.get("Name", distribution.name)
+            values[name] = safe_direct_url(url)
+    return dict(sorted(values.items(), key=lambda item: item[0].casefold()))
+
+
 def dependency_lock_text(
     platform_snapshot: dict[str, Any], worker_snapshot: dict[str, Any]
 ) -> str:
@@ -124,6 +154,8 @@ def dependency_lock_text(
     lines.append("")
     lines.append("[worker]")
     lines.extend(str(item) for item in worker_snapshot["distributions"])
+    for name, url in worker_snapshot.get("direct_urls", {}).items():
+        lines.append(f"direct-url {name} {url}")
     return "\n".join(lines) + "\n"
 
 
@@ -186,6 +218,88 @@ def find_named_digests(value: Any, category: str) -> dict[str, str]:
 
     visit(value, ())
     return dict(sorted(results.items()))
+
+
+def find_model_artifacts(value: Any) -> dict[str, ModelArtifactIdentity]:
+    results: dict[str, ModelArtifactIdentity] = {}
+
+    def visit(item: Any) -> None:
+        if not isinstance(item, dict):
+            return
+        raw = item.get("model_artifacts")
+        if isinstance(raw, dict):
+            for name, identity in raw.items():
+                try:
+                    results[str(name)] = ModelArtifactIdentity.model_validate(identity)
+                except (TypeError, ValidationError):
+                    # Invalid adapter metadata must not be transformed into a
+                    # plausible identity.  Worker validation rejects it for a
+                    # formal run; the snapshot remains readable for diagnosis.
+                    continue
+        for child in item.values():
+            if isinstance(child, dict):
+                visit(child)
+
+    visit(value)
+    return dict(sorted(results.items()))
+
+
+def find_source_identities(
+    effective_config: dict[str, Any], platform_git: dict[str, Any]
+) -> dict[str, SourceIdentity]:
+    identities: dict[str, SourceIdentity] = {
+        "platform": SourceIdentity(
+            package_version=package_version("rag-eval-platform"),
+            git_commit=platform_git["commit"],
+            dirty_patch_digest=platform_git["dirty_patch_digest"],
+        )
+    }
+    for section in _walk_dicts(effective_config):
+        raw = section.get("code_identity")
+        if not isinstance(raw, dict):
+            continue
+        for name, identity in raw.items():
+            try:
+                identities[str(name)] = SourceIdentity.model_validate(identity)
+            except (TypeError, ValidationError):
+                continue
+    return dict(sorted(identities.items()))
+
+
+def _walk_dicts(value: Any):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _walk_dicts(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_dicts(child)
+
+
+def package_version(name: str) -> str | None:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def hardware_identity(snapshot: dict[str, Any]) -> dict[str, str]:
+    return {
+        key: str(snapshot[key])
+        for key in ("platform", "machine", "implementation")
+        if key in snapshot
+    }
+
+
+def safe_direct_url(value: str) -> str:
+    """Drop credentials and query fragments from a PEP 610 URL."""
+
+    parsed = urlsplit(value)
+    if not parsed.scheme:
+        return value
+    hostname = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port else ""
+    return urlunsplit((parsed.scheme, hostname + port, parsed.path, "", ""))
 
 
 def sha256_text(value: str) -> str:

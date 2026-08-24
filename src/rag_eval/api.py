@@ -14,6 +14,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict
 
 from rag_eval.comparison import validate_comparison
+from rag_eval.contracts.research import ComparisonSpec
 from rag_eval.contracts.run import ComparisonTier, ExperimentSpec
 from rag_eval.service import PlatformService
 
@@ -29,6 +30,7 @@ class DatasetRegisterRequest(APIModel):
 class ComparisonRequest(APIModel):
     run_ids: list[str]
     tier: ComparisonTier
+    comparison_spec: ComparisonSpec | None = None
 
 
 def create_app(
@@ -168,9 +170,9 @@ def create_app(
             path = service.paths.runs / run_id / "summary.json"
             value = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(value, dict):
-                raise ValueError("run summary is malformed")
+                raise TypeError("run summary is malformed")
             return value
-        except (OSError, ValueError) as exc:
+        except (OSError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/v1/runs/{run_id}/artifacts/verify")
@@ -203,16 +205,35 @@ def create_app(
             manifests = [service.runs.get(run_id) for run_id in request.run_ids]
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        decision = validate_comparison(manifests, request.tier)
+        summaries = {
+            manifest.run_id: await run_summary(manifest.run_id)
+            for manifest in manifests
+        }
+        decision = validate_comparison(
+            manifests,
+            request.tier,
+            summaries=summaries,
+            spec=request.comparison_spec,
+        )
         return {
             "tier": decision.tier,
             "compatible": decision.compatible,
             "reasons": decision.reasons,
             "may_declare_winner": decision.may_declare_winner,
+            "metric_decisions": [
+                {
+                    "metric_id": item.metric_id,
+                    "comparable": item.comparable,
+                    "reasons": item.reasons,
+                    "coverage_by_run": item.coverage_by_run,
+                    "winner_eligible": item.winner_eligible,
+                }
+                for item in decision.metric_decisions
+            ],
             "runs": [
                 {
                     "run": manifest.model_dump(mode="json"),
-                    "summary": await run_summary(manifest.run_id),
+                    "summary": summaries[manifest.run_id],
                 }
                 for manifest in manifests
             ],

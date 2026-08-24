@@ -4,6 +4,16 @@
 bundles, evaluation semantics, immutable run artifacts, job state, comparison,
 and reports. It deliberately has no dependency on LightRAG or RAG-Anything.
 
+Artifact Contract **1.2** is under internal hardening while Wire Protocol stays
+at **1.0**. A formal run requires verified model artifact identities: display
+names and mutable tags such as `latest` are resolver inputs, never benchmark
+identities. See [Artifact Contract 1.2](docs/ARTIFACT_CONTRACT_1_2.md).
+
+Formal benchmark support is contract-ready but no benchmark result is implied
+by this repository. Formal work additionally requires the sealed public/Gold
+role boundary in the [Blind Benchmark Protocol](docs/BLIND_BENCHMARK_PROTOCOL.md),
+case-clustered (not case×seed) analysis, and a frozen latency lifecycle.
+
 RAG systems run behind isolated adapter workers. The platform communicates
 with workers through frozen Wire Protocol 1.0 over authenticated loopback HTTP/JSON.
 
@@ -29,3 +39,9 @@ Seeds are derived deterministically from the ExperimentSpec base seed. Replay
 refuses a run whose artifacts no longer match its manifest; strict comparison
 also rejects scorer/model/config drift and, for same-system replay, dependency
 or prompt drift.
+
+When a latency protocol is supplied, the Platform records a seeded case-order
+artifact, verifies that all answer/query/LLM caches are disabled as declared,
+and runs its one fixed warmup query after ingestion but before timing cases.
+Only Platform `end_to_end_query_latency` is a cross-system candidate; Adapter
+native timings are diagnostics.

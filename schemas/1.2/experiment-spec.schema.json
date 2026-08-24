@@ -1,0 +1,494 @@
+{
+  "$defs": {
+    "AnalysisContract": {
+      "additionalProperties": false,
+      "description": "Pre-registered case-clustered analysis policy for formal benchmarks.",
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "independent_unit": {
+          "const": "case",
+          "default": "case",
+          "title": "Independent Unit",
+          "type": "string"
+        },
+        "seed_role": {
+          "const": "within_case_repeated_measurement",
+          "default": "within_case_repeated_measurement",
+          "title": "Seed Role",
+          "type": "string"
+        },
+        "paired_seed_policy": {
+          "const": "mean_matched_seeds",
+          "default": "mean_matched_seeds",
+          "title": "Paired Seed Policy",
+          "type": "string"
+        },
+        "bootstrap_method": {
+          "const": "stratified_case_clustered_paired",
+          "default": "stratified_case_clustered_paired",
+          "title": "Bootstrap Method",
+          "type": "string"
+        },
+        "bootstrap_iterations": {
+          "default": 10000,
+          "minimum": 1000,
+          "title": "Bootstrap Iterations",
+          "type": "integer"
+        },
+        "confidence_level": {
+          "default": 0.95,
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Confidence Level",
+          "type": "number"
+        },
+        "analysis_seed": {
+          "title": "Analysis Seed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "analysis_seed"
+      ],
+      "title": "AnalysisContract",
+      "type": "object"
+    },
+    "ComparisonSpec": {
+      "additionalProperties": false,
+      "description": "Pre-registered controls and interpretation scope for a comparison.",
+      "properties": {
+        "comparison_id": {
+          "minLength": 1,
+          "title": "Comparison Id",
+          "type": "string"
+        },
+        "experiment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Experiment Ids",
+          "type": "array"
+        },
+        "tier": {
+          "enum": [
+            "task_comparable",
+            "strict_controlled",
+            "exploratory"
+          ],
+          "title": "Tier",
+          "type": "string"
+        },
+        "controlled_factors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Controlled Factors",
+          "type": "array"
+        },
+        "treatment_factors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Treatment Factors",
+          "type": "array"
+        },
+        "primary_metrics": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Primary Metrics",
+          "type": "array"
+        },
+        "secondary_metrics": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Secondary Metrics",
+          "type": "array"
+        },
+        "minimum_metric_coverage": {
+          "default": 1.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Minimum Metric Coverage",
+          "type": "number"
+        },
+        "model_lock_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Lock Digest"
+        },
+        "latency_protocol_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency Protocol Digest"
+        },
+        "analysis_contract_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Analysis Contract Digest"
+        }
+      },
+      "required": [
+        "comparison_id",
+        "experiment_ids",
+        "tier"
+      ],
+      "title": "ComparisonSpec",
+      "type": "object"
+    },
+    "LatencyProtocol": {
+      "additionalProperties": false,
+      "description": "Frozen lifecycle conditions for Task-Comparable wall-clock latency.",
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "fresh_worker_per_repetition": {
+          "default": true,
+          "title": "Fresh Worker Per Repetition",
+          "type": "boolean"
+        },
+        "fresh_run_scoped_index": {
+          "default": true,
+          "title": "Fresh Run Scoped Index",
+          "type": "boolean"
+        },
+        "warmup_queries": {
+          "default": 1,
+          "minimum": 0,
+          "title": "Warmup Queries",
+          "type": "integer"
+        },
+        "warmup_question": {
+          "default": "RAG evaluation warmup.",
+          "minLength": 1,
+          "title": "Warmup Question",
+          "type": "string"
+        },
+        "answer_cache_enabled": {
+          "default": false,
+          "title": "Answer Cache Enabled",
+          "type": "boolean"
+        },
+        "query_cache_enabled": {
+          "default": false,
+          "title": "Query Cache Enabled",
+          "type": "boolean"
+        },
+        "llm_cache_enabled": {
+          "default": false,
+          "title": "Llm Cache Enabled",
+          "type": "boolean"
+        },
+        "worker_ready_before_measurement": {
+          "default": true,
+          "title": "Worker Ready Before Measurement",
+          "type": "boolean"
+        },
+        "ingestion_before_measurement": {
+          "default": true,
+          "title": "Ingestion Before Measurement",
+          "type": "boolean"
+        },
+        "concurrency": {
+          "const": 1,
+          "default": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "preserve_model_and_index_warmth_between_cases": {
+          "default": true,
+          "title": "Preserve Model And Index Warmth Between Cases",
+          "type": "boolean"
+        },
+        "identical_case_order_across_treatments": {
+          "default": true,
+          "title": "Identical Case Order Across Treatments",
+          "type": "boolean"
+        },
+        "measurement_scope": {
+          "const": "query_dispatch_to_validated_response",
+          "default": "query_dispatch_to_validated_response",
+          "title": "Measurement Scope",
+          "type": "string"
+        }
+      },
+      "title": "LatencyProtocol",
+      "type": "object"
+    },
+    "ModelArtifactIdentity": {
+      "additionalProperties": false,
+      "description": "An immutable model identity; names and tags are display-only metadata.",
+      "properties": {
+        "display_name": {
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "requested_ref": {
+          "minLength": 1,
+          "title": "Requested Ref",
+          "type": "string"
+        },
+        "resolved_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolved Digest"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "resolver": {
+          "minLength": 1,
+          "title": "Resolver",
+          "type": "string"
+        },
+        "resolved_at": {
+          "format": "date-time",
+          "title": "Resolved At",
+          "type": "string"
+        },
+        "verified": {
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "display_name",
+        "requested_ref",
+        "resolver",
+        "resolved_at"
+      ],
+      "title": "ModelArtifactIdentity",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "bundle_id": {
+      "minLength": 1,
+      "title": "Bundle Id",
+      "type": "string"
+    },
+    "system_id": {
+      "minLength": 1,
+      "title": "System Id",
+      "type": "string"
+    },
+    "adapter_id": {
+      "minLength": 1,
+      "title": "Adapter Id",
+      "type": "string"
+    },
+    "adapter_config": {
+      "additionalProperties": true,
+      "title": "Adapter Config",
+      "type": "object"
+    },
+    "query_config": {
+      "additionalProperties": true,
+      "title": "Query Config",
+      "type": "object"
+    },
+    "metric_config": {
+      "additionalProperties": true,
+      "title": "Metric Config",
+      "type": "object"
+    },
+    "case_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Case Ids"
+    },
+    "case_selection_id": {
+      "minLength": 1,
+      "title": "Case Selection Id",
+      "type": "string"
+    },
+    "seed": {
+      "default": 0,
+      "title": "Seed",
+      "type": "integer"
+    },
+    "repetitions": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Repetitions",
+      "type": "integer"
+    },
+    "formal": {
+      "default": false,
+      "title": "Formal",
+      "type": "boolean"
+    },
+    "model_lock_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Lock Digest"
+    },
+    "model_artifacts": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ModelArtifactIdentity"
+      },
+      "title": "Model Artifacts",
+      "type": "object"
+    },
+    "comparison_spec_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Comparison Spec Digest"
+    },
+    "analysis_contract_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Analysis Contract Digest"
+    },
+    "latency_protocol_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Latency Protocol Digest"
+    },
+    "analysis_contract": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AnalysisContract"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "latency_protocol": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LatencyProtocol"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "comparison_spec": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ComparisonSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "experiment_id",
+    "bundle_id",
+    "system_id",
+    "adapter_id",
+    "case_selection_id"
+  ],
+  "title": "ExperimentSpec",
+  "type": "object"
+}

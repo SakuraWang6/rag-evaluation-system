@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+
 from rag_eval.api import create_app
 from rag_eval.contracts.run import ExperimentSpec
 from rag_eval.datasets.bundle import case_selection_id
@@ -11,7 +12,6 @@ from rag_eval.jobs import JobStatus, JobStore
 from rag_eval.service import PlatformService
 from rag_eval.storage.layout import PlatformPaths
 from rag_eval.systems import SystemRegistration
-
 from tests.rag_eval_platform.test_bundle_store import write_bundle
 
 

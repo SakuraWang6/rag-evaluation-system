@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+
 from rag_eval.contracts.adapter import AdapterCapabilities
 from rag_eval.contracts.run import ExperimentSpec, RunManifest, RunStatus
 from rag_eval.datasets.bundle import (
@@ -13,6 +14,7 @@ from rag_eval.datasets.bundle import (
     DatasetBundleStore,
     case_selection_id,
 )
+from rag_eval.execution import order_questions
 from rag_eval.storage.runs import RunStore
 
 
@@ -117,6 +119,24 @@ def test_case_selection_id_is_order_independent_but_seed_sensitive() -> None:
     assert first != case_selection_id(["a", "b"], policy="all", seed=2)
 
 
+def test_seeded_case_order_is_deterministic_and_seed_sensitive(tmp_path: Path) -> None:
+    source = tmp_path / "order-source"
+    source.mkdir()
+    write_bundle(source)
+    bundle = DatasetBundleStore(tmp_path / "datasets").register(source)
+    question = bundle.questions[0]
+    questions = [
+        question.model_copy(update={"case_id": f"case-{index:02d}"})
+        for index in range(20)
+    ]
+    first = [item.case_id for item in order_questions(questions, 1)]
+    second = [item.case_id for item in order_questions(questions, 1)]
+    different_seed = [item.case_id for item in order_questions(questions, 2)]
+
+    assert first == second
+    assert first != different_seed
+
+
 def test_binary_bundle_requires_and_uses_canonical_text(tmp_path: Path) -> None:
     source = tmp_path / "binary-bundle"
     source.mkdir()
@@ -141,6 +161,77 @@ def test_binary_bundle_requires_and_uses_canonical_text(tmp_path: Path) -> None:
     bundle = store.register(source)
 
     assert bundle.source_documents()["doc-1"] == "The controlled latency is 42 ms."
+
+
+def test_bundle_rejects_span_outside_canonical_content(tmp_path: Path) -> None:
+    source = tmp_path / "bad-span"
+    source.mkdir()
+    write_bundle(source)
+    evidence = json.loads((source / "gold_evidence.jsonl").read_text())
+    evidence["evidence"][0]["locator"]["end"] = 999
+    (source / "gold_evidence.jsonl").write_text(json.dumps(evidence) + "\n")
+    with pytest.raises(BundleIntegrityError, match="outside canonical"):
+        DatasetBundleStore(tmp_path / "datasets").register(source)
+
+
+def test_formal_table_cell_requires_one_complete_structured_witness(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "formal-table"
+    source.mkdir()
+    write_bundle(source)
+    canonical_dir = source / "canonical"
+    canonical_dir.mkdir()
+    canonical = canonical_dir / "table.json"
+    canonical.write_text(
+        json.dumps(
+            [
+                {
+                    "table_id": "T-1",
+                    "row": 2,
+                    "column": "latency",
+                    "value": "42 ms",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    manifest = json.loads((source / "manifest.json").read_text())
+    manifest["documents"][0]["canonical_path"] = "canonical/table.json"
+    manifest["metadata"]["validation_profile"] = "formal"
+    (source / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    evidence = json.loads((source / "gold_evidence.jsonl").read_text())
+    evidence["evidence"][0].update(
+        {
+            "locator": {
+                "type": "table_cell",
+                "table_id": "T-1",
+                "row": 2,
+                "column": "latency",
+            },
+            "quote_anchor": None,
+        }
+    )
+    (source / "gold_evidence.jsonl").write_text(json.dumps(evidence) + "\n")
+
+    DatasetBundleStore(tmp_path / "datasets").register(source)
+
+    canonical.write_text(
+        json.dumps(
+            [
+                {
+                    "table_id": "T-1",
+                    "row": 3,
+                    "column": "latency",
+                    "value": "42 ms",
+                },
+                {"table_id": "another", "row": 2, "column": "latency"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(BundleIntegrityError, match="complete locator"):
+        DatasetBundleStore(tmp_path / "other-datasets").register(source)
 
 
 def test_run_store_ignores_legacy_directories(tmp_path: Path) -> None:

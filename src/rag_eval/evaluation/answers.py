@@ -1,4 +1,8 @@
-"""Typed deterministic answer scorer v1."""
+"""Typed deterministic answer scorer v1.1.
+
+The scorer intentionally prefers ``needs_review`` over a permissive false
+positive.  It does not claim formula equivalence without a versioned parser.
+"""
 
 from __future__ import annotations
 
@@ -8,14 +12,21 @@ import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+from pathlib import Path
 
 from rag_eval.contracts.dataset import GoldAnswer, GoldAnswerKind
 
 ANSWER_SCORER_ID = "typed-answer"
-ANSWER_SCORER_VERSION = "1.0"
-ANSWER_SCORER_DIGEST = "sha256:" + hashlib.sha256(
-    b"typed-answer-v1:nfkc:decimal:formula:set:abstain"
-).hexdigest()
+ANSWER_SCORER_VERSION = "1.1"
+
+
+def scorer_source_digest() -> str:
+    """Digest the actual scorer source instead of a manually maintained label."""
+
+    return "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+ANSWER_SCORER_DIGEST = scorer_source_digest()
 
 
 class AnswerVerdict(StrEnum):
@@ -47,24 +58,15 @@ def score_answer(answer: str | None, gold: GoldAnswer) -> AnswerScore:
 
     accepted = _accepted_values(gold)
     if gold.kind == GoldAnswerKind.TEXT:
-        passed = any(_contains_value(text, value) for value in accepted)
-    elif gold.kind == GoldAnswerKind.NUMERIC:
-        passed = any(
-            _numeric_match(text, value, gold.unit, gold.tolerance) for value in accepted
-        )
-    elif gold.kind == GoldAnswerKind.FORMULA:
-        passed = any(_formula_match(text, value) for value in accepted)
-    elif gold.kind == GoldAnswerKind.SET:
+        return _score_text(text, accepted)
+    if gold.kind == GoldAnswerKind.NUMERIC:
+        return _score_numeric(text, accepted, gold.unit, gold.tolerance)
+    if gold.kind == GoldAnswerKind.FORMULA:
+        return _score_formula(text, accepted)
+    if gold.kind == GoldAnswerKind.SET:
         canonical = gold.canonical if isinstance(gold.canonical, list) else accepted
-        passed = bool(canonical) and all(_contains_value(text, value) for value in canonical)
-    else:
-        return AnswerScore(AnswerVerdict.NEEDS_REVIEW, "unsupported answer kind")
-    return AnswerScore(
-        AnswerVerdict.PASS if passed else AnswerVerdict.FAIL,
-        "typed deterministic scorer matched"
-        if passed
-        else "typed deterministic scorer did not match",
-    )
+        return _score_set(text, canonical)
+    return AnswerScore(AnswerVerdict.NEEDS_REVIEW, "unsupported answer kind")
 
 
 def _accepted_values(gold: GoldAnswer) -> list[str]:
@@ -104,6 +106,19 @@ def _contains_value(answer: str, expected: str) -> bool:
     return False
 
 
+def _score_text(answer: str, accepted: list[str]) -> AnswerScore:
+    normalized = normalize_text(answer)
+    values = {normalize_text(value) for value in accepted if normalize_text(value)}
+    if normalized in values:
+        return AnswerScore(AnswerVerdict.PASS, "exact normalized text matched")
+    if any(_contains_value(answer, value) for value in accepted):
+        return AnswerScore(
+            AnswerVerdict.NEEDS_REVIEW,
+            "text contains a gold value but is not exact-normalized",
+        )
+    return AnswerScore(AnswerVerdict.FAIL, "exact normalized text did not match")
+
+
 _NUMBER_RE = re.compile(
     r"(?<![\d.])([-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?![\d.])"
 )
@@ -119,24 +134,32 @@ def _numbers(text: str) -> list[Decimal]:
     return values
 
 
-def _numeric_match(
+def _score_numeric(
     answer: str,
-    expected: str,
+    accepted: list[str],
     unit: str | None,
     tolerance: Decimal | None,
-) -> bool:
-    expected_numbers = _numbers(expected)
+) -> AnswerScore:
+    expected_numbers = [number for value in accepted for number in _numbers(value)]
     answer_numbers = _numbers(answer)
     if not expected_numbers or not answer_numbers:
-        return False
+        return AnswerScore(AnswerVerdict.FAIL, "numeric answer has no parseable value")
     allowed = tolerance or Decimal(0)
-    value_matches = all(
-        any(abs(expected_value - answer_value) <= allowed for answer_value in answer_numbers)
-        for expected_value in expected_numbers
-    )
-    if not value_matches:
-        return False
-    return unit is None or _contains_unit(answer, unit)
+    matching = [
+        value
+        for value in answer_numbers
+        if any(abs(expected - value) <= allowed for expected in expected_numbers)
+    ]
+    if not matching:
+        return AnswerScore(AnswerVerdict.FAIL, "numeric value did not match")
+    if len(matching) != len(answer_numbers):
+        return AnswerScore(
+            AnswerVerdict.NEEDS_REVIEW,
+            "numeric answer contains an additional contradictory or ambiguous value",
+        )
+    if unit is not None and not _contains_unit(answer, unit):
+        return AnswerScore(AnswerVerdict.FAIL, "numeric answer has an incorrect or missing unit")
+    return AnswerScore(AnswerVerdict.PASS, "unambiguous numeric value and unit matched")
 
 
 def _contains_unit(answer: str, unit: str) -> bool:
@@ -178,9 +201,41 @@ def _replace_simple_fractions(value: str) -> str:
     return value
 
 
-def _formula_match(answer: str, expected: str) -> bool:
-    canonical = canonical_formula(expected)
-    return bool(canonical) and canonical in canonical_formula(answer)
+def _score_formula(answer: str, accepted: list[str]) -> AnswerScore:
+    candidate = canonical_formula(answer)
+    canonicals = {canonical_formula(value) for value in accepted}
+    canonicals.discard("")
+    if candidate and candidate in canonicals:
+        return AnswerScore(AnswerVerdict.PASS, "normalized formula matched exactly")
+    return AnswerScore(
+        AnswerVerdict.NEEDS_REVIEW,
+        "formula equivalence requires a versioned parser or AST evaluator",
+    )
+
+
+_SET_SEPARATOR = re.compile(r"[,;\n\u3001\uff0c\uff1b]+")
+
+
+def _score_set(answer: str, canonical: str | list[str]) -> AnswerScore:
+    expected_values = canonical if isinstance(canonical, list) else [canonical]
+    expected = {normalize_text(value) for value in expected_values if normalize_text(value)}
+    candidate = {
+        normalize_text(value)
+        for value in _SET_SEPARATOR.split(answer)
+        if normalize_text(value)
+    }
+    if not expected:
+        return AnswerScore(AnswerVerdict.NEEDS_REVIEW, "gold set is empty")
+    if candidate == expected:
+        return AnswerScore(AnswerVerdict.PASS, "exact normalized set matched")
+    if candidate.issuperset(expected):
+        return AnswerScore(AnswerVerdict.FAIL, "answer set has extra members")
+    if candidate.issubset(expected):
+        return AnswerScore(AnswerVerdict.FAIL, "answer set is missing members")
+    return AnswerScore(
+        AnswerVerdict.NEEDS_REVIEW,
+        "set representation is ambiguous or contains non-canonical members",
+    )
 
 
 def _looks_like_abstain(text: str) -> bool:

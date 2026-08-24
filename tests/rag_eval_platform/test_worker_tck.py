@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+
 from rag_eval.adapters.fake import FakeAdapter
 from rag_eval.contracts.adapter import AdapterCapabilities, PrepareContext, RAGQuery
 from rag_eval.contracts.wire import HandshakeResponse
