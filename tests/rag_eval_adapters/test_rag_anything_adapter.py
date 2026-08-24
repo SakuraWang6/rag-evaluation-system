@@ -10,6 +10,7 @@ from rag_eval_rag_anything_adapter.adapter import (
     CAPABILITIES,
     OfficialRAGAnythingRuntime,
     RAGAnythingAdapter,
+    exact_ollama_model_digest,
     resolve_config,
     force_run_scoped_environment,
     model_artifacts,
@@ -28,6 +29,16 @@ def test_ollama_bare_digest_is_normalized_for_formal_model_lock() -> None:
     assert normalize_ollama_digest(bare) == f"sha256:{bare}"
     assert artifacts["llm"]["resolved_digest"] == f"sha256:{bare}"
     assert artifacts["embedding"]["verified"] is True
+
+
+def test_ollama_resolver_requires_an_exact_requested_tag() -> None:
+    rows = [
+        {"name": "qwen3:8b", "digest": "eight"},
+        {"name": "qwen3:4b-instruct", "digest": "four"},
+    ]
+
+    assert exact_ollama_model_digest(rows, "qwen3:4b-instruct") == "four"
+    assert exact_ollama_model_digest(rows, "qwen3") is None
 
 
 class FakeRuntime:

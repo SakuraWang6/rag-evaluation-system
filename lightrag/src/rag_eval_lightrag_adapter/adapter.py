@@ -654,11 +654,9 @@ async def ollama_model_artifacts(
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     response = await client.get(f"{str(host).rstrip('/')}/api/tags")
                     response.raise_for_status()
-                    for item in response.json().get("models", []):
-                        name = str(item.get("name") or item.get("model") or "")
-                        if name == model or name.split(":", 1)[0] == model.split(":", 1)[0]:
-                            digest = str(item.get("digest") or "") or None
-                            break
+                    digest = exact_ollama_model_digest(
+                        response.json().get("models", []), str(model)
+                    )
             except (httpx.HTTPError, AttributeError, ValueError):
                 digest = None
         resolved = normalize_ollama_digest(digest)
@@ -694,6 +692,20 @@ def normalize_ollama_digest(value: str | None) -> str | None:
     ):
         return None
     return f"sha256:{candidate}"
+
+
+def exact_ollama_model_digest(rows: object, requested_ref: str) -> str | None:
+    """Resolve only the exact requested tag; short-name matching is ambiguous."""
+
+    if not isinstance(rows, list):
+        return None
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or item.get("model") or "")
+        if name == requested_ref:
+            return str(item.get("digest") or "") or None
+    return None
 
 
 def apply_model_environment(environment: dict[str, str], model: ModelConfig) -> None:

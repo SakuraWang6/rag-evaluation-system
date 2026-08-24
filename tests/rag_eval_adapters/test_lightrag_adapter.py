@@ -8,6 +8,7 @@ from rag_eval_lightrag_adapter.adapter import (
     CAPABILITIES,
     LightRAGAdapter,
     build_server_environment,
+    exact_ollama_model_digest,
     ingestion_identity,
     normalize_ollama_digest,
     resolve_config,
@@ -22,6 +23,16 @@ def test_ollama_bare_digest_is_normalized_for_formal_model_lock() -> None:
     assert normalize_ollama_digest(bare) == f"sha256:{bare}"
     assert normalize_ollama_digest(f"sha256:{bare}") == f"sha256:{bare}"
     assert normalize_ollama_digest("not-a-digest") is None
+
+
+def test_ollama_resolver_requires_an_exact_requested_tag() -> None:
+    rows = [
+        {"name": "qwen3:8b", "digest": "eight"},
+        {"name": "qwen3:4b-instruct", "digest": "four"},
+    ]
+
+    assert exact_ollama_model_digest(rows, "qwen3:4b-instruct") == "four"
+    assert exact_ollama_model_digest(rows, "qwen3") is None
 
 
 def test_legacy_profile_preserves_original_defaults(tmp_path) -> None:

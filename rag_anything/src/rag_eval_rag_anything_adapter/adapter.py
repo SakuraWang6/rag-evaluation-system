@@ -524,13 +524,7 @@ async def ollama_model_digests(config: OllamaModelConfig) -> dict[str, str]:
         ("embedding", config.embedding_model),
     ):
         digest = None
-        for item in rows:
-            name = str(item.get("name") or item.get("model") or "")
-            if name == model or name.split(":", 1)[0] == model.split(":", 1)[0]:
-                digest = normalize_ollama_digest(
-                    str(item.get("digest") or "") or None
-                )
-                break
+        digest = normalize_ollama_digest(exact_ollama_model_digest(rows, model))
         results[role] = digest or identity_digest(config.binding, model)
     return results
 
@@ -583,6 +577,20 @@ def normalize_ollama_digest(value: str | None) -> str | None:
     ):
         return None
     return f"sha256:{candidate}"
+
+
+def exact_ollama_model_digest(rows: object, requested_ref: str) -> str | None:
+    """Resolve only the exact requested tag; short-name matching is ambiguous."""
+
+    if not isinstance(rows, list):
+        return None
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or item.get("model") or "")
+        if name == requested_ref:
+            return str(item.get("digest") or "") or None
+    return None
 
 
 def directory_digest(root: Path) -> str:
