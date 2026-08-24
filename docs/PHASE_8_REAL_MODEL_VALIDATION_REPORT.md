@@ -1,12 +1,14 @@
 # Phase 8 real-model Golden Smoke validation
 
-## Final gate: BLOCKED
+## Final gate: PASS
 
-The real-model execution gate completed successfully, but Phase 8 closure is
-**BLOCKED**. The remaining blocker is the required independent reviewer gate:
-the 24-case author reconciliation is complete, while the independent-review
-checklist is intentionally still blank. No author review is presented as an
-independent review, and no Gold answer or evidence was changed.
+Phase 8 is **PASS**. The real-model execution gate and its 24-case independent
+review gate both completed. The reviewer was the separately scoped
+`codex-independent-reviewer` role assigned by the user; it independently used
+the sealed Gold bundle, original source documents, and raw accepted-run case
+artifacts, and did not use the author reconciliation as review evidence. This
+is not represented as a human or external third-party attestation. No Gold
+answer or evidence was changed.
 
 ## Immutable runtime
 
@@ -42,25 +44,28 @@ runs retain raw retrieval, ranked retrieval, and final context. RAG-Anything
 retains these stages as `null`, matching its declared public-API capability;
 they are not inferred or scored as zero.
 
-## Result interpretation and reconciliation
+## Result interpretation and independent review
 
 The platform’s deterministic scorer is intentionally conservative. For both
 LightRAG runs, 16 expanded natural-language answers were `needs_review`; four
 natural-language abstentions were scored as observed zero with
-`generation_failure` / `unsupported_answer`. The author’s case-by-case review
-found all 24 LightRAG answers semantically correct and source-traceable. This is
-a scorer/failure-label discrepancy, not a Gold change or a rewritten run result.
+`generation_failure` / `unsupported_answer`. The independent 24-case review
+confirmed every Legacy and Enhanced answer against the sealed Gold and found the
+required source document in each final context. Those scorer/failure-label
+discrepancies are retained in the raw results; the review neither changes their
+metric values nor rewrites a case artifact.
 
 RAG-Anything returned `[no-context]` abstentions for all 24 questions. The
-author reconciled the 20 factual questions as incorrect. The four negative-case
-generic abstentions remain explicitly pending independent judgment because they
-do not cite the source-specific absence. Full record:
-`examples/golden-smoke-v1-execution/golden-smoke-author-reconciliation.csv`.
+independent review found the 20 factual answers incorrect. Its four negative-case
+answers are acceptable only as answer-level generic abstentions; their
+source-specific absence and grounding cannot be established because the public
+API exposes no evidence stage. They remain evidence-unavailable rather than
+being credited as grounded retrieval. The completed 24-row record and method
+are `examples/golden-smoke-v1-execution/golden-smoke-independent-review-checklist.csv`
+and `examples/golden-smoke-v1-execution/INDEPENDENT_REVIEW_REPORT.md`.
 
-The independent reviewer must complete all 24 rows in
-`examples/golden-smoke-v1-execution/golden-smoke-independent-review-checklist.csv`.
-If a Gold change is proposed, it must be a separate, reviewed amendment; none is
-silently applied to this sealed run.
+No Gold change was proposed. Any future Gold amendment remains a separate,
+reviewed change and cannot alter this sealed execution record.
 
 ## Metrics and comparison semantics
 

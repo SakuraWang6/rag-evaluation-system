@@ -34,6 +34,14 @@
       "index_artifact_digest": "sha256:7583a698a69d9367d07d253c2a5038494dc3685aba3c9c6c44eba5dd7af96402"
     }
   ],
+  "independent_review": {
+    "reviewer": "codex-independent-reviewer",
+    "reviewed_at": "2026-08-24T14:07:57Z",
+    "case_count": 24,
+    "disposition": "passed-no-gold-change",
+    "checklist": "golden-smoke-independent-review-checklist.csv",
+    "report": "INDEPENDENT_REVIEW_REPORT.md"
+  },
   "verification_command": "rag-eval verify-run <run_id>",
   "verified_at": "2026-08-24T13:06:08Z"
 }
