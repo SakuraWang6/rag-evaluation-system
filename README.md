@@ -15,6 +15,13 @@ Both adapters must pass the same Worker TCK. Capabilities are observational:
 `None` means a stage cannot be observed, while `[]` means it was observed
 and returned no evidence.
 
+For a formal run, `prepare` must resolve each configured model and return a
+verified immutable digest/revision. The Platform compares that identity to the
+frozen model lock before ingestion. Mutable names and tags (including
+`latest`) are display/resolver inputs only. Each adapter reports explicit
+answer/query/LLM cache state, clears inherited experimental LightRAG controls,
+and returns an index input fingerprint plus the actual run-scoped index digest.
+
 The repository intentionally has no shared runtime environment. Install each
 adapter from its own directory into a dedicated Worker venv. For local tests,
 install `rag-eval-platform` separately (or keep its repository as a sibling)

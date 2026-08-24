@@ -10,6 +10,7 @@ from rag_eval_lightrag_adapter.adapter import (
     build_server_environment,
     ingestion_identity,
     resolve_config,
+    safe_runtime_identity,
     safe_source_name,
 )
 
@@ -88,6 +89,45 @@ def test_index_identity_changes_with_chunk_or_embedding(
 
     assert baseline != chunked
     assert baseline != embedded
+
+
+def test_server_environment_ignores_unregistered_experimental_shell_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv("LIGHTRAG_EXACT_ID_TYPES", "TBL,FIG")
+    monkeypatch.setenv("LIGHTRAG_TABLE_VIEW", "1")
+    monkeypatch.setenv("LIGHTRAG_RANKING_STRATEGY", "structured")
+
+    environment = build_server_environment(resolve_config({}), tmp_path)
+
+    assert environment["LIGHTRAG_EXACT_ID_TYPES"] == ""
+    assert environment["LIGHTRAG_TABLE_VIEW"] == "0"
+    assert environment["LIGHTRAG_RANKING_STRATEGY"] == "none"
+    assert environment["ENABLE_LLM_CACHE"] == "0"
+
+
+def test_rerank_requires_an_explicit_model_and_never_uses_shell_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv("RERANK_MODEL", "shell-controlled-model")
+
+    with pytest.raises(ValueError, match="rerank_model"):
+        resolve_config({"enable_rerank": True})
+
+    environment = build_server_environment(
+        resolve_config({"enable_rerank": True, "rerank_model": "explicit-model"}),
+        tmp_path,
+    )
+    assert environment["RERANK_MODEL"] == "explicit-model"
+
+
+def test_runtime_identity_preserves_the_resolved_ollama_host(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv("OLLAMA_HOST", "http://ollama.internal:11434")
+    environment = build_server_environment(resolve_config({}), tmp_path)
+
+    assert safe_runtime_identity(environment)["ollama_host"] == "http://ollama.internal:11434"
 
 
 @pytest.mark.asyncio

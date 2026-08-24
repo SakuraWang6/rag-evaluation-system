@@ -30,3 +30,8 @@ The worker environment is expected to contain `raganything`, this adapter, and
 `rag-eval-platform`. Model identity is declared in adapter config and is saved
 as effective run metadata. Credentials, if any, remain in the trusted local
 worker environment and are not copied to the run manifest.
+
+All inherited LightRAG table/exact-ID/ranking/profile and cache environment
+variables are cleared before runtime creation. The controlled text track must
+use explicit model/generation config; a formal Platform run accepts it only
+when the resolver returns the frozen, verified model artifact identities.

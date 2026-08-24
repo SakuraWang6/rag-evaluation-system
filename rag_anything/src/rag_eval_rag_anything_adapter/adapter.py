@@ -5,11 +5,15 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import importlib.util
+import json
 import os
+import subprocess
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from time import monotonic
 from typing import Any, Literal, Protocol
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -62,6 +66,14 @@ class ChunkingConfig(BaseModel):
     chunk_overlap_token_size: int = Field(default=100, ge=0)
 
 
+class GenerationConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    seed: int | None = None
+    user_prompt: str | None = None
+
+
 class RAGAnythingAdapterConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -74,6 +86,7 @@ class RAGAnythingAdapterConfig(BaseModel):
     enable_vlm_query: bool = False
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     model: OllamaModelConfig = Field(default_factory=OllamaModelConfig)
+    generation: GenerationConfig = Field(default_factory=GenerationConfig)
     top_k: int = Field(default=60, ge=1)
     chunk_top_k: int = Field(default=20, ge=1)
     max_context_tokens: int = Field(default=12000, ge=1)
@@ -190,6 +203,13 @@ class OfficialRAGAnythingRuntime:
                 "llm_model_kwargs": {
                     "host": config.model.host,
                     "timeout": config.model.request_timeout_seconds,
+                    **{
+                        key: value
+                        for key, value in config.generation.model_dump(
+                            exclude_none=True
+                        ).items()
+                        if key in {"temperature", "seed"}
+                    },
                 },
                 "enable_llm_cache": False,
             },
@@ -252,6 +272,7 @@ class RAGAnythingAdapter:
         self._runtime: Runtime | None = None
         self._closed = False
         self._index_fingerprint: str | None = None
+        self._work_dir: Path | None = None
 
     async def prepare(
         self, context: PrepareContext, config: dict[str, Any]
@@ -272,6 +293,7 @@ class RAGAnythingAdapter:
             raise RuntimeError("source-only sandbox does not exist")
         self._context = context
         self._config = effective
+        self._work_dir = work_dir
         self._runtime = await OfficialRAGAnythingRuntime.create(
             effective, work_dir, context.run_id
         )
@@ -284,7 +306,12 @@ class RAGAnythingAdapter:
                     "isolation": "run_scoped_worker_process",
                 },
                 "model_digests": self._runtime.model_digests,
+                "model_artifacts": model_artifacts(
+                    effective.model, self._runtime.model_digests
+                ),
                 "prompt_digests": self._runtime.prompt_digests,
+                "cache_policy": {"answer": False, "query": False, "llm": False},
+                "code_identity": code_identity(),
             },
             capabilities=CAPABILITIES,
             system_version=self._runtime.system_version,
@@ -331,7 +358,12 @@ class RAGAnythingAdapter:
         return IngestionResult(
             ingested_documents=len(documents),
             index_fingerprint=self._index_fingerprint,
-            details={"failed_documents": 0},
+            details={
+                "failed_documents": 0,
+                "index_artifact_digest": directory_digest(
+                    self._require_work_dir() / "storage"
+                ),
+            },
         )
 
     async def query(self, request: RAGQuery) -> RAGResult:
@@ -340,7 +372,7 @@ class RAGAnythingAdapter:
         invalid = reserved.intersection(request.generation_options)
         if invalid:
             raise ValueError(f"reserved generation options: {sorted(invalid)}")
-        options = dict(request.generation_options)
+        options = generation_options(config, request.generation_options)
         options.update(
             {
                 "top_k": request.retrieval_candidate_k or config.top_k,
@@ -362,7 +394,7 @@ class RAGAnythingAdapter:
             raw_retrieval=None,
             ranked_retrieval=None,
             final_context=None,
-            latency={"query_seconds": monotonic() - started},
+            latency={"native_query_latency": monotonic() - started},
             native_metadata={
                 "query_mode": config.query_mode,
                 "index_fingerprint": self._index_fingerprint,
@@ -393,6 +425,11 @@ class RAGAnythingAdapter:
         if self._runtime is None or self._config is None or self._context is None:
             raise RuntimeError("adapter is not prepared")
         return self._runtime, self._config, self._context
+
+    def _require_work_dir(self) -> Path:
+        if self._work_dir is None:
+            raise RuntimeError("adapter work directory is not initialized")
+        return self._work_dir
 
 
 def verified_source_path(source_dir: Path, document: DocumentInput) -> Path:
@@ -428,12 +465,28 @@ def ingestion_identity(
         "embedding_model": config.model.embedding_model,
         "embedding_dim": config.model.embedding_dim,
     }
-    import json
-
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
 
 def force_run_scoped_environment(work_dir: Path) -> None:
+    # The RAG-Anything process can import LightRAG.  Clear all experimental
+    # LightRAG controls before setting the narrow run-scoped baseline so an
+    # interactive shell cannot change this adapter's experiment semantics.
+    for key in (
+        "LIGHTRAG_EXACT_ID_TYPES",
+        "LIGHTRAG_RANKING_STRATEGY",
+        "LIGHTRAG_TABLE_PRECEDING_CONTEXT",
+        "LIGHTRAG_TABLE_STRUCTURED_ENVELOPE",
+        "LIGHTRAG_TABLE_VIEW",
+        "LIGHTRAG_TABLE_ROW_VIEW",
+        "ENTITY_EXTRACTION_INSTRUCTION_PROFILE",
+        "RERANK_MODEL",
+        "RERANK_BINDING",
+        "RERANK_BY_DEFAULT",
+        "ENABLE_LLM_CACHE",
+        "ENABLE_LLM_CACHE_FOR_EXTRACT",
+    ):
+        os.environ.pop(key, None)
     os.environ.update(
         {
             "WORKING_DIR": str(work_dir / "storage"),
@@ -444,6 +497,8 @@ def force_run_scoped_environment(work_dir: Path) -> None:
             "LIGHTRAG_VECTOR_STORAGE": "NanoVectorDBStorage",
             "RERANK_BINDING": "null",
             "RERANK_BY_DEFAULT": "0",
+            "ENABLE_LLM_CACHE": "0",
+            "ENABLE_LLM_CACHE_FOR_EXTRACT": "0",
         }
     )
 
@@ -476,6 +531,124 @@ async def ollama_model_digests(config: OllamaModelConfig) -> dict[str, str]:
                 break
         results[role] = digest or identity_digest(config.binding, model)
     return results
+
+
+def model_artifacts(
+    config: OllamaModelConfig, digests: dict[str, str]
+) -> dict[str, dict[str, Any]]:
+    values: dict[str, dict[str, Any]] = {}
+    for role, requested in (("llm", config.llm_model), ("embedding", config.embedding_model)):
+        digest = digests.get(role)
+        verified = bool(digest and digest.startswith("sha256:") and len(digest) == 71)
+        values[role] = {
+            "display_name": requested.split(":", 1)[0],
+            "requested_ref": requested,
+            "resolved_digest": digest if verified else None,
+            "revision": None,
+            "resolver": config.binding,
+            "resolved_at": datetime.now(UTC).isoformat(),
+            "verified": verified,
+        }
+    return values
+
+
+def generation_options(
+    config: RAGAnythingAdapterConfig, requested: dict[str, Any]
+) -> dict[str, Any]:
+    options = dict(requested)
+    for key in ("temperature", "seed"):
+        configured = getattr(config.generation, key)
+        if key in options and options[key] != configured:
+            raise ValueError(f"{key} must be fixed during prepare")
+        options.pop(key, None)
+    if config.generation.user_prompt is not None:
+        options.setdefault("user_prompt", config.generation.user_prompt)
+    return options
+
+
+def directory_digest(root: Path) -> str:
+    digest = hashlib.sha256()
+    if root.exists():
+        for path in sorted(item for item in root.rglob("*") if item.is_file()):
+            digest.update(path.relative_to(root).as_posix().encode())
+            digest.update(b"\0")
+            digest.update(path.read_bytes())
+            digest.update(b"\n")
+    return "sha256:" + digest.hexdigest()
+
+
+def code_identity() -> dict[str, dict[str, str | None]]:
+    return {
+        "adapter": source_identity("rag_eval_rag_anything_adapter"),
+        "raganything": source_identity("raganything"),
+        "lightrag": source_identity("lightrag"),
+    }
+
+
+def source_identity(package: str) -> dict[str, str | None]:
+    spec = importlib.util.find_spec(package)
+    source = Path(spec.origin).parent if spec and spec.origin else None
+    root = find_git_root(source) if source else None
+    return {
+        "package_version": distribution_version_or_none(package),
+        "git_commit": git_output(root, ["rev-parse", "HEAD"]) if root else None,
+        "dirty_patch_digest": dirty_digest(root),
+        "direct_url": direct_url(package),
+    }
+
+
+def find_git_root(path: Path) -> Path | None:
+    for candidate in (path, *path.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
+def git_output(root: Path, arguments: list[str]) -> str | None:
+    result = subprocess.run(
+        ["git", "-C", str(root), *arguments], capture_output=True, text=True, check=False
+    )
+    return (result.stdout.strip() or None) if result.returncode == 0 else None
+
+
+def dirty_digest(root: Path | None) -> str | None:
+    if root is None:
+        return None
+    status = git_output(root, ["status", "--porcelain=v1", "--untracked-files=all"])
+    if not status:
+        return None
+    patch = git_output(root, ["diff", "--binary", "HEAD", "--"]) or ""
+    return hashlib.sha256(f"{status}\0{patch}".encode()).hexdigest()
+
+
+def direct_url(distribution: str) -> str | None:
+    try:
+        raw = importlib.metadata.distribution(distribution).read_text("direct_url.json")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw).get("url")
+        return safe_direct_url(value) if isinstance(value, str) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def distribution_version_or_none(distribution: str) -> str | None:
+    try:
+        return importlib.metadata.version(distribution)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def safe_direct_url(value: str) -> str:
+    parsed = urlsplit(value)
+    if not parsed.scheme:
+        return value
+    hostname = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port else ""
+    return urlunsplit((parsed.scheme, hostname + port, parsed.path, "", ""))
 
 
 def identity_digest(binding: str, model: str) -> str:

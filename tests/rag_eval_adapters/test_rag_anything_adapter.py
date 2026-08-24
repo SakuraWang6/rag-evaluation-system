@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from rag_eval_rag_anything_adapter.adapter import (
     OfficialRAGAnythingRuntime,
     RAGAnythingAdapter,
     resolve_config,
+    force_run_scoped_environment,
     verified_source_path,
 )
 
@@ -104,6 +106,38 @@ def test_config_is_strict_and_model_identity_is_explicit() -> None:
                 }
             }
         )
+
+
+def test_rag_anything_clears_lightrag_experiment_environment(tmp_path: Path) -> None:
+    keys = (
+        "LIGHTRAG_EXACT_ID_TYPES", "LIGHTRAG_RANKING_STRATEGY", "LIGHTRAG_TABLE_VIEW",
+        "LIGHTRAG_TABLE_PRECEDING_CONTEXT", "LIGHTRAG_TABLE_STRUCTURED_ENVELOPE",
+        "LIGHTRAG_TABLE_ROW_VIEW", "ENTITY_EXTRACTION_INSTRUCTION_PROFILE",
+        "RERANK_MODEL", "RERANK_BINDING", "RERANK_BY_DEFAULT", "ENABLE_LLM_CACHE",
+        "ENABLE_LLM_CACHE_FOR_EXTRACT", "WORKING_DIR", "OUTPUT_DIR",
+        "LIGHTRAG_KV_STORAGE", "LIGHTRAG_DOC_STATUS_STORAGE", "LIGHTRAG_GRAPH_STORAGE",
+        "LIGHTRAG_VECTOR_STORAGE",
+    )
+    original = {key: os.environ.get(key) for key in keys}
+    try:
+        os.environ.update(
+            {
+                "LIGHTRAG_EXACT_ID_TYPES": "FACT,TBL",
+                "LIGHTRAG_RANKING_STRATEGY": "structured",
+                "LIGHTRAG_TABLE_VIEW": "1",
+            }
+        )
+        force_run_scoped_environment(tmp_path)
+        assert "LIGHTRAG_EXACT_ID_TYPES" not in os.environ
+        assert "LIGHTRAG_RANKING_STRATEGY" not in os.environ
+        assert "LIGHTRAG_TABLE_VIEW" not in os.environ
+        assert os.environ["ENABLE_LLM_CACHE"] == "0"
+    finally:
+        for key, value in original.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 @pytest.mark.asyncio

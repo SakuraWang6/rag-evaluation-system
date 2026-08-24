@@ -11,9 +11,11 @@ import os
 import socket
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
 from typing import Any, Literal
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -55,6 +57,35 @@ class ChunkingConfig(BaseModel):
     chunk_overlap_token_size: int = Field(default=100, ge=0)
 
 
+class ModelConfig(BaseModel):
+    """Explicit model wiring; omitted fields retain a registered worker value.
+
+    A formal run supplies these fields and the platform verifies the resolved
+    artifact identities returned by ``prepare`` before ingestion.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    llm_binding: str | None = None
+    llm_model: str | None = None
+    llm_host: str | None = None
+    query_llm_binding: str | None = None
+    query_llm_model: str | None = None
+    query_llm_host: str | None = None
+    embedding_binding: str | None = None
+    embedding_model: str | None = None
+    embedding_host: str | None = None
+
+
+class GenerationConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    seed: int | None = None
+    user_prompt: str | None = None
+    response_type: str | None = None
+
+
 class LightRAGAdapterConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -65,6 +96,7 @@ class LightRAGAdapterConfig(BaseModel):
     final_context_k: int = Field(default=5, ge=1)
     max_context_tokens: int = Field(default=12000, ge=1)
     enable_rerank: bool = False
+    rerank_model: str | None = None
     ranking_strategy: Literal["none", "structured"] = "none"
     exact_id_types: list[str] = Field(default_factory=list)
     table_preceding_context: bool = False
@@ -74,6 +106,8 @@ class LightRAGAdapterConfig(BaseModel):
     entity_extraction_instruction_profile: Literal["legacy", "structured_fidelity"] = (
         "legacy"
     )
+    model: ModelConfig = Field(default_factory=ModelConfig)
+    generation: GenerationConfig = Field(default_factory=GenerationConfig)
     server_start_timeout_seconds: float = Field(default=90.0, gt=0)
     ingestion_timeout_seconds: float = Field(default=900.0, gt=0)
     query_timeout_seconds: float = Field(default=180.0, gt=0)
@@ -89,6 +123,8 @@ class LightRAGAdapterConfig(BaseModel):
         ]
         if invalid:
             raise ValueError(f"invalid exact-ID prefixes: {invalid}")
+        if self.enable_rerank and not self.rerank_model:
+            raise ValueError("rerank_model is required when enable_rerank is true")
 
 
 def resolve_config(raw: dict[str, Any]) -> LightRAGAdapterConfig:
@@ -117,6 +153,7 @@ class LightRAGAdapter:
         self._closed = False
         self._source_by_file: dict[str, str] = {}
         self._index_fingerprint: str | None = None
+        self._work_dir: Path | None = None
 
     async def prepare(
         self, context: PrepareContext, config: dict[str, Any]
@@ -137,17 +174,24 @@ class LightRAGAdapter:
 
         self._context = context
         self._config = effective
+        self._work_dir = work_dir
         await self._start_server(work_dir)
-        runtime_identity = safe_runtime_identity()
+        runtime_identity = safe_runtime_identity(
+            build_server_environment(effective, work_dir)
+        )
+        model_artifacts = await ollama_model_artifacts(runtime_identity)
         return PreparedSystem(
             effective_config={
                 **effective.model_dump(mode="json"),
                 "runtime": runtime_identity,
-                "model_digests": await ollama_model_digests(runtime_identity),
+                "model_digests": model_digests(model_artifacts),
+                "model_artifacts": model_artifacts,
                 "prompt_digests": {
                     "lightrag_prompt_sources": package_prompt_digest("lightrag")
                 },
+                "cache_policy": {"answer": False, "query": False, "llm": False},
                 "isolation": "run_scoped_managed_process",
+                "code_identity": code_identity(),
             },
             capabilities=CAPABILITIES,
             system_version=system_version(),
@@ -217,7 +261,12 @@ class LightRAGAdapter:
         return IngestionResult(
             ingested_documents=len(documents),
             index_fingerprint=self._index_fingerprint,
-            details={"failed_documents": 0},
+            details={
+                "failed_documents": 0,
+                "index_artifact_digest": directory_digest(
+                    self._require_work_dir() / "storage"
+                ),
+            },
         )
 
     async def query(self, request: RAGQuery) -> RAGResult:
@@ -237,6 +286,7 @@ class LightRAGAdapter:
             "include_chunk_content": True,
             "stream": False,
         }
+        payload.update(generation_payload(config, request.generation_options))
         started = monotonic()
         endpoint = "/query" if request.generate_answer else "/query/data"
         response = await self._post_json(endpoint, payload)
@@ -258,7 +308,7 @@ class LightRAGAdapter:
             raw_retrieval=raw_items,
             ranked_retrieval=ranked_items,
             final_context=final_items,
-            latency={"query_seconds": elapsed},
+            latency={"native_query_latency": elapsed},
             trace=None,
             native_metadata={
                 "query_mode": config.query_mode,
@@ -457,11 +507,42 @@ class LightRAGAdapter:
             )
         return self._config
 
+    def _require_work_dir(self) -> Path:
+        if self._work_dir is None:
+            raise RuntimeError("adapter work directory is not initialized")
+        return self._work_dir
+
 
 def build_server_environment(
     config: LightRAGAdapterConfig, work_dir: Path
 ) -> dict[str, str]:
-    environment = os.environ.copy()
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key
+        in {
+            "PATH",
+            "PYTHONPATH",
+            "VIRTUAL_ENV",
+            "CONDA_PREFIX",
+            "SSL_CERT_FILE",
+            "REQUESTS_CA_BUNDLE",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "LLM_BINDING",
+            "LLM_MODEL",
+            "LLM_BINDING_HOST",
+            "OLLAMA_HOST",
+            "QUERY_LLM_BINDING",
+            "QUERY_LLM_MODEL",
+            "QUERY_LLM_BINDING_HOST",
+            "EMBEDDING_BINDING",
+            "EMBEDDING_MODEL",
+            "EMBEDDING_BINDING_HOST",
+        }
+    }
     environment.update(
         {
             "NO_PROXY": "127.0.0.1,localhost",
@@ -479,6 +560,8 @@ def build_server_environment(
             "CHUNK_SIZE": str(config.chunking.chunk_token_size),
             "CHUNK_OVERLAP_SIZE": str(config.chunking.chunk_overlap_token_size),
             "LIGHTRAG_PARSER": "*:native-!",
+            "ENABLE_LLM_CACHE": "0",
+            "ENABLE_LLM_CACHE_FOR_EXTRACT": "0",
             "LIGHTRAG_EXACT_ID_TYPES": ",".join(
                 value.upper() for value in config.exact_id_types
             ),
@@ -494,11 +577,11 @@ def build_server_environment(
             "ENTITY_EXTRACTION_INSTRUCTION_PROFILE": config.entity_extraction_instruction_profile,
             "RERANK_BY_DEFAULT": bool_env(config.enable_rerank),
             "RERANK_BINDING": "cohere" if config.enable_rerank else "null",
-            "RERANK_MODEL": ""
-            if not config.enable_rerank
-            else os.getenv("RERANK_MODEL", ""),
+            "RERANK_MODEL": config.rerank_model or "",
         }
     )
+    apply_model_environment(environment, config.model)
+    apply_generation_environment(environment, config)
     return environment
 
 
@@ -508,47 +591,60 @@ def ingestion_identity(config: LightRAGAdapterConfig) -> dict[str, Any]:
         "profile": config.profile,
         "ranking_strategy": config.ranking_strategy,
         "exact_id_types": config.exact_id_types,
-        "embedding_binding": os.getenv("EMBEDDING_BINDING"),
-        "embedding_model": os.getenv("EMBEDDING_MODEL"),
+        "table_preceding_context": config.table_preceding_context,
+        "table_structured_envelope": config.table_structured_envelope,
+        "table_view": config.table_view,
+        "table_row_view": config.table_row_view,
+        "entity_extraction_instruction_profile": config.entity_extraction_instruction_profile,
+        "embedding_binding": config.model.embedding_binding
+        or os.getenv("EMBEDDING_BINDING"),
+        "embedding_model": config.model.embedding_model or os.getenv("EMBEDDING_MODEL"),
+        "embedding_host": config.model.embedding_host
+        or os.getenv("EMBEDDING_BINDING_HOST")
+        or os.getenv("OLLAMA_HOST"),
         "system_version": system_version(),
     }
 
 
-def safe_runtime_identity() -> dict[str, str | None]:
+def safe_runtime_identity(environment: dict[str, str]) -> dict[str, str | None]:
     return {
-        name.lower(): os.getenv(name)
+        name.lower(): environment.get(name)
         for name in (
             "LLM_BINDING",
             "LLM_MODEL",
             "QUERY_LLM_BINDING",
             "QUERY_LLM_MODEL",
+            "QUERY_LLM_BINDING_HOST",
             "EMBEDDING_BINDING",
             "EMBEDDING_MODEL",
+            "EMBEDDING_BINDING_HOST",
+            "LLM_BINDING_HOST",
+            "OLLAMA_HOST",
         )
     }
 
 
-async def ollama_model_digests(
+async def ollama_model_artifacts(
     identity: dict[str, str | None],
-) -> dict[str, str]:
+) -> dict[str, dict[str, Any]]:
     roles = {
         "llm": (
             identity.get("query_llm_binding") or identity.get("llm_binding"),
             identity.get("query_llm_model") or identity.get("llm_model"),
-            os.getenv("QUERY_LLM_BINDING_HOST")
-            or os.getenv("LLM_BINDING_HOST")
-            or os.getenv("OLLAMA_HOST")
+            identity.get("query_llm_binding_host")
+            or identity.get("llm_binding_host")
+            or identity.get("ollama_host")
             or "http://127.0.0.1:11434",
         ),
         "embedding": (
             identity.get("embedding_binding"),
             identity.get("embedding_model"),
-            os.getenv("EMBEDDING_BINDING_HOST")
-            or os.getenv("OLLAMA_HOST")
+            identity.get("embedding_binding_host")
+            or identity.get("ollama_host")
             or "http://127.0.0.1:11434",
         ),
     }
-    results: dict[str, str] = {}
+    results: dict[str, dict[str, Any]] = {}
     for role, (binding, model, host) in roles.items():
         if not model:
             continue
@@ -565,8 +661,161 @@ async def ollama_model_digests(
                             break
             except (httpx.HTTPError, AttributeError, ValueError):
                 digest = None
-        results[role] = digest or identity_digest(str(binding), str(model))
+        resolved = digest if digest and digest.startswith("sha256:") else None
+        results[role] = {
+            "display_name": str(model).split(":", 1)[0],
+            "requested_ref": str(model),
+            "resolved_digest": resolved,
+            "revision": None,
+            "resolver": str(binding or "unknown"),
+            "resolved_at": datetime.now(UTC).isoformat(),
+            "verified": resolved is not None,
+        }
     return results
+
+
+def model_digests(artifacts: dict[str, dict[str, Any]]) -> dict[str, str]:
+    return {
+        role: str(value.get("resolved_digest") or identity_digest(
+            str(value.get("resolver")), str(value.get("requested_ref"))
+        ))
+        for role, value in artifacts.items()
+    }
+
+
+def apply_model_environment(environment: dict[str, str], model: ModelConfig) -> None:
+    values = {
+        "LLM_BINDING": model.llm_binding,
+        "LLM_MODEL": model.llm_model,
+        "LLM_BINDING_HOST": model.llm_host,
+        "QUERY_LLM_BINDING": model.query_llm_binding,
+        "QUERY_LLM_MODEL": model.query_llm_model,
+        "QUERY_LLM_BINDING_HOST": model.query_llm_host,
+        "EMBEDDING_BINDING": model.embedding_binding,
+        "EMBEDDING_MODEL": model.embedding_model,
+        "EMBEDDING_BINDING_HOST": model.embedding_host,
+    }
+    environment.update({key: value for key, value in values.items() if value is not None})
+
+
+def apply_generation_environment(
+    environment: dict[str, str], config: LightRAGAdapterConfig
+) -> None:
+    generation = config.generation
+    binding = config.model.query_llm_binding or config.model.llm_binding or environment.get(
+        "QUERY_LLM_BINDING"
+    ) or environment.get("LLM_BINDING")
+    if str(binding or "").lower() != "ollama":
+        return
+    if generation.temperature is not None:
+        environment["OLLAMA_LLM_TEMPERATURE"] = str(generation.temperature)
+    if generation.seed is not None:
+        environment["OLLAMA_LLM_SEED"] = str(generation.seed)
+
+
+def generation_payload(
+    config: LightRAGAdapterConfig, requested: dict[str, Any]
+) -> dict[str, Any]:
+    allowed = {"user_prompt", "response_type", "temperature", "seed"}
+    unknown = sorted(set(requested).difference(allowed))
+    if unknown:
+        raise ValueError(f"unsupported LightRAG generation options: {unknown}")
+    payload: dict[str, Any] = {}
+    for key in ("user_prompt", "response_type"):
+        value = requested.get(key, getattr(config.generation, key))
+        if value is not None:
+            payload[key] = value
+    for key in ("temperature", "seed"):
+        value = requested.get(key)
+        configured = getattr(config.generation, key)
+        if value is not None and value != configured:
+            raise ValueError(
+                f"{key} must be fixed during prepare; request-level override is not supported"
+            )
+    return payload
+
+
+def directory_digest(root: Path) -> str:
+    digest = hashlib.sha256()
+    if not root.exists():
+        return "sha256:" + digest.hexdigest()
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\n")
+    return "sha256:" + digest.hexdigest()
+
+
+def code_identity() -> dict[str, dict[str, str | None]]:
+    return {
+        "adapter": package_source_identity("rag_eval_lightrag_adapter"),
+        "lightrag": package_source_identity("lightrag"),
+    }
+
+
+def package_source_identity(package: str) -> dict[str, str | None]:
+    spec = importlib.util.find_spec(package)
+    root = Path(spec.origin).parent if spec and spec.origin else None
+    git_root = find_git_root(root) if root else None
+    return {
+        "package_version": distribution_version_or_none(package),
+        "git_commit": git_output(git_root, ["rev-parse", "HEAD"]) if git_root else None,
+        "dirty_patch_digest": dirty_digest(git_root),
+        "direct_url": direct_url(package),
+    }
+
+
+def find_git_root(path: Path) -> Path | None:
+    for candidate in (path, *path.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
+def git_output(root: Path, arguments: list[str]) -> str | None:
+    result = subprocess.run(["git", "-C", str(root), *arguments], capture_output=True, text=True, check=False)
+    return result.stdout.strip() or None if result.returncode == 0 else None
+
+
+def dirty_digest(root: Path | None) -> str | None:
+    if root is None:
+        return None
+    status = git_output(root, ["status", "--porcelain=v1", "--untracked-files=all"])
+    if not status:
+        return None
+    patch = git_output(root, ["diff", "--binary", "HEAD", "--"]) or ""
+    return hashlib.sha256(f"{status}\0{patch}".encode()).hexdigest()
+
+
+def direct_url(distribution: str) -> str | None:
+    try:
+        raw = importlib.metadata.distribution(distribution).read_text("direct_url.json")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw).get("url")
+        return safe_direct_url(value) if isinstance(value, str) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def distribution_version_or_none(distribution: str) -> str | None:
+    try:
+        return importlib.metadata.version(distribution)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def safe_direct_url(value: str) -> str:
+    parsed = urlsplit(value)
+    if not parsed.scheme:
+        return value
+    hostname = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port else ""
+    return urlunsplit((parsed.scheme, hostname + port, parsed.path, "", ""))
 
 
 def identity_digest(binding: str, model: str) -> str:
