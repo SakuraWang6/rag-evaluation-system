@@ -1,0 +1,25 @@
+case_id,question_valid,answer_valid,evidence_valid,locator_valid,difficulty_reasonable,reviewer,review_status,notes
+gsm-plain-01,yes,yes,yes,yes,yes,author review,approved,weekday opening fact has one direct text span
+gsm-plain-02,yes,yes,yes,yes,yes,author review,approved,level fact has one direct text span
+gsm-plain-03,yes,yes,yes,yes,yes,author review,approved,person answer is independent from the evidence locator
+gsm-plain-04,yes,yes,yes,yes,yes,author review,approved,locker label is a direct text fact
+gsm-numeric-01,yes,yes,yes,yes,yes,author review,approved,value and liters unit are both required
+gsm-numeric-02,yes,yes,yes,yes,yes,author review,approved,value and compound unit are both required
+gsm-numeric-03,yes,yes,yes,yes,yes,author review,approved,value and MHz unit are both required
+gsm-numeric-04,yes,yes,yes,yes,yes,author review,approved,value and kilograms unit are both required
+gsm-table-01,yes,yes,yes,yes,yes,author review,approved,table_id row and column identify one canonical record
+gsm-table-02,yes,yes,yes,yes,yes,author review,approved,table_id row and column identify one canonical record
+gsm-table-03,yes,yes,yes,yes,yes,author review,approved,table locator resolves Thursday in one canonical record
+gsm-table-04,yes,yes,yes,yes,yes,author review,approved,table locator resolves Monday in one canonical record
+gsm-id-01,yes,yes,yes,yes,yes,author review,approved,object type and id identify owner record
+gsm-id-02,yes,yes,yes,yes,yes,author review,approved,object type and id identify owner record
+gsm-id-03,yes,yes,yes,yes,yes,author review,approved,object type and id identify owner record
+gsm-id-04,yes,yes,yes,yes,yes,author review,approved,object type and id identify owner record
+gsm-multi-01,yes,yes,yes,yes,yes,author review,approved,two independent time spans are both required
+gsm-multi-02,yes,yes,yes,yes,yes,author review,approved,two independent capacity and duration spans are both required
+gsm-multi-03,yes,yes,yes,yes,yes,author review,approved,two independent form and expiry spans are both required
+gsm-multi-04,yes,yes,yes,yes,yes,author review,approved,two independent capacity and closing-condition spans are both required
+gsm-abstain-01,yes,yes,yes,yes,yes,author review,approved,negative statement supports abstention rather than a fabricated permit
+gsm-abstain-02,yes,yes,yes,yes,yes,author review,approved,negative statement supports abstention rather than a fabricated phone number
+gsm-abstain-03,yes,yes,yes,yes,yes,author review,approved,negative statement supports abstention rather than a fabricated certification
+gsm-abstain-04,yes,yes,yes,yes,yes,author review,approved,negative statement supports abstention rather than a fabricated driver name

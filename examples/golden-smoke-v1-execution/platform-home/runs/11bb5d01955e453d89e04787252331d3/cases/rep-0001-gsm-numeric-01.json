@@ -1,0 +1,311 @@
+{
+  "case_id": "gsm-numeric-01",
+  "status": "completed",
+  "question": "How much fluid does the cooling loop hold?",
+  "gold_answer": {
+    "gold_answer_id": "answer-numeric-01",
+    "kind": "numeric",
+    "canonical": "18.5",
+    "accepted_values": [],
+    "locale": null,
+    "unit": "liters",
+    "tolerance": "0"
+  },
+  "gold_evidence_set": {
+    "gold_evidence_set_id": "evidence-numeric-01",
+    "evidence": [
+      {
+        "evidence_id": "numeric-01",
+        "document_id": "numeric-units",
+        "locator": {
+          "type": "text_span",
+          "start": 0,
+          "end": 44
+        },
+        "canonical_value": "18.5 liters",
+        "quote_anchor": "The cooling loop holds 18.5 liters of fluid."
+      }
+    ],
+    "required_groups": [
+      [
+        "numeric-01"
+      ]
+    ]
+  },
+  "rag_result": {
+    "answer": "Sorry, I'm not able to provide an answer to that question.[no-context]",
+    "raw_retrieval": null,
+    "ranked_retrieval": null,
+    "final_context": null,
+    "latency": {
+      "native_query_latency": 0.16349274991080165,
+      "end_to_end_query_latency": 0.16702179214917123
+    },
+    "token_usage": null,
+    "trace": null,
+    "native_metadata": {
+      "query_mode": "naive",
+      "index_fingerprint": "adc789222098fedfd9bb9232aa3c69717785f5de0411d4437d2fdaa6d515c75e",
+      "retrieval_observability": "unavailable_in_public_api"
+    }
+  },
+  "metrics": [
+    {
+      "metric_id": "raw_recall@1",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "raw stage is not observable"
+    },
+    {
+      "metric_id": "raw_recall@3",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "raw stage is not observable"
+    },
+    {
+      "metric_id": "raw_recall@5",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "raw stage is not observable"
+    },
+    {
+      "metric_id": "raw_mrr",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "raw stage is not observable"
+    },
+    {
+      "metric_id": "ranked_recall@1",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "ranked stage is not observable"
+    },
+    {
+      "metric_id": "ranked_recall@3",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "ranked stage is not observable"
+    },
+    {
+      "metric_id": "ranked_recall@5",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "ranked stage is not observable"
+    },
+    {
+      "metric_id": "ranked_mrr",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "ranked stage is not observable"
+    },
+    {
+      "metric_id": "context_recall@1",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "context stage is not observable"
+    },
+    {
+      "metric_id": "context_recall@3",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "context stage is not observable"
+    },
+    {
+      "metric_id": "context_recall@5",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "context stage is not observable"
+    },
+    {
+      "metric_id": "retrieval_stage_delta@1",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "both source stages must be observable"
+    },
+    {
+      "metric_id": "context_selection_loss@1",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "both source stages must be observable"
+    },
+    {
+      "metric_id": "retrieval_stage_delta@3",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "both source stages must be observable"
+    },
+    {
+      "metric_id": "context_selection_loss@3",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "both source stages must be observable"
+    },
+    {
+      "metric_id": "retrieval_stage_delta@5",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "both source stages must be observable"
+    },
+    {
+      "metric_id": "context_selection_loss@5",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "provenance-evidence-groups",
+      "scorer_version": "1.0",
+      "scorer_digest": "sha256:3cb3e34df57cd4f7550837bbeeb960205e7822ba4c1c00d3e432c38984fc3238",
+      "evaluator_mode": null,
+      "reason": "both source stages must be observable"
+    },
+    {
+      "metric_id": "answer_accuracy",
+      "status": "observed",
+      "value": 0.0,
+      "numerator": 0.0,
+      "denominator": 1.0,
+      "scorer_id": "typed-answer",
+      "scorer_version": "1.1",
+      "scorer_digest": "sha256:b1b804b0b34fb1981805e3fbc52f2316bbbb4f0e9bef5b088bc7576943f12a0e",
+      "evaluator_mode": null,
+      "reason": null
+    },
+    {
+      "metric_id": "answer_groundedness",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "typed-answer",
+      "scorer_version": "1.1",
+      "scorer_digest": "sha256:b1b804b0b34fb1981805e3fbc52f2316bbbb4f0e9bef5b088bc7576943f12a0e",
+      "evaluator_mode": "deterministic_gold_evidence",
+      "reason": "final context is not observable"
+    },
+    {
+      "metric_id": "unsupported_answer_rate",
+      "status": "unavailable",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "scorer_id": "typed-answer",
+      "scorer_version": "1.1",
+      "scorer_digest": "sha256:b1b804b0b34fb1981805e3fbc52f2316bbbb4f0e9bef5b088bc7576943f12a0e",
+      "evaluator_mode": "deterministic_gold_evidence",
+      "reason": "final context is not observable"
+    }
+  ],
+  "error": null,
+  "failure_assessment": {
+    "labels": [
+      "needs_review"
+    ],
+    "certainty": "unknown",
+    "reasons": [
+      "raw retrieval is not observable",
+      "ranked retrieval is not observable",
+      "final context is not observable"
+    ],
+    "review_required": true
+  },
+  "started_at": "2026-08-24T13:05:00.309585Z",
+  "completed_at": "2026-08-24T13:05:00.476856Z",
+  "repetition": 1,
+  "seed": 20260824
+}

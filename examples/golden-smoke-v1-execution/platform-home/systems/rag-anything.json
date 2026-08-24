@@ -1,0 +1,11 @@
+{
+  "system_id": "rag-anything",
+  "adapter_id": "rag-anything",
+  "adapter_factory": "rag_eval_rag_anything_adapter:create_worker_definition",
+  "python_executable": "/private/tmp/rag-eval-phase8-worker/bin/python",
+  "environment": {
+    "PYTHONPATH": "/Users/sakura/RAG/rag-eval-platform/src:/Users/sakura/RAG/rag-eval-adapters/lightrag/src:/Users/sakura/RAG/rag-eval-adapters/rag_anything/src"
+  },
+  "request_timeout_seconds": 1200.0,
+  "description": ""
+}

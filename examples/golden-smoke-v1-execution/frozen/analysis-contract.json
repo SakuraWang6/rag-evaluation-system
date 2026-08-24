@@ -1,0 +1,1 @@
+{"analysis_seed":20260824,"bootstrap_iterations":10000,"bootstrap_method":"stratified_case_clustered_paired","confidence_level":0.95,"independent_unit":"case","paired_seed_policy":"mean_matched_seeds","schema_version":1,"seed_role":"within_case_repeated_measurement"}

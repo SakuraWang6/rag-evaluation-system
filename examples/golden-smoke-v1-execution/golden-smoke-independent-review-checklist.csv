@@ -1,0 +1,25 @@
+case_id,independent_reviewer,reviewed_at_utc,answer_assessment,evidence_assessment,failure_assessment,gold_change_proposed,disposition,notes
+gsm-abstain-01,,,,,,,,pending independent review
+gsm-abstain-02,,,,,,,,pending independent review
+gsm-abstain-03,,,,,,,,pending independent review
+gsm-abstain-04,,,,,,,,pending independent review
+gsm-id-01,,,,,,,,pending independent review
+gsm-id-02,,,,,,,,pending independent review
+gsm-id-03,,,,,,,,pending independent review
+gsm-id-04,,,,,,,,pending independent review
+gsm-multi-01,,,,,,,,pending independent review
+gsm-multi-02,,,,,,,,pending independent review
+gsm-multi-03,,,,,,,,pending independent review
+gsm-multi-04,,,,,,,,pending independent review
+gsm-numeric-01,,,,,,,,pending independent review
+gsm-numeric-02,,,,,,,,pending independent review
+gsm-numeric-03,,,,,,,,pending independent review
+gsm-numeric-04,,,,,,,,pending independent review
+gsm-plain-01,,,,,,,,pending independent review
+gsm-plain-02,,,,,,,,pending independent review
+gsm-plain-03,,,,,,,,pending independent review
+gsm-plain-04,,,,,,,,pending independent review
+gsm-table-01,,,,,,,,pending independent review
+gsm-table-02,,,,,,,,pending independent review
+gsm-table-03,,,,,,,,pending independent review
+gsm-table-04,,,,,,,,pending independent review

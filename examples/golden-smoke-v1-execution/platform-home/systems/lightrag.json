@@ -1,0 +1,11 @@
+{
+  "system_id": "lightrag",
+  "adapter_id": "lightrag",
+  "adapter_factory": "rag_eval_lightrag_adapter:create_worker_definition",
+  "python_executable": "/Users/sakura/miniconda3/envs/lightrag-memory-eval/bin/python3.11",
+  "environment": {
+    "PYTHONPATH": "/Users/sakura/RAG/rag-eval-platform/src:/Users/sakura/RAG/rag-eval-adapters/lightrag/src:/Users/sakura/RAG/rag-eval-adapters/rag_anything/src"
+  },
+  "request_timeout_seconds": 1200.0,
+  "description": ""
+}

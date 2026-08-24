@@ -1,0 +1,300 @@
+{
+  "metrics": {
+    "answer_accuracy": {
+      "status": "observed",
+      "value": 0.0,
+      "mean": 0.0,
+      "standard_deviation": 0.0,
+      "repetition_values": [
+        0.0
+      ],
+      "numerator": 0.0,
+      "denominator": 24,
+      "errors": 0,
+      "coverage": 1.0,
+      "status_counts": {
+        "observed": 24,
+        "unavailable": 0,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "answer_groundedness": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "context_recall@1": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "context_recall@3": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "context_recall@5": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "context_selection_loss@1": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "context_selection_loss@3": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "context_selection_loss@5": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "ranked_mrr": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "ranked_recall@1": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "ranked_recall@3": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "ranked_recall@5": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "raw_mrr": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "raw_recall@1": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "raw_recall@3": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "raw_recall@5": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "retrieval_stage_delta@1": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "retrieval_stage_delta@3": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "retrieval_stage_delta@5": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    },
+    "unsupported_answer_rate": {
+      "status": "unavailable",
+      "value": null,
+      "denominator": 0,
+      "coverage": 0.0,
+      "errors": 0,
+      "status_counts": {
+        "observed": 0,
+        "unavailable": 24,
+        "not_applicable": 0,
+        "error": 0,
+        "needs_review": 0
+      }
+    }
+  },
+  "execution": {
+    "expected": 24,
+    "total": 24,
+    "not_run": 0,
+    "completed": 24,
+    "timeout": 0,
+    "system_error": 0,
+    "cancelled": 0,
+    "execution_failure_rate": 0.0
+  }
+}
