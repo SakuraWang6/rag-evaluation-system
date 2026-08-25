@@ -14,7 +14,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
-from typing import Any, Literal
+from typing import Any, Iterable, Literal
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -148,6 +148,8 @@ class LightRAGAdapter:
         self._context: PrepareContext | None = None
         self._server: subprocess.Popen[str] | None = None
         self._server_log = None
+        self._server_log_path: Path | None = None
+        self._server_log_redactions: tuple[str, ...] = ()
         self._client: httpx.AsyncClient | None = None
         self._endpoint: str | None = None
         self._closed = False
@@ -342,15 +344,27 @@ class LightRAGAdapter:
         if self._server_log is not None:
             self._server_log.close()
             self._server_log = None
+        if self._server_log_path is not None:
+            redact_runtime_endpoints_in_logs(
+                self._server_log_path.parent, self._server_log_redactions
+            )
+            self._server_log_path = None
+            self._server_log_redactions = ()
 
     async def _start_server(self, work_dir: Path) -> None:
         assert self._config is not None
         port = reserve_loopback_port()
         self._endpoint = f"http://127.0.0.1:{port}"
-        self._server_log = (work_dir / "lightrag-server.log").open(
+        self._server_log_path = work_dir / "lightrag-server.log"
+        self._server_log = self._server_log_path.open(
             "a", encoding="utf-8"
         )
         environment = build_server_environment(self._config, work_dir)
+        self._server_log_redactions = tuple(
+            value
+            for key, value in environment.items()
+            if key.endswith("_HOST") and value
+        )
         command = [
             sys.executable,
             "-m",
@@ -381,6 +395,7 @@ class LightRAGAdapter:
         deadline = monotonic() + self._config.server_start_timeout_seconds
         while monotonic() < deadline:
             if self._server.poll() is not None:
+                self._redact_server_logs()
                 raise RuntimeError(
                     f"managed LightRAG server exited with code {self._server.returncode}"
                 )
@@ -391,7 +406,16 @@ class LightRAGAdapter:
             except (httpx.HTTPError, ValueError):
                 pass
             await asyncio.sleep(0.2)
+        self._redact_server_logs()
         raise TimeoutError("managed LightRAG server did not become healthy")
+
+    def _redact_server_logs(self) -> None:
+        if self._server_log is not None:
+            self._server_log.flush()
+        if self._server_log_path is not None:
+            redact_runtime_endpoints_in_logs(
+                self._server_log_path.parent, self._server_log_redactions
+            )
 
     async def _wait_for_ingestion(self, track_id: str) -> None:
         assert self._config is not None
@@ -583,6 +607,23 @@ def build_server_environment(
     apply_model_environment(environment, config.model)
     apply_generation_environment(environment, config)
     return environment
+
+
+def redact_runtime_endpoints_in_log(path: Path, values: Iterable[str]) -> None:
+    """Remove launch-only endpoint values before a worker log persists with a run."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for value in sorted(set(values), key=len, reverse=True):
+        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
+        text = text.replace(value, f"[redacted endpoint sha256:{digest}]")
+    path.write_text(text, encoding="utf-8")
+
+
+def redact_runtime_endpoints_in_logs(directory: Path, values: Iterable[str]) -> None:
+    for path in directory.glob("*.log"):
+        redact_runtime_endpoints_in_log(path, values)
 
 
 def ingestion_identity(config: LightRAGAdapterConfig) -> dict[str, Any]:

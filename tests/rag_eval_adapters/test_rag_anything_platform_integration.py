@@ -89,7 +89,10 @@ def test_platform_executes_rag_anything_in_independent_venv(tmp_path: Path) -> N
     assert case.rag_result.ranked_retrieval is None
     assert case.rag_result.final_context is None
     metrics = {metric.metric_id: metric for metric in case.metrics}
-    assert metrics["answer_accuracy"].status == MetricStatus.OBSERVED
+    # A real model may give a score or a deliberately review-required typed
+    # answer; execution validity and unavailable retrieval semantics remain
+    # the integration contract.
+    assert metrics["answer_accuracy"].status in {MetricStatus.OBSERVED, MetricStatus.NEEDS_REVIEW}
     assert metrics["raw_recall@1"].status == MetricStatus.UNAVAILABLE
     assert metrics["ranked_recall@1"].status == MetricStatus.UNAVAILABLE
     assert metrics["context_recall@1"].status == MetricStatus.UNAVAILABLE

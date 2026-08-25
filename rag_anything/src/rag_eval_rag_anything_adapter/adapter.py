@@ -51,7 +51,10 @@ class OllamaModelConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     binding: Literal["ollama"] = "ollama"
-    host: str = "http://127.0.0.1:11434"
+    # The logical endpoint is resolved by ExecutionProvider immediately
+    # before Worker launch.  The resolved address is deliberately absent from
+    # ExperimentSpec and is passed only through this short-lived environment.
+    host: str = Field(default_factory=lambda: os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434"))
     llm_model: str = Field(default="qwen3:4b-instruct", min_length=1)
     embedding_model: str = Field(default="bge-m3:latest", min_length=1)
     embedding_dim: int = Field(default=1024, ge=1)

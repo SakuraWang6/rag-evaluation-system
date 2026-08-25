@@ -11,7 +11,9 @@ from rag_eval_lightrag_adapter.adapter import (
     exact_ollama_model_digest,
     ingestion_identity,
     normalize_ollama_digest,
+    redact_runtime_endpoints_in_logs,
     resolve_config,
+    redact_runtime_endpoints_in_log,
     safe_runtime_identity,
     safe_source_name,
 )
@@ -148,6 +150,21 @@ def test_runtime_identity_preserves_the_resolved_ollama_host(
     environment = build_server_environment(resolve_config({}), tmp_path)
 
     assert safe_runtime_identity(environment)["ollama_host"] == "http://ollama.internal:11434"
+
+
+def test_runtime_endpoint_is_redacted_from_persisted_server_log(tmp_path) -> None:
+    endpoint = "http://host.docker.internal:11434"
+    log = tmp_path / "lightrag-server.log"
+    log.write_text(f"Connected to {endpoint}\\n", encoding="utf-8")
+    secondary_log = tmp_path / "lightrag.log"
+    secondary_log.write_text(f"Runtime host: {endpoint}\\n", encoding="utf-8")
+
+    redact_runtime_endpoints_in_logs(tmp_path, [endpoint])
+
+    text = log.read_text(encoding="utf-8")
+    assert endpoint not in text
+    assert "[redacted endpoint sha256:" in text
+    assert endpoint not in secondary_log.read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio

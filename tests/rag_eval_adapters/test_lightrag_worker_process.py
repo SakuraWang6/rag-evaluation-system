@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -9,20 +8,29 @@ from rag_eval.contracts.adapter import DocumentInput, PrepareContext, RAGQuery
 from rag_eval.worker.process import WorkerCommand, WorkerProcess
 
 
-@pytest.mark.integration
-def test_real_lightrag_worker_handshake_prepare_and_close(tmp_path: Path) -> None:
-    repository = Path(__file__).resolve().parents[2]
+def lightrag_worker_command() -> tuple[str, str]:
+    worker_python = os.environ.get("RAG_EVAL_LIGHTRAG_WORKER_PYTHON")
+    if not worker_python or not Path(worker_python).is_file():
+        pytest.skip("set RAG_EVAL_LIGHTRAG_WORKER_PYTHON to the dedicated LightRAG worker venv")
+    workspace = Path(__file__).resolve().parents[3]
     python_path = os.pathsep.join(
         [
-            str(repository / "lightrag" / "src"),
+            str(workspace / "rag-eval-platform" / "src"),
+            str(workspace / "rag-eval-adapters" / "lightrag" / "src"),
             os.environ.get("PYTHONPATH", ""),
         ]
     )
+    return worker_python, python_path
+
+
+@pytest.mark.integration
+def test_real_lightrag_worker_handshake_prepare_and_close(tmp_path: Path) -> None:
+    worker_python, python_path = lightrag_worker_command()
     process = WorkerProcess(
         WorkerCommand(
             adapter_id="lightrag",
             adapter_factory="rag_eval_lightrag_adapter:create_worker_definition",
-            python_executable=sys.executable,
+            python_executable=worker_python,
             environment={"PYTHONPATH": python_path},
             request_timeout_seconds=30,
         ),
@@ -56,18 +64,12 @@ def test_real_lightrag_worker_handshake_prepare_and_close(tmp_path: Path) -> Non
 def test_real_lightrag_worker_retrieval_and_e2e_share_one_contract(
     tmp_path: Path,
 ) -> None:
-    repository = Path(__file__).resolve().parents[2]
-    python_path = os.pathsep.join(
-        [
-            str(repository / "lightrag" / "src"),
-            os.environ.get("PYTHONPATH", ""),
-        ]
-    )
+    worker_python, python_path = lightrag_worker_command()
     process = WorkerProcess(
         WorkerCommand(
             adapter_id="lightrag",
             adapter_factory="rag_eval_lightrag_adapter:create_worker_definition",
-            python_executable=sys.executable,
+            python_executable=worker_python,
             environment={
                 "PYTHONPATH": python_path,
                 "LLM_BINDING": "ollama",

@@ -133,6 +133,11 @@ def test_config_is_strict_and_model_identity_is_explicit() -> None:
         )
 
 
+def test_worker_uses_provider_resolved_ollama_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OLLAMA_HOST", "http://host.docker.internal:11434")
+    assert resolve_config({}).model.host == "http://host.docker.internal:11434"
+
+
 def test_rag_anything_clears_lightrag_experiment_environment(tmp_path: Path) -> None:
     keys = (
         "LIGHTRAG_EXACT_ID_TYPES", "LIGHTRAG_RANKING_STRATEGY", "LIGHTRAG_TABLE_VIEW",
