@@ -19,10 +19,13 @@ a restrained experiment-analysis workspace closer to GitHub Actions, MLflow,
 or Linear: compact, tabular, inspectable, and stable during long analysis
 sessions.
 
-Recommended design direction: **a neutral laboratory console**. Use a compact
-application shell, semantic tables, clear panes and tabs, quiet surfaces, and
-one shared status system. Do not add gradients, glass effects, oversized cards,
-or decorative animation.
+Recommended design direction: **a macOS-inspired Research Console**. This is a
+modern native-macOS professional tool reference, not a pixel-for-pixel copy of
+macOS and not an iOS or marketing-dashboard treatment. Use a compact Finder /
+System Settings-like shell, semantic tables, clear panes, quiet white and light
+gray surfaces, and one shared status system. Use soft shadows only for
+temporary floating surfaces; do not add gradients, large glass panels,
+oversized cards, paper texture, or decorative animation.
 
 ## Review method and observed baseline
 
@@ -49,7 +52,7 @@ or decorative animation.
 | P1 | Metric cards dominate both run and case analysis. | Every metric is a minimum 116px card, including unavailable metrics (`styles.css:133-141`). | Large grids make coverage and primary metrics harder to scan than the empty states themselves. | Use metric rows/columns; reserve small metric tiles for a short overview only. |
 | P1 | Failure analysis has no aggregate entry point or filters. | Labels appear only inside one case detail (`App.tsx:301`). | `retrieval_missing`, `ranking_failure`, `context_selection_loss`, `generation_failure`, `unsupported_answer`, `timeout`, `adapter_error`, and `needs_review` cannot be scanned across cases. | Derive an existing-data Failure view from `GET /runs/{id}/cases`; do not introduce a new backend endpoint. |
 | P1 | Case evidence is present but not expressed as a flow. | Gold, answer, evidence stages, metrics, and telemetry form one long stream (`App.tsx:296-310`). | Readers must infer Raw → Ranked → Context → Answer → Evaluation themselves. | Add named Evidence Flow stages, stage counts, and controlled disclosure while preserving `null`, `[]`, and `0`. |
-| P2 | The visual language is editorial rather than operational. | Large Baskerville/Iowan titles, paper texture, orange rail rule, page numbers, and decorative “SYSTEM” text (`styles.css:23-69`, `94-99`). | It is memorable, but not the desired calm high-density research dashboard. | Replace with a neutral UI and mono treatment only for identifiers, configs, and protocol values. |
+| P2 | The visual language is editorial rather than operational. | Large Baskerville/Iowan titles, paper texture, orange rail rule, page numbers, and decorative “SYSTEM” text (`styles.css:23-69`, `94-99`). | It is memorable, but not the desired calm high-density research dashboard. | Replace with a macOS-inspired Research Console: system UI typography, compact Finder-like navigation, quiet grouped surfaces, and mono only for identifiers, configs, and protocol values. |
 | P2 | No shared token scale exists beyond a few color variables. | 30+ literal colors and many one-off spacing/type values occur in one CSS file. | Surfaces, spacing, badge states, and typography drift as pages grow. | Establish primitive and semantic tokens, then migrate all components to them. |
 
 ## Page-level review
@@ -243,20 +246,23 @@ component-local raw colors/spacing values.
 
 ```text
 Typography
-  --font-ui, --font-mono
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+             "Segoe UI", sans-serif; --font-mono
   --text-xs 12px, --text-sm 13px, --text-md 14px, --text-lg 16px,
   --text-xl 20px, --text-2xl 24px
 
 Spacing
   --space-1 4px, --space-2 8px, --space-3 12px, --space-4 16px,
-  --space-5 24px, --space-6 32px
+  --space-5 20px, --space-6 24px
 
 Geometry
-  --radius-sm 4px, --radius-md 6px, --border-subtle, --border-default
-  --content-max 1600px, --table-row-compact 36px, --table-row-default 44px
+  --radius-sm 6px, --radius-md 10px, --radius-lg 12px,
+  --border-subtle, --border-default
+  --content-max 1520px, --table-row-compact 36px, --table-row-default 44px
 
 Surfaces
-  --canvas, --surface, --surface-raised, --surface-selected, --surface-inset
+  --canvas, --sidebar, --surface, --surface-selected, --surface-inset,
+  --surface-popover, --surface-inspector
   --text, --text-muted, --text-subtle
 
 Semantic status
@@ -264,8 +270,11 @@ Semantic status
   --status-review-*, --status-unavailable-*, --status-neutral-*
 ```
 
-Use no gradient, texture overlay, glass blur, large shadow, or ornamental
-background text. Use neutral selected/focus treatments for navigation and
+Use a light-gray window canvas, translucent white sidebar/toolbar, white
+content surfaces, subtle 1px borders, and only a small shadow for a popover,
+sheet, or floating inspector. Do not use gradients, texture overlays, serif
+editorial typography, ornamental background text, oversized metric cards, or
+unnecessary motion. Use neutral selected/focus treatments for navigation and
 reserve status tones for status semantics only.
 
 ## Responsive and accessibility findings
@@ -373,16 +382,21 @@ src/i18n/
 
 ## Delivery sequence
 
-### Phase A — design tokens and presentation primitives
+### Phase A — macOS foundations, shell, primitives, and i18n
 
-- Add token layer, `AppShell`, `PageHeader`, `StatusBadge`, `MetricValue`,
-  `DataTable`, and focus/reduced-motion rules.
+- Add the macOS-style token layer, `AppShell`, sidebar, toolbar, `PageHeader`,
+  `StatusBadge`, `SegmentedControl`, `Button`, `IconButton`, `Surface`,
+  `InspectorSection`, `DisclosureSection`, `DataTable`, and focus/reduced-
+  motion rules.
+- Add `zh-CN` / `en-US` dictionaries, persisted locale choice, browser-locale
+  detection, and enum/metric display translation without changing raw values.
 - Maintain all existing enum values and semantic tests.
 
 ### Phase B — layout and navigation
 
-- Compact the application shell, group navigation, add durable contextual
-  routes, connection state, and Language Switcher placement.
+- Add durable contextual routes and page-specific navigation behavior. The
+  compact grouped application shell, connection state, and Language Switcher
+  are delivered in Phase A.
 
 ### Phase C — Runs, Run Detail, and Case Detail
 
@@ -395,10 +409,10 @@ src/i18n/
 - Add the factor summary, dynamic comparison table, per-metric reasons, and
   derived case-failure filters; do not calculate or declare a global winner.
 
-### Phase E — `zh-CN` / `en-US` i18n
+### Phase E — i18n completion review
 
-- Migrate every static visible string, persist language choice, add locale
-  detection and enum/metric translation tests.
+- Audit newly introduced page/detail copy for dictionary coverage and retain
+  locale parity as later page components are extracted.
 
 ### Phase F — responsive, accessibility, and polish
 

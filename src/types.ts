@@ -109,6 +109,86 @@ export interface DatasetSummary {
   cases: number
 }
 
+export interface SystemProfile {
+  profile_id: 'lightrag' | 'rag-anything'
+  profile_version: string
+  display_name: string
+  system_id: string
+  adapter_id: string
+  default_logical_endpoint: string
+  docker_available: boolean
+}
+
+export interface ProductSystemSummary {
+  system_id: string
+  display_name: string
+  profile_id: string
+  profile_version: string
+  execution_provider: 'local' | 'docker'
+  logical_endpoint_ref: string
+  secret_keys: string[]
+  configured: boolean
+  connection_test_status: 'not_tested' | 'passed' | 'failed'
+  last_connection_tested_at: string | null
+  updated_at: string
+}
+
+export interface SystemConnectionPayload {
+  system_id: string
+  display_name: string
+  profile_id: string
+  profile_version: string
+  execution_provider: 'local' | 'docker'
+  logical_endpoint_ref: string
+  python_executable?: string
+  non_secret_environment?: Record<string, string>
+  secret_bindings?: Record<string, string>
+  adapter_overrides?: Record<string, unknown>
+  query_overrides?: Record<string, unknown>
+  metric_overrides?: Record<string, unknown>
+  request_timeout_seconds?: number
+}
+
+export interface DatasetDraftDocument {
+  document_id: string
+  filename: string
+  content: string
+}
+
+export interface DatasetDraftCase {
+  case_id: string
+  question: string
+  gold_answer: string
+  document_id: string
+  span_start: number
+  span_end: number
+}
+
+export interface DatasetDraft {
+  draft_id?: string
+  name: string
+  version: string
+  documents: DatasetDraftDocument[]
+  cases: DatasetDraftCase[]
+}
+
+export interface EvaluationDraft {
+  draft_id?: string
+  mode: 'basic' | 'advanced'
+  bundle_id: string | null
+  system_id: string | null
+  profile_id: string | null
+  profile_version: string | null
+  display_name: string
+  adapter_overrides: Record<string, unknown>
+  query_overrides: Record<string, unknown>
+  metric_overrides: Record<string, unknown>
+  case_ids: string[] | null
+  seed: number
+  repetitions: number
+  formal: boolean
+}
+
 export interface SystemSummary {
   system_id: string
   adapter_id: string

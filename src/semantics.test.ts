@@ -3,16 +3,16 @@ import { evidenceState, metricLabel, presentMetric } from './semantics'
 
 describe('evaluation semantics', () => {
   it('does not conflate zero, unavailable, and error', () => {
-    expect(presentMetric({ status: 'observed', value: 0, denominator: 1 }).text).toBe('0.000')
+    expect(presentMetric({ status: 'observed', value: 0, denominator: 1 }).value).toBe('0.000')
     expect(presentMetric({ status: 'unavailable', value: null, denominator: 0 }).state).toBe('unavailable')
     expect(presentMetric({ status: 'error', value: null, denominator: 1 }).state).toBe('error')
     expect(presentMetric({ status: 'needs_review', value: null, denominator: 0 }).state).toBe('needs-review')
   })
 
-  it('uses stage-specific names and deterministic groundedness', () => {
-    expect(metricLabel('raw_recall@5')).toBe('Raw recall@5')
-    expect(metricLabel('retrieval_stage_delta@5')).toBe('Retrieval stage delta@5')
-    expect(metricLabel('answer_groundedness')).toBe('Groundedness (deterministic)')
+  it('uses localizable stage-specific metric descriptors', () => {
+    expect(metricLabel('raw_recall@5')).toEqual({ translationKey: 'metric.rawRecall', suffix: '@5' })
+    expect(metricLabel('retrieval_stage_delta@5')).toEqual({ translationKey: 'metric.retrievalStageDelta', suffix: '@5' })
+    expect(metricLabel('answer_groundedness')).toEqual({ translationKey: 'metric.groundedness', suffix: '' })
   })
 
   it('distinguishes unobservable and observed-empty evidence', () => {

@@ -1,20 +1,28 @@
 import type { MetricResult, SummaryMetric } from './types'
 
-export const metricLabel = (id: string): string => {
-  const labels: Record<string, string> = {
-    answer_accuracy: 'Answer accuracy',
-    answer_groundedness: 'Groundedness (deterministic)',
-    unsupported_answer_rate: 'Unsupported answer rate',
-    raw_mrr: 'Raw MRR',
-    ranked_mrr: 'Ranked MRR',
+export interface MetricLabelDescriptor {
+  translationKey: string | null
+  suffix: string
+}
+
+export const metricLabel = (id: string): MetricLabelDescriptor => {
+  const exact: Record<string, string> = {
+    answer_accuracy: 'metric.answerAccuracy',
+    answer_groundedness: 'metric.groundedness',
+    unsupported_answer_rate: 'metric.unsupportedAnswerRate',
+    raw_mrr: 'metric.rawMrr',
+    ranked_mrr: 'metric.rankedMrr',
   }
-  if (labels[id]) return labels[id]
-  return id
-    .replace(/^raw_recall/, 'Raw recall')
-    .replace(/^ranked_recall/, 'Ranked recall')
-    .replace(/^context_recall/, 'Context recall')
-    .replace(/^retrieval_stage_delta/, 'Retrieval stage delta')
-    .replace(/^context_selection_loss/, 'Context selection loss')
+  if (exact[id]) return { translationKey: exact[id], suffix: '' }
+  const prefixes: Array<[string, string]> = [
+    ['raw_recall', 'metric.rawRecall'],
+    ['ranked_recall', 'metric.rankedRecall'],
+    ['context_recall', 'metric.contextRecall'],
+    ['retrieval_stage_delta', 'metric.retrievalStageDelta'],
+    ['context_selection_loss', 'metric.contextSelectionLoss'],
+  ]
+  const match = prefixes.find(([prefix]) => id.startsWith(prefix))
+  return match ? { translationKey: match[1], suffix: id.slice(match[0].length) } : { translationKey: null, suffix: id }
 }
 
 export const stageOfMetric = (id: string): 'raw' | 'ranked' | 'context' | 'answer' | 'derived' => {
@@ -26,17 +34,17 @@ export const stageOfMetric = (id: string): 'raw' | 'ranked' | 'context' | 'answe
 }
 
 export interface MetricPresentation {
-  text: string
+  value: string | null
   state: 'value' | 'unavailable' | 'not-applicable' | 'error' | 'needs-review'
 }
 
 export const presentMetric = (metric: MetricResult | SummaryMetric): MetricPresentation => {
-  if (metric.status === 'unavailable') return { text: 'Unavailable', state: 'unavailable' }
-  if (metric.status === 'not_applicable') return { text: 'Not applicable', state: 'not-applicable' }
-  if (metric.status === 'error') return { text: 'Error', state: 'error' }
-  if (metric.status === 'needs_review') return { text: 'Needs review', state: 'needs-review' }
-  if (metric.value === null || metric.value === undefined) return { text: 'Unavailable', state: 'unavailable' }
-  return { text: metric.value.toFixed(3), state: 'value' }
+  if (metric.status === 'unavailable') return { value: null, state: 'unavailable' }
+  if (metric.status === 'not_applicable') return { value: null, state: 'not-applicable' }
+  if (metric.status === 'error') return { value: null, state: 'error' }
+  if (metric.status === 'needs_review') return { value: null, state: 'needs-review' }
+  if (metric.value === null || metric.value === undefined) return { value: null, state: 'unavailable' }
+  return { value: metric.value.toFixed(3), state: 'value' }
 }
 
 export const evidenceState = (items: unknown[] | null): 'unavailable' | 'empty' | 'observed' => {
