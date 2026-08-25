@@ -94,6 +94,7 @@ the acceptance home for auditability.
 | Adapter test suite with dedicated real Worker venvs | `30 passed` |
 | WebUI Vitest | `5 passed` |
 | WebUI TypeScript + production build | passed |
+| Quick Start clean-home startup smoke | `start-local.sh` created a new home and served API/WebUI on isolated ports |
 | Project Markdown dead-link check | no missing project-local links |
 | Product Layer disabled / legacy compatibility | covered by Platform regression tests |
 

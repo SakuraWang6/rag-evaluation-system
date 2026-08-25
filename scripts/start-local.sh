@@ -17,6 +17,10 @@ API_PORT="${RAG_EVAL_API_PORT:-8765}"
 WEBUI_PORT="${RAG_EVAL_WEBUI_PORT:-4178}"
 API_URL="http://127.0.0.1:${API_PORT}/api/v1"
 
+api_ready() {
+  curl --noproxy '*' --fail --silent --max-time 1 "$API_URL/health" >/dev/null
+}
+
 valid_port() {
   [[ "$1" =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$1 <= 65535 ))
 }
@@ -79,7 +83,7 @@ echo "  Home:   $PLATFORM_HOME"
 API_PID=$!
 
 for _attempt in $(seq 1 50); do
-  if curl --fail --silent --max-time 1 "$API_URL/health" >/dev/null; then
+  if api_ready; then
     break
   fi
   if ! kill -0 "$API_PID" 2>/dev/null; then
@@ -89,7 +93,7 @@ for _attempt in $(seq 1 50); do
   sleep 0.2
 done
 
-if ! curl --fail --silent --show-error --max-time 1 "$API_URL/health" >/dev/null; then
+if ! curl --noproxy '*' --fail --silent --show-error --max-time 1 "$API_URL/health" >/dev/null; then
   echo "Platform API did not become ready at $API_URL/health." >&2
   exit 1
 fi
