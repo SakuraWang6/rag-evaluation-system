@@ -69,6 +69,10 @@ RAG-Anything Local job was `694c8430ccfc413582a2dbc9354c483e`.
 - The explicit development secret store encryption/`0600` behavior is covered
   by tests. The system Keychain is deliberately not exercised by automated
   acceptance because it requires an interactive local Keychain context.
+- A live system-Keychain probe then completed `save → configured → rotate →
+  remove` through the Product API. It used generated values, confirmed that
+  neither save nor remove response returned a value, and left no probe key in
+  the connection or API listing.
 
 ## Closed failures retained as evidence
 
@@ -104,9 +108,8 @@ in this report:
 1. a brand-new `RAG_EVAL_HOME` browser-only walkthrough of Overview → ZIP
    upload → System test → Basic Wizard → Local run → Docker run → Compare;
 2. visual 390px/desktop and zh-CN/en-US walkthrough on the final running
-   frontend; and
-3. interactive system-Keychain lifecycle validation.
+   frontend.
 
 All API, canonical-generation, real-model, artifact, Docker lifecycle, and
-frontend build/test gates above have passed. Complete these three interactive
+frontend build/test gates above have passed. Complete these two interactive
 checks before declaring the full **PRODUCTIZATION GATE: PASS**.
