@@ -34,7 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.host != "127.0.0.1":
+    allow_container_bind = os.environ.get("RAG_EVAL_WORKER_ALLOW_CONTAINER_BIND") == "1"
+    if args.host != "127.0.0.1" and not (allow_container_bind and args.host == "0.0.0.0"):
         raise SystemExit("adapter workers may bind only to 127.0.0.1")
     token = os.environ.get("RAG_EVAL_WORKER_TOKEN", "")
     if not token:

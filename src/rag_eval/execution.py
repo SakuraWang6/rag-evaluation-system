@@ -58,7 +58,13 @@ from rag_eval.reproducibility import capture_reproducibility
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.runs import RunStore
 from rag_eval.worker.client import WorkerRemoteError
-from rag_eval.worker.process import WorkerCommand, WorkerProcess
+from rag_eval.execution_provider import (
+    ExecutionProvider,
+    ExecutionRequest,
+    LocalProcessProvider,
+    WorkerHandle,
+)
+from rag_eval.worker.process import WorkerCommand
 
 
 class RunExecutor:
@@ -66,9 +72,11 @@ class RunExecutor:
         self,
         dataset_store: DatasetBundleStore,
         run_store: RunStore,
+        provider: ExecutionProvider | None = None,
     ) -> None:
         self.dataset_store = dataset_store
         self.run_store = run_store
+        self.provider = provider or LocalProcessProvider()
 
     def execute(
         self,
@@ -79,6 +87,7 @@ class RunExecutor:
         cancelled: Callable[[], bool] | None = None,
         worker_started: Callable[[str, int], None] | None = None,
         replay_of_run_id: str | None = None,
+        execution_metadata: dict[str, object] | None = None,
     ) -> RunManifest:
         run_id = run_id or uuid.uuid4().hex
         cancelled = cancelled or (lambda: False)
@@ -90,7 +99,7 @@ class RunExecutor:
                 experiment.seed + offset for offset in range(experiment.repetitions)
             )
         }
-        run_dir = self.run_store.root / run_id
+        run_dir = self.run_store.prepare_execution_layout(run_id)
         manifest: RunManifest | None = None
         documents: list[DocumentInput] | None = None
         corpus: CorpusEvidenceIndex | None = None
@@ -98,6 +107,9 @@ class RunExecutor:
         index_fingerprints: list[str] = []
         index_artifact_digests: list[str] = []
         first_handshake = None
+        # The raw worker response is kept only in memory for repetition
+        # validation. Persisted artifacts must not contain resolved endpoints.
+        validation_effective_config: dict[str, object] | None = None
         effective_config: dict[str, object] | None = None
         repetition_seeds = [
             experiment.seed + offset for offset in range(experiment.repetitions)
@@ -115,21 +127,24 @@ class RunExecutor:
                     self.run_store.root / f".{worker_run_id}.worker.log"
                 )
                 seeded_command = command_for_seed(command, repetition_seed)
-                process = WorkerProcess(
-                    seeded_command,
-                    run_id=worker_run_id,
-                    log_path=temporary_log,
+                handle = self.provider.start(
+                    ExecutionRequest(
+                        command=seeded_command,
+                        run_id=worker_run_id,
+                        log_path=temporary_log,
+                        source_dir=run_dir / "source",
+                        work_dir=run_dir / "work" / f"rep-{repetition:04d}",
+                    )
                 )
                 watcher_done = Event()
                 watcher: Thread | None = None
                 try:
-                    client = process.start()
-                    assert process.process is not None
-                    if worker_started:
-                        worker_started(run_id, process.process.pid)
+                    client = handle.client
+                    if worker_started and handle.worker_pid is not None:
+                        worker_started(run_id, handle.worker_pid)
                     watcher = Thread(
                         target=watch_cancellation,
-                        args=(cancelled, watcher_done, process),
+                        args=(cancelled, watcher_done, handle),
                         name=f"rag-eval-cancel-{worker_run_id}",
                         daemon=True,
                     )
@@ -147,6 +162,24 @@ class RunExecutor:
                             replay_of_run_id,
                         )
                         self.run_store.create(manifest, experiment)
+                        provider_metadata = {
+                            **handle.launch_metadata,
+                            **(execution_metadata or {}),
+                        }
+                        if provider_metadata:
+                            atomic_write_json(
+                                run_dir / "execution-environment.json",
+                                provider_metadata,
+                            )
+                            manifest = manifest.model_copy(
+                                update={
+                                    "artifacts": {
+                                        **manifest.artifacts,
+                                        "execution_environment": "execution-environment.json",
+                                    }
+                                }
+                            )
+                            self.run_store.write_manifest(manifest)
                         source_dir = run_dir / "source"
                         documents = source_only_documents(bundle, source_dir)
                         corpus = CorpusEvidenceIndex(bundle.source_documents())
@@ -155,7 +188,7 @@ class RunExecutor:
                     assert corpus is not None
                     source_dir = run_dir / "source"
                     prepared = client.prepare(
-                        PrepareContext(
+                        handle.prepare_context(PrepareContext(
                             run_id=worker_run_id,
                             work_dir=str(
                                 run_dir / "work" / f"rep-{repetition:04d}"
@@ -164,10 +197,12 @@ class RunExecutor:
                             platform_version=__version__,
                             seed=repetition_seed,
                             repetition=repetition,
-                        ),
+                        )),
                         experiment.adapter_config,
                     )
-                    validate_prepared(prepared, experiment, effective_config)
+                    validate_prepared(
+                        prepared, experiment, validation_effective_config
+                    )
                     current_effective = {
                         "adapter": prepared.effective_config,
                         "query": experiment.query_config,
@@ -177,8 +212,9 @@ class RunExecutor:
                             "repetitions": experiment.repetitions,
                         },
                     }
-                    if effective_config is None:
-                        effective_config = current_effective
+                    if validation_effective_config is None:
+                        validation_effective_config = current_effective
+                        effective_config = redact_runtime_endpoints(current_effective)
                         reproducibility = capture_reproducibility(
                             seeded_command, run_dir, current_effective
                         )
@@ -186,7 +222,7 @@ class RunExecutor:
                             update={
                                 "status": RunStatus.INGESTING,
                                 "system_version": prepared.system_version,
-                                "effective_config": current_effective,
+                                "effective_config": effective_config,
                                 "observed_capabilities": prepared.capabilities,
                                 "reproducibility": reproducibility,
                                 "model_artifacts": prepared_model_artifacts(
@@ -194,7 +230,7 @@ class RunExecutor:
                                 ),
                             }
                         )
-                    elif current_effective != effective_config:
+                    elif current_effective != validation_effective_config:
                         raise ValueError(
                             "effective configuration changed across repetitions"
                         )
@@ -258,7 +294,7 @@ class RunExecutor:
                             break
                 finally:
                     watcher_done.set()
-                    process.stop()
+                    handle.stop()
                     if watcher is not None:
                         watcher.join(timeout=1)
                     if temporary_log.exists() and run_dir.is_dir():
@@ -298,6 +334,7 @@ class RunExecutor:
                     "completed_at": datetime.now(UTC),
                     "execution_counts": counts,
                     "artifacts": {
+                        **manifest.artifacts,
                         "summary": "summary.json",
                         "case_order": "case-order.json",
                         "cases": "cases/",
@@ -488,6 +525,38 @@ def prepared_model_artifacts(
         raise ValueError("adapter returned invalid model artifact identities") from exc
 
 
+def redact_runtime_endpoints(value: object) -> object:
+    """Replace launch-only endpoint values with stable non-reversible digests."""
+    endpoint_keys = {
+        "ollama_host",
+        "llm_host",
+        "query_llm_host",
+        "embedding_host",
+        "query_llm_binding_host",
+        "embedding_binding_host",
+        "llm_binding_host",
+        "host",
+        "endpoint",
+        "base_url",
+    }
+    if isinstance(value, dict):
+        return {
+            key: (
+                {
+                    "redacted": True,
+                    "endpoint_identity_digest": "sha256:"
+                    + hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+                }
+                if key.lower() in endpoint_keys and isinstance(raw, str) and raw
+                else redact_runtime_endpoints(raw)
+            )
+            for key, raw in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_runtime_endpoints(item) for item in value]
+    return value
+
+
 def execute_case(
     client,
     capabilities: AdapterCapabilities,
@@ -594,7 +663,7 @@ def command_for_seed(command: WorkerCommand, seed: int) -> WorkerCommand:
 
 
 def watch_cancellation(
-    cancelled: Callable[[], bool], done: Event, process: WorkerProcess
+    cancelled: Callable[[], bool], done: Event, process: WorkerHandle
 ) -> None:
     while not done.wait(0.05):
         if cancelled():

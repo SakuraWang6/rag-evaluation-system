@@ -22,17 +22,28 @@ class RunStore:
         self, manifest: RunManifest, experiment: ExperimentSpec
     ) -> Path:
         run_dir = self.root / safe_id(manifest.run_id)
-        try:
-            run_dir.mkdir(parents=False)
-        except FileExistsError as exc:
-            raise ValueError(f"run already exists: {manifest.run_id}") from exc
-        (run_dir / "cases").mkdir()
-        (run_dir / "worker").mkdir()
-        (run_dir / "source").mkdir()
+        if run_dir.exists() and (run_dir / "run.json").exists():
+            raise ValueError(f"run already exists: {manifest.run_id}")
+        self.prepare_execution_layout(manifest.run_id)
         atomic_write_json(
             run_dir / "experiment.json", experiment.model_dump(mode="json")
         )
         self.write_manifest(manifest)
+        return run_dir
+
+    def prepare_execution_layout(self, run_id: str) -> Path:
+        """Create an empty run-scoped mount layout before a Provider starts.
+
+        This allows Docker to receive only source/work bind mounts while keeping
+        normal LocalProcess behavior unchanged.  No immutable artifact is
+        written until ``create`` receives a validated worker handshake.
+        """
+        run_dir = self.root / safe_id(run_id)
+        if run_dir.exists() and (run_dir / "run.json").exists():
+            raise ValueError(f"run already exists: {run_id}")
+        run_dir.mkdir(parents=False, exist_ok=True)
+        for name in ("cases", "worker", "source", "work"):
+            (run_dir / name).mkdir(exist_ok=True)
         return run_dir
 
     def write_manifest(self, manifest: RunManifest) -> None:

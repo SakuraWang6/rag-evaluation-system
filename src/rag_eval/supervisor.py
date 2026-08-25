@@ -9,7 +9,8 @@ from typing import Self
 from rag_eval.contracts.run import RunStatus
 from rag_eval.execution import RunExecutor
 from rag_eval.jobs import JobStatus, JobStore
-from rag_eval.systems import SystemRegistry
+from rag_eval.systems import SystemResolver
+from rag_eval.execution_provider import ExecutionProviderRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +19,14 @@ class JobSupervisor:
     def __init__(
         self,
         jobs: JobStore,
-        systems: SystemRegistry,
+        systems: SystemResolver,
         executor: RunExecutor,
+        providers: ExecutionProviderRegistry,
     ) -> None:
         self.jobs = jobs
         self.systems = systems
         self.executor = executor
+        self.providers = providers
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
@@ -52,7 +55,10 @@ class JobSupervisor:
         if job is None:
             return False
         try:
-            registration = self.systems.get(job.experiment.system_id)
+            resolved = self.systems.resolve(
+                job.experiment.system_id,
+                provider=job.execution_provider,
+            )
 
             def cancelled() -> bool:
                 return self.jobs.get(job.job_id).status == JobStatus.CANCELLING
@@ -60,11 +66,17 @@ class JobSupervisor:
             def worker_started(run_id: str, pid: int) -> None:
                 self.jobs.update_worker(job.job_id, run_id=run_id, worker_pid=pid)
 
-            manifest = self.executor.execute(
+            executor = RunExecutor(
+                self.executor.dataset_store,
+                self.executor.run_store,
+                self.providers.get(resolved.provider),
+            )
+            manifest = executor.execute(
                 job.experiment,
-                registration.worker_command(),
+                resolved.command,
                 cancelled=cancelled,
                 worker_started=worker_started,
+                execution_metadata=resolved.execution_metadata,
             )
             current = self.jobs.get(job.job_id)
             if manifest.status == RunStatus.CANCELLED or current.status == JobStatus.CANCELLING:

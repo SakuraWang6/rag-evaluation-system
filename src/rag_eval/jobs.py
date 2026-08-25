@@ -46,6 +46,7 @@ class JobRecord(BaseModel):
     updated_at: datetime
     run_id: str | None = None
     worker_pid: int | None = Field(default=None, ge=1)
+    execution_provider: str = "local"
     error: str | None = None
 
 
@@ -75,7 +76,7 @@ class JobStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
 
-    def create(self, experiment: ExperimentSpec) -> JobRecord:
+    def create(self, experiment: ExperimentSpec, *, execution_provider: str = "local") -> JobRecord:
         now = datetime.now(UTC)
         record = JobRecord(
             job_id=uuid.uuid4().hex,
@@ -83,6 +84,7 @@ class JobStore:
             experiment=experiment,
             created_at=now,
             updated_at=now,
+            execution_provider=execution_provider,
         )
         with self._lock:
             self._write(record)

@@ -173,12 +173,13 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         original = service.runs.get(args.run_id)
         experiment = service.runs.experiment(args.run_id)
-        registration = service.systems.get(experiment.system_id)
+        resolved = service.system_resolver.resolve(experiment.system_id)
         replayed = service.executor.execute(
             experiment,
-            registration.worker_command(),
+            resolved.command,
             run_id=args.new_run_id,
             replay_of_run_id=original.run_id,
+            execution_metadata=resolved.execution_metadata,
         )
         mismatches = replay_mismatches(original, replayed)
         report = {

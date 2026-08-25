@@ -24,6 +24,20 @@ The initial storage backend is an atomic file store rooted at
 `RAG_EVAL_HOME` (default: `~/.rag_eval_platform`). Legacy LightRAG evaluation
 directories are never scanned.
 
+## Productization Track
+
+The WebUI-first Productization Track is independent of the research Phase
+sequence. It adds versioned System Profiles, Dataset/System resources,
+Evaluation Drafts, and Local/Docker execution selection without changing the
+frozen research contracts. See [Productization Track](docs/PRODUCTIZATION_TRACK.md).
+Current runtime acceptance evidence and explicitly remaining interactive checks
+are recorded in the [Productization Acceptance Report](docs/PRODUCTIZATION_ACCEPTANCE_REPORT.md).
+
+Ordinary users start at **Overview → New Evaluation**. Basic mode exposes only
+LightRAG and RAG-Anything. The Platform expands profile defaults into a full,
+canonical `ExperimentSpec` before invoking the same `RunExecutor` used by CLI.
+The old CLI and Advanced ExperimentSpec entrypoints remain supported.
+
 ## Start the local system
 
 From the Platform checkout, start the local API and the sibling standalone
@@ -36,6 +50,31 @@ WebUI together:
 The API binds to `127.0.0.1:8765` and the WebUI to `127.0.0.1:4178`. The
 script starts no legacy `memory_eval` service and no persistent Adapter Worker:
 Workers are isolated and created by the Platform for each evaluation run.
+
+## First evaluation (WebUI)
+
+Open `http://127.0.0.1:4178`, then follow the three actions on **Overview**:
+
+1. **Upload dataset** — upload one validated Dataset Bundle ZIP, or create a
+   small TXT/Markdown Bundle and seal it after selecting Gold evidence.
+2. **Add RAG system** — select LightRAG or RAG-Anything, save it, and use
+   **Test connection** to confirm the local model runtime is reachable.
+3. **New evaluation** — select the sealed Dataset and tested RAG system,
+   choose the required model and embedding identities (and an optional query
+   mode), review the generated configuration, then run it.
+
+The generated run remains a normal immutable artifact. Its Detail page shows
+integrity verification, Cases, evidence flow, metrics, and failure assessment.
+Use **Compare** only when the runs are compatible for the selected tier. See
+[Quick Start](docs/QUICK_START.md) for a visual-free checklist and common
+first-run remedies.
+
+## Advanced CLI / CI
+
+CLI commands, hand-authored `ExperimentSpec`, legacy SystemRegistration, and
+Replay remain available for advanced users and CI; they are not required for
+the normal WebUI workflow.
+
 Override the storage home or ports without changing the script:
 
 ```bash
@@ -45,7 +84,7 @@ RAG_EVAL_WEBUI_PORT=4178 \
 ./scripts/start-local.sh
 ```
 
-It expects an installed Platform environment (`.venv/bin/rag-eval` or
+The startup script expects an installed Platform environment (`.venv/bin/rag-eval` or
 `rag-eval` on `PATH`) and an installed sibling WebUI (`npm ci` in
 `../rag-eval-webui`). Use `RAG_EVAL_WEBUI_DIR` when that checkout is elsewhere.
 

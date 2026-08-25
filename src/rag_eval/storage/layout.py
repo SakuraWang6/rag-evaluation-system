@@ -36,12 +36,47 @@ class PlatformPaths:
     def systems(self) -> Path:
         return self.home / "systems"
 
-    def initialize(self) -> None:
-        for path in (
+    @property
+    def product(self) -> Path:
+        """Editable product-layer state, deliberately separate from artifacts."""
+        return self.home / "product"
+
+    @property
+    def dataset_drafts(self) -> Path:
+        return self.product / "dataset-drafts"
+
+    @property
+    def evaluation_drafts(self) -> Path:
+        return self.product / "evaluation-drafts"
+
+    @property
+    def system_connections(self) -> Path:
+        return self.product / "system-connections"
+
+    @property
+    def product_uploads(self) -> Path:
+        return self.product / "uploads"
+
+    @property
+    def dev_secrets(self) -> Path:
+        return self.product / "dev-secrets.enc"
+
+    def initialize(self, *, product_enabled: bool = True) -> None:
+        paths = [
             self.datasets,
             self.runs,
             self.jobs,
             self.experiments,
             self.systems,
-        ):
+        ]
+        if product_enabled:
+            paths.extend(
+                (
+                    self.dataset_drafts,
+                    self.evaluation_drafts,
+                    self.system_connections,
+                    self.product_uploads,
+                )
+            )
+        for path in paths:
             path.mkdir(parents=True, exist_ok=True)
