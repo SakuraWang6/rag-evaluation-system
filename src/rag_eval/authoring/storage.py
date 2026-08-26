@@ -10,11 +10,16 @@ import uuid
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, TypeVar
+
+from pydantic import BaseModel
 
 from rag_eval.authoring.models import AuthoringDataset, AuthoringState, SourceManifest
 from rag_eval.storage.atomic import atomic_write_bytes, atomic_write_json
 from rag_eval.storage.runs import safe_id
+
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -186,6 +191,48 @@ class AuthoringWorkspaceStore:
 
     def source_path(self, authoring_dataset_id: str) -> Path:
         return self.workspace(authoring_dataset_id) / "source" / "original.docx"
+
+    def canonical_path(self, authoring_dataset_id: str, name: str) -> Path:
+        return self.workspace(authoring_dataset_id) / "canonical" / safe_id(name)
+
+    def target_path(self, authoring_dataset_id: str) -> Path:
+        return self.workspace(authoring_dataset_id) / "targets" / "targets.json"
+
+    def candidate_path(self, authoring_dataset_id: str, candidate_id: str) -> Path:
+        return self.workspace(authoring_dataset_id) / "candidates" / f"{safe_id(candidate_id)}.json"
+
+    def review_path(self, authoring_dataset_id: str, review_id: str) -> Path:
+        return self.workspace(authoring_dataset_id) / "reviews" / f"{safe_id(review_id)}.json"
+
+    def approved_path(self, authoring_dataset_id: str, case_id: str) -> Path:
+        return self.workspace(authoring_dataset_id) / "approved" / f"{safe_id(case_id)}.json"
+
+    def export_path(self, authoring_dataset_id: str, release_id: str) -> Path:
+        return self.workspace(authoring_dataset_id) / "exports" / safe_id(release_id)
+
+    def save_model(self, path: Path, value: BaseModel) -> None:
+        workspace = self.workspace_from_path(path)
+        if not workspace.is_dir():
+            raise FileNotFoundError(workspace.name)
+        atomic_write_json(path, value.model_dump(mode="json"))
+
+    def load_model(self, path: Path, model: type[ModelT]) -> ModelT:
+        if not path.is_file():
+            raise FileNotFoundError(path.name)
+        return model.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def workspace_from_path(self, path: Path) -> Path:
+        """Return the direct workspace child that owns a known authoring path."""
+
+        resolved = path.resolve()
+        root = self.root.resolve()
+        try:
+            relative = resolved.relative_to(root)
+        except ValueError as exc:
+            raise AuthoringStorageError("path is outside authoring storage") from exc
+        if len(relative.parts) < 2:
+            raise AuthoringStorageError("path is not inside an authoring workspace")
+        return root / relative.parts[0]
 
     @staticmethod
     def _validate_filename(filename: str) -> None:

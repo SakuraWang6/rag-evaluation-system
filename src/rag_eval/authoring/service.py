@@ -7,6 +7,7 @@ from pathlib import Path
 from rag_eval.authoring.canonical import DocxCanonicalizer
 from rag_eval.authoring.models import AuthoringDataset, AuthoringState, CanonicalView
 from rag_eval.authoring.storage import AuthoringWorkspaceStore
+from rag_eval.authoring.workflow import AuthoringWorkflow
 
 
 class AuthoringService:
@@ -15,6 +16,7 @@ class AuthoringService:
     def __init__(self, root: Path) -> None:
         self.store = AuthoringWorkspaceStore(root)
         self.canonicalizer = DocxCanonicalizer()
+        self.workflow = AuthoringWorkflow(self.store)
 
     def upload_docx(self, *, filename: str, payload: bytes) -> AuthoringDataset:
         return self.store.create(filename=filename, payload=payload)

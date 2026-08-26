@@ -10,8 +10,11 @@ from fastapi.testclient import TestClient
 
 from rag_eval.api import create_app
 from rag_eval.authoring.models import AuthoringState
+from rag_eval.authoring.models import AnswerEvidenceCandidate, CandidateEvidence, CandidateState, DiscoveryMethod
 from rag_eval.authoring.service import AuthoringService
 from rag_eval.authoring.storage import AuthoringStorageError
+from rag_eval.authoring.workflow import AuthoringWorkflowError
+from rag_eval.datasets.bundle import load_bundle
 from rag_eval.service import PlatformService
 from rag_eval.storage.layout import PlatformPaths
 
@@ -152,3 +155,85 @@ def test_authoring_api_is_not_available_when_product_layer_is_disabled(tmp_path:
     service = PlatformService(PlatformPaths(tmp_path / "platform"), product_enabled=False)
     client = TestClient(create_app(service, start_supervisor=False))
     assert client.get("/api/v1/authoring/datasets").status_code == 404
+
+
+def test_rule_targets_manual_candidate_review_export_and_registration(tmp_path: Path) -> None:
+    service = PlatformService(PlatformPaths(tmp_path / "platform"), product_enabled=True)
+    assert service.authoring is not None
+    dataset = service.authoring.upload_docx(filename="private.docx", payload=mini_docx())
+    dataset = service.authoring.analyze(dataset.authoring_dataset_id)
+    targets = service.authoring.workflow.discover_targets(dataset, provider=DiscoveryMethod.RULE)
+    table_target = next(item for item in targets if item.capability == "table_lookup" and not item.flags)
+    candidate = service.authoring.workflow.create_question(
+        service.authoring.get(dataset.authoring_dataset_id),
+        target_id=table_target.target_id,
+        question="延迟指标对应的数值是多少？",
+    )
+    resolved = service.authoring.workflow.resolve_answer_evidence(
+        service.authoring.get(dataset.authoring_dataset_id),
+        candidate_id=candidate.candidate_id,
+        resolution=AnswerEvidenceCandidate(
+            answer_kind="text",
+            canonical_answer="42 ms",
+            evidence=[CandidateEvidence(source_object_id=table_target.source_object_ids[0])],
+        ),
+    )
+    assert resolved.state == CandidateState.REVIEW_REQUIRED
+    assert all(item.status != "FAIL" for item in resolved.gates)
+    approved = service.authoring.workflow.review(
+        service.authoring.get(dataset.authoring_dataset_id),
+        candidate_id=candidate.candidate_id,
+        decision="accept",
+        reviewer="fixture-reviewer",
+    )
+    assert approved.state == CandidateState.APPROVED
+    export = service.authoring.workflow.export(service.authoring.get(dataset.authoring_dataset_id), name="fixture-private-docx", version="1.0.0")
+    root = service.authoring.store.workspace(dataset.authoring_dataset_id)
+    canonical = load_bundle(root / export.views["canonical-text"])
+    native = load_bundle(root / export.views["native-docx"])
+    assert canonical.questions[0].case_id == native.questions[0].case_id
+    assert canonical.manifest.documents[0].mime_type == "text/markdown"
+    assert native.manifest.documents[0].mime_type.endswith("document")
+    registered = service.datasets.register(root / export.views["canonical-text"])
+    marked = service.authoring.workflow.mark_registered(service.authoring.get(dataset.authoring_dataset_id), release_id=export.release_id, view="canonical-text", bundle_id=registered.bundle_id)
+    assert marked.registered_bundle_ids["canonical-text"] == registered.bundle_id
+
+
+def test_failed_leakage_candidate_cannot_be_accepted_and_edit_versions_candidate(tmp_path: Path) -> None:
+    authoring = AuthoringService(tmp_path / "authoring")
+    dataset = authoring.analyze(authoring.upload_docx(filename="private.docx", payload=mini_docx()).authoring_dataset_id)
+    target = next(item for item in authoring.workflow.discover_targets(dataset, provider=DiscoveryMethod.RULE) if item.capability == "table_lookup" and not item.flags)
+    candidate = authoring.workflow.create_question(authoring.get(dataset.authoring_dataset_id), target_id=target.target_id, question="42 ms 是延迟指标的数值吗？")
+    failed = authoring.workflow.resolve_answer_evidence(authoring.get(dataset.authoring_dataset_id), candidate_id=candidate.candidate_id, resolution=AnswerEvidenceCandidate(answer_kind="text", canonical_answer="42 ms", evidence=[CandidateEvidence(source_object_id=target.source_object_ids[0])]))
+    assert failed.state == CandidateState.BLOCKED
+    assert any(gate.gate_id == "answer_leakage" and gate.status == "FAIL" for gate in failed.gates)
+    with pytest.raises(AuthoringWorkflowError, match="gate-reviewed"):
+        authoring.workflow.review(authoring.get(dataset.authoring_dataset_id), candidate_id=candidate.candidate_id, decision="accept", reviewer="fixture-reviewer")
+    edited = authoring.workflow.review(authoring.get(dataset.authoring_dataset_id), candidate_id=candidate.candidate_id, decision="edit", reviewer="fixture-reviewer", edited_question="延迟指标对应的数值是多少？")
+    assert edited.version == 2
+    assert edited.state == CandidateState.REVIEW_REQUIRED
+    assert authoring.workflow.list_reviews(authoring.get(dataset.authoring_dataset_id))[0].decision == "edit"
+
+
+def test_authoring_api_manual_review_export_and_bundle_registration(tmp_path: Path) -> None:
+    service = PlatformService(PlatformPaths(tmp_path / "platform"), product_enabled=True)
+    client = TestClient(create_app(service, start_supervisor=False))
+    uploaded = client.post("/api/v1/authoring/datasets", content=mini_docx(), headers={"x-rag-eval-filename": "private.docx"})
+    dataset_id = uploaded.json()["authoring_dataset_id"]
+    assert client.post(f"/api/v1/authoring/datasets/{dataset_id}/analyze").status_code == 200
+    targets = client.post(f"/api/v1/authoring/datasets/{dataset_id}/targets/discover", json={"provider": "rule"})
+    assert targets.status_code == 200
+    target = next(item for item in targets.json() if item["capability"] == "table_lookup" and not item["flags"])
+    candidate = client.post(f"/api/v1/authoring/datasets/{dataset_id}/candidates", json={"target_id": target["target_id"], "question": "延迟指标对应的数值是多少？"})
+    assert candidate.status_code == 201
+    candidate_id = candidate.json()["candidate_id"]
+    resolved = client.post(f"/api/v1/authoring/datasets/{dataset_id}/candidates/{candidate_id}/resolve", json={"resolution": {"answer_kind": "text", "canonical_answer": "42 ms", "evidence": [{"source_object_id": target["source_object_ids"][0]}]}})
+    assert resolved.json()["state"] == "review_required"
+    accepted = client.post(f"/api/v1/authoring/datasets/{dataset_id}/candidates/{candidate_id}/review", json={"decision": "accept", "reviewer": "fixture-reviewer"})
+    assert accepted.json()["state"] == "approved"
+    exported = client.post(f"/api/v1/authoring/datasets/{dataset_id}/exports", json={"name": "api-fixture", "version": "1.0.0"})
+    assert exported.status_code == 201
+    release_id = exported.json()["release_id"]
+    registered = client.post(f"/api/v1/authoring/datasets/{dataset_id}/exports/{release_id}/register/canonical-text")
+    assert registered.status_code == 200
+    assert registered.json()["bundle_id"] in [item["bundle_id"] for item in client.get("/api/v1/datasets").json()]

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from decimal import Decimal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -61,3 +62,115 @@ class CanonicalView(AuthoringModel):
     object_records_path: str
     summary_path: str
     diagnostics_path: str
+
+
+class CandidateState(StrEnum):
+    DRAFT = "draft"
+    ANSWER_RESOLVED = "answer_resolved"
+    REVIEW_REQUIRED = "review_required"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    BLOCKED = "blocked"
+
+
+class GateStatus(StrEnum):
+    PASS = "PASS"
+    FLAG = "FLAG"
+    FAIL = "FAIL"
+
+
+class DiscoveryMethod(StrEnum):
+    RULE = "rule"
+    OLLAMA = "ollama"
+    REMOTE = "remote"
+    MANUAL = "manual"
+
+
+class BenchmarkTargetCandidate(AuthoringModel):
+    target_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    canonical_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    capability: str = Field(min_length=1)
+    source_object_ids: list[str] = Field(min_length=1)
+    retrieval_route: list[str] = Field(min_length=1)
+    distractor_object_ids: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+    discovery_method: DiscoveryMethod
+    flags: list[str] = Field(default_factory=list)
+    rationale: str = ""
+
+
+class CandidateEvidence(AuthoringModel):
+    source_object_id: str = Field(min_length=1)
+    required_group: str = Field(default="group-1", min_length=1)
+    near_miss_object_ids: list[str] = Field(default_factory=list)
+
+
+class AnswerEvidenceCandidate(AuthoringModel):
+    answer_kind: Literal["text", "numeric", "formula", "set", "abstain"]
+    canonical_answer: str | list[str] | None = None
+    accepted_values: list[str] = Field(default_factory=list)
+    locale: str | None = None
+    unit: str | None = None
+    tolerance: Decimal | None = Field(default=None, ge=0)
+    evidence: list[CandidateEvidence] = Field(default_factory=list)
+    dependency_graph: list[dict[str, Any]] = Field(default_factory=list)
+    negative_scope_object_ids: list[str] = Field(default_factory=list)
+    negative_rationale: str | None = None
+    resolution_method: DiscoveryMethod = DiscoveryMethod.MANUAL
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class QualityGateResult(AuthoringModel):
+    gate_id: str
+    status: GateStatus
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class QuestionCandidate(AuthoringModel):
+    candidate_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    target_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    version: int = Field(default=1, ge=1)
+    state: CandidateState = CandidateState.DRAFT
+    question: str = Field(min_length=1)
+    language: str = "zh-CN"
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    canonical_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_object_ids: list[str] = Field(min_length=1)
+    generation_method: DiscoveryMethod
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
+    answer_evidence: AnswerEvidenceCandidate | None = None
+    gates: list[QualityGateResult] = Field(default_factory=list)
+
+
+class ReviewRecord(AuthoringModel):
+    review_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    candidate_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    candidate_version: int = Field(ge=1)
+    decision: Literal["accept", "edit", "reject"]
+    reviewer: str = Field(min_length=1)
+    note: str = ""
+    edited_fields: list[str] = Field(default_factory=list)
+    created_at: datetime
+
+
+class ApprovedCase(AuthoringModel):
+    case_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    candidate_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    candidate_version: int = Field(ge=1)
+    approved_at: datetime
+    approved_by: str
+    candidate: QuestionCandidate
+
+
+class AuthoringExport(AuthoringModel):
+    release_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    name: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    canonical_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approved_case_ids: list[str] = Field(min_length=1)
+    views: dict[str, str] = Field(default_factory=dict)
+    blocked_cases: list[dict[str, Any]] = Field(default_factory=list)
+    registered_bundle_ids: dict[str, str] = Field(default_factory=dict)
