@@ -23,6 +23,7 @@ from rag_eval.service import PlatformService
 from rag_eval.datasets.drafts import DatasetDraft
 from rag_eval.execution_provider import ExecutionRequest
 from rag_eval.products import EvaluationDraft, SystemConnection, canonical_experiment
+from rag_eval.authoring.storage import AuthoringStorageError
 
 
 class APIModel(BaseModel):
@@ -82,6 +83,76 @@ def create_app(
             "producer": "rag_eval_platform",
             "product_layer_enabled": service.product_enabled,
         }
+
+    def require_authoring():
+        if not service.product_enabled or service.authoring is None:
+            raise HTTPException(status_code=404, detail="authoring product layer is disabled")
+        return service.authoring
+
+    @app.get("/api/v1/authoring/datasets")
+    async def list_authoring_datasets() -> list[dict[str, Any]]:
+        authoring = require_authoring()
+        return [item.model_dump(mode="json") for item in authoring.list()]
+
+    @app.post("/api/v1/authoring/datasets", status_code=201)
+    async def upload_authoring_docx(request: Request) -> dict[str, Any]:
+        """Upload raw DOCX bytes into private local authoring storage.
+
+        Multipart is intentionally avoided so the product has the same bounded,
+        streaming-compatible raw-body contract as Bundle ZIP upload.
+        """
+
+        authoring = require_authoring()
+        filename = request.headers.get("x-rag-eval-filename", "")
+        try:
+            dataset = authoring.upload_docx(filename=filename, payload=await request.body())
+            return dataset.model_dump(mode="json")
+        except (AuthoringStorageError, OSError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/v1/authoring/datasets/{authoring_dataset_id}")
+    async def get_authoring_dataset(authoring_dataset_id: str) -> dict[str, Any]:
+        authoring = require_authoring()
+        try:
+            return authoring.get(authoring_dataset_id).model_dump(mode="json")
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="authoring dataset not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/v1/authoring/datasets/{authoring_dataset_id}/analyze")
+    async def analyze_authoring_dataset(authoring_dataset_id: str) -> dict[str, Any]:
+        authoring = require_authoring()
+        try:
+            return authoring.analyze(authoring_dataset_id).model_dump(mode="json")
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="authoring dataset not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/v1/authoring/datasets/{authoring_dataset_id}/canonical")
+    async def get_authoring_canonical_view(authoring_dataset_id: str) -> dict[str, Any]:
+        authoring = require_authoring()
+        try:
+            view = authoring.canonical_view(authoring_dataset_id)
+            return {
+                "view": view.model_dump(mode="json"),
+                "execution_markdown": authoring.canonical_markdown(authoring_dataset_id),
+            }
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="authoring dataset not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/v1/authoring/datasets/{authoring_dataset_id}", status_code=204)
+    async def delete_authoring_dataset(authoring_dataset_id: str) -> None:
+        authoring = require_authoring()
+        try:
+            authoring.delete(authoring_dataset_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="authoring dataset not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/v1/datasets")
     async def datasets() -> list[dict[str, Any]]:

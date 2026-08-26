@@ -58,6 +58,11 @@ class PlatformPaths:
         return self.product / "uploads"
 
     @property
+    def authoring_datasets(self) -> Path:
+        """Private, editable document-authoring workspaces (never Bundle storage)."""
+        return self.product / "authoring" / "datasets"
+
+    @property
     def dev_secrets(self) -> Path:
         return self.product / "dev-secrets.enc"
 
@@ -76,6 +81,7 @@ class PlatformPaths:
                     self.evaluation_drafts,
                     self.system_connections,
                     self.product_uploads,
+                    self.authoring_datasets,
                 )
             )
         for path in paths:

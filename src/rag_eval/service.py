@@ -17,6 +17,7 @@ from rag_eval.products import ProductResources
 from rag_eval.datasets.drafts import DatasetDraftStore
 from rag_eval.secrets import DeferredSecretStore, create_secret_store
 from rag_eval.execution_provider import ExecutionProviderRegistry
+from rag_eval.authoring import AuthoringService
 
 
 class PlatformService:
@@ -40,6 +41,7 @@ class PlatformService:
             connections=paths.system_connections,
         ) if self.product_enabled else None
         self.dataset_drafts = DatasetDraftStore(paths.dataset_drafts, paths.product_uploads) if self.product_enabled else None
+        self.authoring = AuthoringService(paths.authoring_datasets) if self.product_enabled else None
         self.secrets = (
             DeferredSecretStore(lambda: create_secret_store(paths.dev_secrets))
             if self.product_enabled
