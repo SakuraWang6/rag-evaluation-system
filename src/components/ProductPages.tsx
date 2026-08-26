@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, CheckCircle2, ChevronRight, CircleAlert, Database, FileUp, Play, ServerCog, ShieldCheck, Sparkles, Upload } from 'lucide-react'
+import { Archive, CheckCircle2, ChevronRight, CircleAlert, Database, FileText, FileUp, Play, ServerCog, ShieldCheck, Sparkles, Upload } from 'lucide-react'
 import { api } from '../api'
-import type { DatasetDraft, DatasetSummary, EvaluationDraft, ExperimentSpec, ProductSystemSummary, SystemConnectionPayload, SystemProfile, SystemSummary } from '../types'
+import type { AuthoringCandidate, AuthoringDataset, AuthoringExport, AuthoringTarget, DatasetDraft, DatasetSummary, EvaluationDraft, ExperimentSpec, ProductSystemSummary, SystemConnectionPayload, SystemProfile, SystemSummary } from '../types'
 import { useLocale } from '../i18n/LocaleProvider'
 import { ErrorBanner } from '../components'
 import { Button, DisclosureSection, SegmentedControl, StatusBadge, Surface } from './primitives'
@@ -57,6 +57,7 @@ export function ProductDatasetsPage({ datasets, refresh }: { datasets: DatasetSu
     <div className="resource-actions">
       <label className="upload-tile"><Upload size={19} /><span><b>{t('product.datasets.uploadTitle')}</b><small>{t('product.datasets.uploadDescription')}</small></span><input type="file" accept=".zip,application/zip" onChange={(event) => void upload(event.target.files?.[0])} disabled={uploading} /><em>{uploading ? t('product.datasets.uploading') : t('product.datasets.chooseZip')}</em></label>
       <DatasetAuthoring onSealed={refresh} />
+      <DocumentAuthoring onRegistered={refresh} />
     </div>
     <DisclosureSection title={t('product.datasets.advancedLocal')}><div className="inline-form"><label><span>{t('product.datasets.localPath')}</span><input value={localPath} onChange={(event) => setLocalPath(event.target.value)} placeholder={t('product.datasets.localPathPlaceholder')} /></label><Button disabled={!localPath} onClick={() => void registerLocal()}>{t('product.datasets.registerLocal')}</Button></div><p className="field-note">{t('product.datasets.localPathNote')}</p></DisclosureSection>
     {message && <p className="product-message"><CheckCircle2 size={15} /> {message}</p>}{error && <ErrorBanner message={error} />}
@@ -91,6 +92,92 @@ function DatasetAuthoring({ onSealed }: { onSealed: () => Promise<void> }) {
   const seal = async () => { try { const value = await api.saveDatasetDraft(payload()); const sealed = await api.sealDatasetDraft(value.draft_id || ''); setDraftId(value.draft_id || ''); setMessage(t('product.datasets.sealed', { id: sealed.bundle_id.slice(0, 12) })); setError(''); await onSealed() } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) } }
   const captureSelection = () => { const source = sourceRef.current; if (source) setSelection({ start: source.selectionStart, end: source.selectionEnd }) }
   return <DisclosureSection title={t('product.datasets.createTitle')} className="dataset-authoring"><p className="field-note">{t('product.datasets.createDescription')}</p><div className="authoring-grid"><label><span>{t('product.datasets.name')}</span><input value={name} onChange={(event) => setName(event.target.value)} /></label><label><span>{t('product.datasets.version')}</span><input value={version} onChange={(event) => setVersion(event.target.value)} /></label><label><span>{t('product.datasets.documentId')}</span><input value={documentId} onChange={(event) => setDocumentId(event.target.value)} /></label><label><span>{t('product.datasets.filename')}</span><input value={filename} onChange={(event) => setFilename(event.target.value)} /></label></div><label><span>{t('product.datasets.source')}</span><textarea ref={sourceRef} value={content} onChange={(event) => setContent(event.target.value)} onSelect={captureSelection} placeholder={t('product.datasets.sourcePlaceholder')} /></label><div className="selection-note"><ShieldCheck size={15} />{t('product.datasets.selection', { start: selection.start, end: selection.end })}</div><div className="authoring-grid"><label><span>{t('product.datasets.question')}</span><input value={question} onChange={(event) => setQuestion(event.target.value)} /></label><label><span>{t('product.datasets.goldAnswer')}</span><input value={gold} onChange={(event) => setGold(event.target.value)} /></label></div><div className="authoring-actions"><Button disabled={!name || !content} onClick={() => void save()}>{t('product.datasets.saveDraft')}</Button><Button disabled={!name || !content} onClick={() => void validate()}>{t('product.datasets.validate')}</Button><Button variant="primary" disabled={!name || !content || !question || !gold || selection.end <= selection.start} onClick={() => void seal()}>{t('product.datasets.seal')}</Button></div>{message && <p className="product-message"><CheckCircle2 size={15} /> {message}</p>}{error && <ErrorBanner message={error} />}</DisclosureSection>
+}
+
+function DocumentAuthoring({ onRegistered }: { onRegistered: () => Promise<void> }) {
+  const [dataset, setDataset] = useState<AuthoringDataset | null>(null)
+  const [targets, setTargets] = useState<AuthoringTarget[]>([])
+  const [candidates, setCandidates] = useState<AuthoringCandidate[]>([])
+  const [question, setQuestion] = useState('')
+  const [answer, setAnswer] = useState('')
+  const [edits, setEdits] = useState<Record<string, string>>({})
+  const [reviewer, setReviewer] = useState('local-reviewer')
+  const [name, setName] = useState('private-docx-benchmark')
+  const [version, setVersion] = useState('1.0.0')
+  const [exported, setExported] = useState<AuthoringExport | null>(null)
+  const [markdown, setMarkdown] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const refreshCandidates = async (datasetId: string) => setCandidates(await api.authoringCandidates(datasetId))
+  const upload = async (file: File | undefined) => {
+    if (!file) return
+    setBusy(true); setError('')
+    try { const value = await api.uploadAuthoringDocument(file); setDataset(value); setTargets([]); setCandidates([]); setExported(null); setMarkdown(''); setMessage('Private DOCX uploaded to local Authoring storage.') }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setBusy(false) }
+  }
+  const analyze = async () => {
+    if (!dataset) return
+    setBusy(true); setError('')
+    try { const value = await api.analyzeAuthoringDocument(dataset.authoring_dataset_id); setDataset(value); const canonical = await api.authoringCanonical(dataset.authoring_dataset_id); setMarkdown(canonical.execution_markdown); setMessage('Analysis completed. Review the canonical source before authoring cases.') }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setBusy(false) }
+  }
+  const discover = async () => {
+    if (!dataset) return
+    setBusy(true); setError('')
+    try { setTargets(await api.discoverAuthoringTargets(dataset.authoring_dataset_id)); setDataset((await api.authoringDatasets()).find((item) => item.authoring_dataset_id === dataset.authoring_dataset_id) || dataset); setMessage('Structure-first targets are ready. Local-model proposals fall back to deterministic rules when unavailable.') }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setBusy(false) }
+  }
+  const createAndResolve = async (target: AuthoringTarget) => {
+    if (!dataset || !question.trim() || !answer.trim()) return
+    setBusy(true); setError('')
+    try {
+      const candidate = await api.createAuthoringQuestion(dataset.authoring_dataset_id, target.target_id, question)
+      const resolved = await api.resolveAuthoringCandidate(dataset.authoring_dataset_id, candidate.candidate_id, { answer_kind: 'text', canonical_answer: answer, evidence: [{ source_object_id: target.source_object_ids[0], near_miss_object_ids: target.distractor_object_ids }] })
+      setCandidates((current) => [...current, resolved]); setQuestion(''); setAnswer(''); setMessage('Candidate is source-grounded and awaiting mandatory review.')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setBusy(false) }
+  }
+  const review = async (candidate: AuthoringCandidate, decision: 'accept' | 'reject') => {
+    if (!dataset || !reviewer.trim()) return
+    setBusy(true); setError('')
+    try { await api.reviewAuthoringCandidate(dataset.authoring_dataset_id, candidate.candidate_id, decision, reviewer); await refreshCandidates(dataset.authoring_dataset_id); setMessage(decision === 'accept' ? 'Candidate approved as Gold.' : 'Candidate rejected; it will not enter Gold.') }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setBusy(false) }
+  }
+  const edit = async (candidate: AuthoringCandidate) => {
+    if (!dataset || !reviewer.trim()) return
+    const editedQuestion = edits[candidate.candidate_id]?.trim()
+    if (!editedQuestion || editedQuestion === candidate.question) return
+    setBusy(true); setError('')
+    try { await api.reviewAuthoringCandidate(dataset.authoring_dataset_id, candidate.candidate_id, 'edit', reviewer, '', editedQuestion); await refreshCandidates(dataset.authoring_dataset_id); setMessage('Edit saved as a new candidate version and re-gated for review.') }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setBusy(false) }
+  }
+  const exportBundle = async () => {
+    if (!dataset || !name.trim() || !version.trim()) return
+    setBusy(true); setError('')
+    try { setExported(await api.exportAuthoringDataset(dataset.authoring_dataset_id, name, version)); setMessage('Two execution views were exported. Register canonical text for comparable runs; native DOCX is diagnostic only.') }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setBusy(false) }
+  }
+  const register = async (view: 'canonical-text' | 'native-docx') => {
+    if (!dataset || !exported) return
+    setBusy(true); setError('')
+    try { const value = await api.registerAuthoringExport(dataset.authoring_dataset_id, exported.release_id, view); setExported(value.export); setMessage(view === 'canonical-text' ? 'Canonical-text Bundle registered for normal evaluation.' : 'Native-DOCX diagnostic Bundle registered. Do not use it for cross-view winner claims.'); await onRegistered() }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setBusy(false) }
+  }
+  return <DisclosureSection title="Create from Document" className="dataset-authoring"><p className="field-note">Private DOCX authoring is local, source-grounded, and review-gated. It is separate from manual text drafts and immutable Bundles.</p><div className="authoring-actions"><label className="upload-tile"><FileText size={18} /><span><b>1. Upload private DOCX</b><small>Only .docx; the original remains local until explicit deletion.</small></span><input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => void upload(event.target.files?.[0])} disabled={busy} /><em>{busy ? 'Working…' : 'Choose DOCX'}</em></label>{dataset && <Button onClick={() => void analyze()} disabled={busy || dataset.state === 'analyzed'}>2. Analyze</Button>}{dataset?.state === 'analyzed' && <Button onClick={() => void discover()} disabled={busy}>3. Discover targets</Button>}</div>
+    {dataset && <Surface tone="inset"><b>{dataset.source.original_filename}</b><small> · {dataset.state}{dataset.analysis.record_count ? ` · ${dataset.analysis.record_count} canonical records` : ''}</small>{dataset.state === 'analyzed' && <a className="field-note" href={api.authoringSourceUrl(dataset.authoring_dataset_id)} target="_blank" rel="noreferrer">Open original DOCX</a>}</Surface>}
+    {markdown && <DisclosureSection title="Canonical source context"><pre className="canonical-spec">{markdown}</pre></DisclosureSection>}
+    {targets.length > 0 && <DisclosureSection title="4. Candidate review" open><p className="field-note">Choose a structure-first target. Basic view intentionally hides internal object IDs and digests.</p><div className="authoring-grid"><label><span>Question</span><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Write or paste a source-grounded question" /></label><label><span>Proposed answer</span><input value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="Resolved independently from the frozen source" /></label></div><div className="resource-list resource-list--compact">{targets.slice(0, 30).map((target) => <article key={target.target_id}><div><b>{target.capability.replaceAll('_', ' ')}</b><small>{target.retrieval_route.join(' → ')}{target.flags.length ? ` · ${target.flags.join(', ')}` : ''}</small></div><Button disabled={busy || !question.trim() || !answer.trim() || target.flags.includes('partial_source_representation')} onClick={() => void createAndResolve(target)}>Create candidate</Button></article>)}</div></DisclosureSection>}
+    {candidates.length > 0 && <DisclosureSection title="5. Mandatory human review" open><label><span>Reviewer</span><input value={reviewer} onChange={(event) => setReviewer(event.target.value)} /></label><div className="resource-list resource-list--compact">{candidates.map((candidate) => <article key={candidate.candidate_id}><div><b>{candidate.question}</b><small>{candidate.state} · gates: {candidate.gates.map((gate) => gate.status).join(', ') || 'not resolved'}</small>{candidate.state === 'review_required' && <input aria-label="Edited question" value={edits[candidate.candidate_id] ?? candidate.question} onChange={(event) => setEdits((current) => ({ ...current, [candidate.candidate_id]: event.target.value }))} />}</div>{candidate.state === 'review_required' && <div className="authoring-actions"><Button onClick={() => void edit(candidate)} disabled={busy || !edits[candidate.candidate_id] || edits[candidate.candidate_id] === candidate.question}>Save edit</Button><Button onClick={() => void review(candidate, 'reject')} disabled={busy}>Reject</Button><Button variant="primary" onClick={() => void review(candidate, 'accept')} disabled={busy}>Accept Gold</Button></div>}</article>)}</div></DisclosureSection>}
+    {candidates.some((candidate) => candidate.state === 'approved') && <DisclosureSection title="6. Export / Register" open><div className="authoring-grid"><label><span>Dataset name</span><input value={name} onChange={(event) => setName(event.target.value)} /></label><label><span>Version</span><input value={version} onChange={(event) => setVersion(event.target.value)} /></label></div><div className="authoring-actions"><Button variant="primary" disabled={busy || !name.trim() || !version.trim()} onClick={() => void exportBundle()}>Export two views</Button>{exported && <><Button disabled={busy} onClick={() => void register('canonical-text')}>Register canonical-text</Button><Button disabled={busy} onClick={() => void register('native-docx')}>Register native-DOCX diagnostic</Button></>}</div></DisclosureSection>}
+    {message && <p className="product-message"><CheckCircle2 size={15} /> {message}</p>}{error && <ErrorBanner message={error} />}</DisclosureSection>
 }
 
 export function ProductSystemsPage({ legacy }: { legacy: SystemSummary[] }) {

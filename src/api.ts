@@ -12,6 +12,11 @@ import type {
   SystemConnectionPayload,
   DatasetDraft,
   EvaluationDraft,
+  AuthoringDataset,
+  AuthoringTarget,
+  AuthoringCandidate,
+  AuthoringResolution,
+  AuthoringExport,
 } from './types'
 
 const API_ROOT = (import.meta.env.VITE_RAG_EVAL_API || 'http://127.0.0.1:8765/api/v1').replace(/\/$/, '')
@@ -76,6 +81,23 @@ export const api = {
   }),
   validateDatasetDraft: (draftId: string) => request<{ valid: boolean }>(`/product/dataset-drafts/${encodeURIComponent(draftId)}/validate`, { method: 'POST' }),
   sealDatasetDraft: (draftId: string) => request<{ bundle_id: string; sealed: boolean }>(`/product/dataset-drafts/${encodeURIComponent(draftId)}/seal`, { method: 'POST' }),
+  authoringDatasets: () => request<AuthoringDataset[]>('/authoring/datasets'),
+  uploadAuthoringDocument: async (file: File) => {
+    const response = await fetch(`${API_ROOT}/authoring/datasets`, { method: 'POST', headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'X-RAG-EVAL-Filename': file.name }, body: file })
+    if (!response.ok) throw new Error(await response.text())
+    return response.json() as Promise<AuthoringDataset>
+  },
+  analyzeAuthoringDocument: (datasetId: string) => request<AuthoringDataset>(`/authoring/datasets/${encodeURIComponent(datasetId)}/analyze`, { method: 'POST' }),
+  authoringCanonical: (datasetId: string) => request<{ view: Record<string, unknown>; execution_markdown: string }>(`/authoring/datasets/${encodeURIComponent(datasetId)}/canonical`),
+  authoringSourceUrl: (datasetId: string) => `${API_ROOT}/authoring/datasets/${encodeURIComponent(datasetId)}/source`,
+  authoringTargets: (datasetId: string) => request<AuthoringTarget[]>(`/authoring/datasets/${encodeURIComponent(datasetId)}/targets`),
+  discoverAuthoringTargets: (datasetId: string, provider: 'rule' | 'ollama' | 'remote' = 'ollama') => request<AuthoringTarget[]>(`/authoring/datasets/${encodeURIComponent(datasetId)}/targets/discover`, { method: 'POST', body: JSON.stringify({ provider }) }),
+  authoringCandidates: (datasetId: string) => request<AuthoringCandidate[]>(`/authoring/datasets/${encodeURIComponent(datasetId)}/candidates`),
+  createAuthoringQuestion: (datasetId: string, targetId: string, question: string) => request<AuthoringCandidate>(`/authoring/datasets/${encodeURIComponent(datasetId)}/candidates`, { method: 'POST', body: JSON.stringify({ target_id: targetId, question }) }),
+  resolveAuthoringCandidate: (datasetId: string, candidateId: string, resolution: AuthoringResolution) => request<AuthoringCandidate>(`/authoring/datasets/${encodeURIComponent(datasetId)}/candidates/${encodeURIComponent(candidateId)}/resolve`, { method: 'POST', body: JSON.stringify({ resolution }) }),
+  reviewAuthoringCandidate: (datasetId: string, candidateId: string, decision: 'accept' | 'edit' | 'reject', reviewer: string, note = '', editedQuestion?: string) => request<AuthoringCandidate>(`/authoring/datasets/${encodeURIComponent(datasetId)}/candidates/${encodeURIComponent(candidateId)}/review`, { method: 'POST', body: JSON.stringify({ decision, reviewer, note, ...(editedQuestion === undefined ? {} : { edited_question: editedQuestion }) }) }),
+  exportAuthoringDataset: (datasetId: string, name: string, version: string) => request<AuthoringExport>(`/authoring/datasets/${encodeURIComponent(datasetId)}/exports`, { method: 'POST', body: JSON.stringify({ name, version }) }),
+  registerAuthoringExport: (datasetId: string, releaseId: string, view: 'canonical-text' | 'native-docx') => request<{ bundle_id: string; export: AuthoringExport }>(`/authoring/datasets/${encodeURIComponent(datasetId)}/exports/${encodeURIComponent(releaseId)}/register/${encodeURIComponent(view)}`, { method: 'POST' }),
   evaluationDrafts: () => request<EvaluationDraft[]>('/product/evaluation-drafts'),
   saveEvaluationDraft: (draft: EvaluationDraft) => request<EvaluationDraft>('/product/evaluation-drafts', {
     method: 'POST', body: JSON.stringify(draft),

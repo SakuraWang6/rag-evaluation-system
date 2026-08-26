@@ -172,6 +172,74 @@ export interface DatasetDraft {
   cases: DatasetDraftCase[]
 }
 
+export interface AuthoringDataset {
+  authoring_dataset_id: string
+  state: string
+  created_at: string
+  updated_at: string
+  source: { original_filename: string; sha256: string; size_bytes: number }
+  document_id: string | null
+  canonical_digest: string | null
+  analysis: { record_count?: number; records_by_status?: Record<string, number>; records_by_object_type?: Record<string, number> }
+  failure: string | null
+}
+
+export interface AuthoringTarget {
+  target_id: string
+  capability: string
+  source_object_ids: string[]
+  retrieval_route: string[]
+  distractor_object_ids: string[]
+  confidence: number
+  discovery_method: string
+  flags: string[]
+  rationale: string
+}
+
+export interface AuthoringEvidence {
+  source_object_id: string
+  required_group?: string
+  near_miss_object_ids?: string[]
+}
+
+export interface AuthoringResolution {
+  answer_kind: 'text' | 'numeric' | 'formula' | 'set' | 'abstain'
+  canonical_answer?: string | string[] | null
+  accepted_values?: string[]
+  locale?: string | null
+  unit?: string | null
+  tolerance?: number | null
+  evidence?: AuthoringEvidence[]
+  dependency_graph?: Array<Record<string, unknown>>
+  negative_scope_object_ids?: string[]
+  negative_rationale?: string | null
+  resolution_method?: string
+  provider_metadata?: Record<string, unknown>
+}
+
+export interface AuthoringCandidate {
+  candidate_id: string
+  target_id: string
+  version: number
+  state: string
+  question: string
+  language: string
+  source_object_ids: string[]
+  generation_method: string
+  answer_evidence: AuthoringResolution | null
+  gates: Array<{ gate_id: string; status: 'PASS' | 'FLAG' | 'FAIL'; message: string }>
+}
+
+export interface AuthoringExport {
+  release_id: string
+  name: string
+  version: string
+  approved_case_ids: string[]
+  views: Record<string, string>
+  blocked_cases: Array<Record<string, unknown>>
+  registered_bundle_ids: Record<string, string>
+}
+
 export interface EvaluationDraft {
   draft_id?: string
   mode: 'basic' | 'advanced'
