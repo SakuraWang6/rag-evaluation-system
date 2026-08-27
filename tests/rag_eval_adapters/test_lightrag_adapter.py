@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from rag_eval.contracts.adapter import PrepareContext
@@ -9,14 +10,31 @@ from rag_eval_lightrag_adapter.adapter import (
     LightRAGAdapter,
     build_server_environment,
     exact_ollama_model_digest,
+    exception_diagnostic,
     ingestion_identity,
     normalize_ollama_digest,
     redact_runtime_endpoints_in_logs,
     resolve_config,
-    redact_runtime_endpoints_in_log,
     safe_runtime_identity,
     safe_source_name,
 )
+
+
+class FakeResponse:
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, str]:
+        return {"track_id": "track-1"}
+
+
+class CapturingClient:
+    def __init__(self) -> None:
+        self.requests: list[dict] = []
+
+    async def post(self, path: str, **kwargs):
+        self.requests.append({"path": path, **kwargs})
+        return FakeResponse()
 
 
 def test_ollama_bare_digest_is_normalized_for_formal_model_lock() -> None:
@@ -25,6 +43,13 @@ def test_ollama_bare_digest_is_normalized_for_formal_model_lock() -> None:
     assert normalize_ollama_digest(bare) == f"sha256:{bare}"
     assert normalize_ollama_digest(f"sha256:{bare}") == f"sha256:{bare}"
     assert normalize_ollama_digest("not-a-digest") is None
+
+
+def test_message_less_transport_error_is_never_reported_as_empty() -> None:
+    class ReadTimeout(Exception):
+        pass
+
+    assert exception_diagnostic(ReadTimeout()) == "ReadTimeout: <no message>"
 
 
 def test_ollama_resolver_requires_an_exact_requested_tag() -> None:
@@ -186,3 +211,21 @@ async def test_prepare_rejects_nonempty_workdir(tmp_path) -> None:
             {},
         )
     adapter._start_server.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_naive_document_upload_skips_unneeded_kg_extraction() -> None:
+    adapter = LightRAGAdapter()
+    adapter._config = resolve_config({})
+    adapter._server = Mock()
+    adapter._server.poll.return_value = None
+    client = CapturingClient()
+    adapter._client = client  # type: ignore[assignment]
+
+    fixture = Path(__file__).parents[1] / "fixtures" / "canonical_naive_minimal.md"
+    result = await adapter._post_document(
+        "synthetic-source.txt", fixture.read_bytes(), "text/markdown"
+    )
+
+    assert result == {"track_id": "track-1"}
+    assert client.requests[0]["data"] == {"process_options": "!"}

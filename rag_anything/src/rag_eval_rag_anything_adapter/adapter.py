@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import importlib.metadata
 import importlib.util
 import json
 import os
 import subprocess
+from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
+from threading import RLock
 from time import monotonic
 from typing import Any, Literal, Protocol
 from urllib.parse import urlsplit, urlunsplit
@@ -33,6 +36,7 @@ from rag_eval.worker.app import WorkerDefinition
 
 ADAPTER_VERSION = "0.1.0"
 SUPPORTED_RAG_ANYTHING_MAJOR_MINOR = "1.3"
+INGESTION_LIVENESS_FILE = "ingestion-liveness.json"
 CAPABILITIES = AdapterCapabilities(
     answer=True,
     raw_retrieval=False,
@@ -77,6 +81,14 @@ class GenerationConfig(BaseModel):
     user_prompt: str | None = None
 
 
+class NativeLivenessConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    parse_timeout_seconds: float = Field(default=1200.0, gt=0)
+    stall_timeout_seconds: float = Field(default=120.0, gt=0)
+    poll_interval_seconds: float = Field(default=2.0, gt=0)
+
+
 class RAGAnythingAdapterConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -90,6 +102,7 @@ class RAGAnythingAdapterConfig(BaseModel):
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     model: OllamaModelConfig = Field(default_factory=OllamaModelConfig)
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
+    native_liveness: NativeLivenessConfig = Field(default_factory=NativeLivenessConfig)
     top_k: int = Field(default=60, ge=1)
     chunk_top_k: int = Field(default=20, ge=1)
     max_context_tokens: int = Field(default=12000, ge=1)
@@ -116,7 +129,12 @@ class Runtime(Protocol):
     ) -> None: ...
 
     async def process_document(
-        self, path: Path, *, document_id: str, file_name: str
+        self,
+        path: Path,
+        *,
+        document_id: str,
+        file_name: str,
+        progress: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None: ...
 
     async def query(
@@ -138,6 +156,7 @@ class OfficialRAGAnythingRuntime:
         model_digests: dict[str, str],
         prompt_digests: dict[str, str],
         output_dir: Path,
+        parse_timeout_seconds: float,
     ) -> None:
         self.rag = rag
         self.system_version = system_version
@@ -145,16 +164,16 @@ class OfficialRAGAnythingRuntime:
         self.model_digests = model_digests
         self.prompt_digests = prompt_digests
         self.output_dir = output_dir
+        self.parse_timeout_seconds = parse_timeout_seconds
 
     @classmethod
     async def create(
         cls, config: RAGAnythingAdapterConfig, work_dir: Path, run_id: str
     ) -> OfficialRAGAnythingRuntime:
         force_run_scoped_environment(work_dir)
-        from raganything import RAGAnything, RAGAnythingConfig
-
         from lightrag.llm.ollama import ollama_embed, ollama_model_complete
         from lightrag.utils import EmbeddingFunc
+        from raganything import RAGAnything, RAGAnythingConfig
 
         installed_version = distribution_version("raganything")
         if not installed_version.startswith(f"{SUPPORTED_RAG_ANYTHING_MAJOR_MINOR}."):
@@ -227,6 +246,7 @@ class OfficialRAGAnythingRuntime:
                 "lightrag_prompt_sources": package_prompt_digest("lightrag"),
             },
             output_dir=output_dir,
+            parse_timeout_seconds=config.native_liveness.parse_timeout_seconds,
         )
 
     async def insert_text(
@@ -240,15 +260,28 @@ class OfficialRAGAnythingRuntime:
         )
 
     async def process_document(
-        self, path: Path, *, document_id: str, file_name: str
+        self,
+        path: Path,
+        *,
+        document_id: str,
+        file_name: str,
+        progress: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None:
-        await self.rag.process_document_complete(
-            file_path=str(path),
-            output_dir=str(self.output_dir),
-            doc_id=document_id,
-            file_name=file_name,
-            display_stats=False,
-        )
+        callback = processing_progress_callback(progress) if progress is not None else None
+        if callback is not None:
+            self.rag.callback_manager.register(callback)
+        try:
+            await self.rag.process_document_complete(
+                file_path=str(path),
+                output_dir=str(self.output_dir),
+                doc_id=document_id,
+                file_name=file_name,
+                display_stats=False,
+                timeout=self.parse_timeout_seconds,
+            )
+        finally:
+            if callback is not None:
+                self.rag.callback_manager.unregister(callback)
 
     async def query(
         self, question: str, *, mode: str, generate_answer: bool, options: dict[str, Any]
@@ -268,6 +301,164 @@ class OfficialRAGAnythingRuntime:
         await self.rag.finalize_storages()
 
 
+def processing_progress_callback(
+    progress: Callable[[str, dict[str, Any]], None],
+) -> Any:
+    """Bridge RAG-Anything's public callbacks to privacy-safe stage updates."""
+
+    from raganything.callbacks import ProcessingCallback
+
+    class ProgressCallback(ProcessingCallback):
+        def on_parse_start(self, **_kwargs: Any) -> None:
+            progress("parsing", {"event": "parse_start"})
+
+        def on_parse_complete(
+            self, content_blocks: int = 0, duration_seconds: float = 0.0, **_kwargs: Any
+        ) -> None:
+            progress(
+                "indexing",
+                {
+                    "event": "parse_complete",
+                    "content_blocks": content_blocks,
+                    "parse_duration_seconds": duration_seconds,
+                },
+            )
+
+        def on_text_insert_start(self, text_length: int = 0, **_kwargs: Any) -> None:
+            progress(
+                "indexing",
+                {"event": "text_insert_start", "text_length": text_length},
+            )
+
+        def on_multimodal_start(self, item_count: int = 0, **_kwargs: Any) -> None:
+            progress(
+                "indexing",
+                {"event": "multimodal_start", "item_count": item_count},
+            )
+
+        def on_document_complete(self, duration_seconds: float = 0.0, **_kwargs: Any) -> None:
+            progress(
+                "completed",
+                {"event": "document_complete", "duration_seconds": duration_seconds},
+            )
+
+        def on_document_error(
+            self,
+            error: BaseException | str = "",
+            stage: str = "",
+            **_kwargs: Any,
+        ) -> None:
+            exc_type = type(error).__name__ if isinstance(error, BaseException) else "Error"
+            progress(
+                "failed",
+                {
+                    "event": "document_error",
+                    "failed_stage": stage or "unknown",
+                    "exception_type": exc_type,
+                    "message": str(error).strip() or "<no message>",
+                },
+            )
+
+    return ProgressCallback()
+
+
+class IngestionLiveness:
+    """Persist current ingestion stage without retaining source content or names."""
+
+    def __init__(self, path: Path, *, stall_timeout_seconds: float) -> None:
+        self.path = path
+        self.stall_timeout_seconds = stall_timeout_seconds
+        self._lock = RLock()
+        self._last_progress_mono = monotonic()
+        self._activity: tuple[int, int, int, float] | None = None
+        self._record: dict[str, Any] = {
+            "schema_version": 1,
+            "stage": "idle",
+            "active_stage": None,
+            "document_id": None,
+            "started_at": None,
+            "updated_at": utc_now(),
+            "last_progress_at": None,
+            "progress_seq": 0,
+            "details": {},
+            "terminal": False,
+            "cancellation_confirmed": False,
+        }
+        self._write()
+
+    def transition(
+        self,
+        stage: str,
+        *,
+        document_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        if stage not in {
+            "idle",
+            "parsing",
+            "indexing",
+            "stalled",
+            "cancelling",
+            "cancelled",
+            "failed",
+            "completed",
+        }:
+            raise ValueError(f"unknown ingestion liveness stage: {stage}")
+        with self._lock:
+            now = utc_now()
+            if self._record["started_at"] is None and stage in {"parsing", "indexing"}:
+                self._record["started_at"] = now
+            if stage in {"parsing", "indexing"}:
+                self._record["active_stage"] = stage
+                self._last_progress_mono = monotonic()
+                self._record["last_progress_at"] = now
+                self._record["progress_seq"] += 1
+            self._record.update(
+                {
+                    "stage": stage,
+                    "updated_at": now,
+                    "terminal": stage in {"cancelled", "failed", "completed"},
+                    "details": dict(details or {}),
+                }
+            )
+            if document_id is not None:
+                self._record["document_id"] = document_id
+            self._write()
+
+    def observe_activity(
+        self,
+        activity: tuple[int, int, int, float],
+        *,
+        details: dict[str, Any],
+    ) -> None:
+        with self._lock:
+            stage = str(self._record["stage"])
+            active_stage = str(self._record.get("active_stage") or "parsing")
+            if stage not in {"parsing", "indexing", "stalled"}:
+                return
+            if self._activity != activity:
+                self._activity = activity
+                self.transition(active_stage, details={"event": "activity", **details})
+            elif monotonic() - self._last_progress_mono >= self.stall_timeout_seconds:
+                self.transition(
+                    "stalled",
+                    details={"event": "no_observed_activity", **details},
+                )
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            return json.loads(json.dumps(self._record))
+
+    def _write(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
+            json.dumps(self._record, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.path)
+
+
 class RAGAnythingAdapter:
     def __init__(self) -> None:
         self._context: PrepareContext | None = None
@@ -276,6 +467,7 @@ class RAGAnythingAdapter:
         self._closed = False
         self._index_fingerprint: str | None = None
         self._work_dir: Path | None = None
+        self._liveness: IngestionLiveness | None = None
 
     async def prepare(
         self, context: PrepareContext, config: dict[str, Any]
@@ -297,6 +489,10 @@ class RAGAnythingAdapter:
         self._context = context
         self._config = effective
         self._work_dir = work_dir
+        self._liveness = IngestionLiveness(
+            work_dir / INGESTION_LIVENESS_FILE,
+            stall_timeout_seconds=effective.native_liveness.stall_timeout_seconds,
+        )
         self._runtime = await OfficialRAGAnythingRuntime.create(
             effective, work_dir, context.run_id
         )
@@ -323,10 +519,15 @@ class RAGAnythingAdapter:
     async def health(self) -> HealthReport:
         if self._closed:
             return HealthReport(status="closed", ready=False)
+        liveness = self._liveness.snapshot() if self._liveness is not None else None
+        stage = str((liveness or {}).get("stage") or "idle")
+        status = stage if stage not in {"idle", "completed"} else (
+            "ready" if self._runtime is not None else "initialized"
+        )
         return HealthReport(
-            status="ready" if self._runtime is not None else "initialized",
-            ready=True,
-            details={"prepared": self._runtime is not None},
+            status=status,
+            ready=stage not in {"stalled", "failed", "cancelled"},
+            details={"prepared": self._runtime is not None, "ingestion": liveness},
         )
 
     async def ingest(self, documents: list[DocumentInput]) -> IngestionResult:
@@ -346,17 +547,64 @@ class RAGAnythingAdapter:
             digest.update(b"\0")
             file_name = str(document.metadata.get("original_name") or path.name)
             if document.content is not None:
-                await runtime.insert_text(
-                    document.content,
+                self._set_liveness(
+                    "indexing",
                     document_id=document.document_id,
-                    file_name=file_name,
+                    details={"execution_view": "canonical-text"},
                 )
+                try:
+                    await runtime.insert_text(
+                        document.content,
+                        document_id=document.document_id,
+                        file_name=file_name,
+                    )
+                except Exception as exc:
+                    self._set_liveness(
+                        "failed",
+                        document_id=document.document_id,
+                        details=exception_details(exc, stage="indexing"),
+                    )
+                    raise
             else:
-                await runtime.process_document(
-                    path,
+                self._set_liveness(
+                    "parsing",
                     document_id=document.document_id,
-                    file_name=file_name,
+                    details={"execution_view": "native-docx", "event": "submitted"},
                 )
+                monitor_stop = asyncio.Event()
+                monitor = asyncio.create_task(
+                    self._monitor_native_activity(monitor_stop),
+                    name=f"native-liveness-{document.document_id}",
+                )
+                try:
+                    await runtime.process_document(
+                        path,
+                        document_id=document.document_id,
+                        file_name=file_name,
+                        progress=self._native_progress,
+                    )
+                except asyncio.CancelledError:
+                    self._set_liveness(
+                        "cancelling",
+                        document_id=document.document_id,
+                        details={"stage": self._active_liveness_stage()},
+                    )
+                    raise
+                except Exception as exc:
+                    self._set_liveness(
+                        "failed",
+                        document_id=document.document_id,
+                        details=exception_details(
+                            exc, stage=self._active_liveness_stage()
+                        ),
+                    )
+                    raise
+                finally:
+                    monitor_stop.set()
+                    await monitor
+        self._set_liveness(
+            "completed", details={"ingested_documents": len(documents)}
+        )
         self._index_fingerprint = digest.hexdigest()
         return IngestionResult(
             ingested_documents=len(documents),
@@ -420,6 +668,47 @@ class RAGAnythingAdapter:
         if runtime is not None:
             await runtime.close()
 
+    def _native_progress(self, stage: str, details: dict[str, Any]) -> None:
+        self._set_liveness(stage, details=details)
+
+    async def _monitor_native_activity(self, stop: asyncio.Event) -> None:
+        assert self._config is not None
+        while not stop.is_set():
+            activity = native_activity_snapshot(self._require_work_dir())
+            details = {
+                "output_files": activity[0],
+                "output_bytes": activity[1],
+                "child_processes": activity[2],
+                "child_cpu_seconds": activity[3],
+            }
+            if self._liveness is not None:
+                self._liveness.observe_activity(activity, details=details)
+            try:
+                await asyncio.wait_for(
+                    stop.wait(),
+                    timeout=self._config.native_liveness.poll_interval_seconds,
+                )
+            except TimeoutError:
+                pass
+
+    def _active_liveness_stage(self) -> str:
+        if self._liveness is None:
+            return "unknown"
+        snapshot = self._liveness.snapshot()
+        return str(snapshot.get("active_stage") or snapshot.get("stage") or "unknown")
+
+    def _set_liveness(
+        self,
+        stage: str,
+        *,
+        document_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        if self._liveness is not None:
+            self._liveness.transition(
+                stage, document_id=document_id, details=details or {}
+            )
+
     def _require_prepared(
         self,
     ) -> tuple[Runtime, RAGAnythingAdapterConfig, PrepareContext]:
@@ -433,6 +722,94 @@ class RAGAnythingAdapter:
         if self._work_dir is None:
             raise RuntimeError("adapter work directory is not initialized")
         return self._work_dir
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def exception_details(exc: BaseException, *, stage: str) -> dict[str, str]:
+    return {
+        "failed_stage": stage,
+        "exception_type": type(exc).__name__,
+        "message": str(exc).strip() or "<no message>",
+    }
+
+
+def native_activity_snapshot(work_dir: Path) -> tuple[int, int, int, float]:
+    """Return content-free filesystem and child-CPU liveness counters."""
+
+    file_count = 0
+    total_bytes = 0
+    for name in ("parser-output", "storage"):
+        root = work_dir / name
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                size = path.stat().st_size
+            except OSError:
+                continue
+            file_count += 1
+            total_bytes += size
+    descendants = descendant_cpu_times(os.getpid())
+    return file_count, total_bytes, len(descendants), round(sum(descendants), 3)
+
+
+def descendant_cpu_times(parent_pid: int) -> list[float]:
+    """Inspect descendants without persisting their commands or source paths."""
+
+    try:
+        result = subprocess.run(
+            ["ps", "-axo", "pid=,ppid=,time="],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return []
+    if result.returncode != 0:
+        return []
+    rows: list[tuple[int, int, float]] = []
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) != 3:
+            continue
+        try:
+            rows.append((int(fields[0]), int(fields[1]), parse_cpu_time(fields[2])))
+        except ValueError:
+            continue
+    descendants: set[int] = set()
+    frontier = {parent_pid}
+    while frontier:
+        children = {pid for pid, ppid, _cpu in rows if ppid in frontier}
+        children -= descendants
+        if not children:
+            break
+        descendants.update(children)
+        frontier = children
+    return [cpu for pid, _ppid, cpu in rows if pid in descendants]
+
+
+def parse_cpu_time(value: str) -> float:
+    """Parse the portable ps TIME form: [[dd-]hh:]mm:ss."""
+
+    days = 0
+    clock = value
+    if "-" in clock:
+        day_text, clock = clock.split("-", 1)
+        days = int(day_text)
+    fields = clock.split(":")
+    if len(fields) == 2:
+        hours = 0
+        minutes, seconds = fields
+    elif len(fields) == 3:
+        hours, minutes, seconds = fields
+    else:
+        raise ValueError(f"unsupported ps TIME value: {value}")
+    return days * 86400 + int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
 def verified_source_path(source_dir: Path, document: DocumentInput) -> Path:

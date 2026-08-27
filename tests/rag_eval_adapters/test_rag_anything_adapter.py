@@ -5,16 +5,20 @@ import os
 from pathlib import Path
 
 import pytest
+import rag_eval_rag_anything_adapter.adapter as adapter_module
 from rag_eval.contracts.adapter import DocumentInput, PrepareContext, RAGQuery
 from rag_eval_rag_anything_adapter.adapter import (
     CAPABILITIES,
+    INGESTION_LIVENESS_FILE,
+    IngestionLiveness,
     OfficialRAGAnythingRuntime,
     RAGAnythingAdapter,
     exact_ollama_model_digest,
-    resolve_config,
     force_run_scoped_environment,
     model_artifacts,
     normalize_ollama_digest,
+    parse_cpu_time,
+    resolve_config,
     verified_source_path,
 )
 
@@ -59,8 +63,11 @@ class FakeRuntime:
         self.text_documents.append((content, document_id, file_name))
 
     async def process_document(
-        self, path: Path, *, document_id: str, file_name: str
+        self, path: Path, *, document_id: str, file_name: str, progress=None
     ) -> None:
+        if progress is not None:
+            progress("parsing", {"event": "parse_start"})
+            progress("indexing", {"event": "parse_complete", "content_blocks": 1})
         self.binary_documents.append((path, document_id, file_name))
 
     async def query(
@@ -122,6 +129,7 @@ def test_config_is_strict_and_model_identity_is_explicit() -> None:
     assert config.model.llm_model == "qwen3:4b-instruct"
     assert config.model.embedding_model == "bge-m3:latest"
     assert config.query_mode == "mix"
+    assert config.native_liveness.parse_timeout_seconds == 1200.0
     with pytest.raises(ValueError, match="chunk overlap"):
         resolve_config(
             {
@@ -205,7 +213,42 @@ async def test_text_and_binary_ingestion_use_source_only_sandbox(
         ("The controlled latency is 42 ms.", "doc-text", "facts.txt")
     ]
     assert runtime.binary_documents[0][1:] == ("doc-pdf", "report.pdf")
+    status = adapter._liveness.snapshot()
+    assert status["stage"] == "completed"
+    assert status["details"]["ingested_documents"] == 2
+    assert (Path(prepare_context.work_dir) / INGESTION_LIVENESS_FILE).is_file()
     await adapter.close()
+
+
+def test_native_liveness_distinguishes_stages_and_stall(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    clock = [10.0]
+    monkeypatch.setattr(adapter_module, "monotonic", lambda: clock[0])
+    liveness = IngestionLiveness(
+        tmp_path / INGESTION_LIVENESS_FILE, stall_timeout_seconds=5.0
+    )
+
+    liveness.transition("parsing", document_id="synthetic-document")
+    liveness.observe_activity((0, 0, 1, 0.1), details={"child_processes": 1})
+    assert liveness.snapshot()["stage"] == "parsing"
+
+    clock[0] += 6.0
+    liveness.observe_activity((0, 0, 1, 0.1), details={"child_processes": 1})
+    assert liveness.snapshot()["stage"] == "stalled"
+    assert liveness.snapshot()["active_stage"] == "parsing"
+
+    liveness.transition("indexing", details={"event": "parse_complete"})
+    assert liveness.snapshot()["stage"] == "indexing"
+    liveness.transition("cancelled", details={"termination_confirmed": True})
+    assert liveness.snapshot()["stage"] == "cancelled"
+    assert liveness.snapshot()["terminal"] is True
+
+
+def test_ps_cpu_time_parser_supports_mineru_process_formats() -> None:
+    assert parse_cpu_time("01:02") == 62.0
+    assert parse_cpu_time("01:02:03") == 3723.0
+    assert parse_cpu_time("2-01:02:03") == 176523.0
 
 
 @pytest.mark.asyncio

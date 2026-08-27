@@ -11,10 +11,11 @@ import os
 import socket
 import subprocess
 import sys
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
-from typing import Any, Iterable, Literal
+from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -185,6 +186,11 @@ class LightRAGAdapter:
         return PreparedSystem(
             effective_config={
                 **effective.model_dump(mode="json"),
+                "ingestion_policy": {
+                    "process_options": "!",
+                    "kg_extraction": False,
+                    "reason": "naive_query_mode_uses_chunk_embeddings_only",
+                },
                 "runtime": runtime_identity,
                 "model_digests": model_digests(model_artifacts),
                 "model_artifacts": model_artifacts,
@@ -254,7 +260,11 @@ class LightRAGAdapter:
                 await self._wait_for_ingestion(track_id)
             except Exception as exc:  # noqa: BLE001
                 failures.append(
-                    {"document_id": document.document_id, "message": str(exc)}
+                    {
+                        "document_id": document.document_id,
+                        "exception_type": type(exc).__name__,
+                        "message": exception_diagnostic(exc),
+                    }
                 )
                 break
         if failures:
@@ -481,7 +491,12 @@ class LightRAGAdapter:
         response = await self._client.post(
             "/documents/upload",
             files={"file": (filename, content, mime_type)},
-            data={"process_options": ""},
+            # The adapter exposes only LightRAG's naive query mode.  Naive
+            # retrieval consumes chunk embeddings and never reads the KG, so
+            # entity/relation extraction is unnecessary ingestion work.  The
+            # documented `!` option keeps chunk insertion while skipping KG
+            # extraction and its unrelated LLM failure surface.
+            data={"process_options": "!"},
             timeout=config.ingestion_timeout_seconds,
         )
         response.raise_for_status()
@@ -535,6 +550,13 @@ class LightRAGAdapter:
         if self._work_dir is None:
             raise RuntimeError("adapter work directory is not initialized")
         return self._work_dir
+
+
+def exception_diagnostic(exc: BaseException) -> str:
+    """Return a non-empty diagnostic without discarding the exception type."""
+
+    message = str(exc).strip() or "<no message>"
+    return f"{type(exc).__name__}: {message}"
 
 
 def build_server_environment(
@@ -628,6 +650,7 @@ def redact_runtime_endpoints_in_logs(directory: Path, values: Iterable[str]) -> 
 
 def ingestion_identity(config: LightRAGAdapterConfig) -> dict[str, Any]:
     return {
+        "process_options": "!",
         "chunking": config.chunking.model_dump(mode="json"),
         "profile": config.profile,
         "ranking_strategy": config.ranking_strategy,
