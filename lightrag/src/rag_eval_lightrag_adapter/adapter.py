@@ -32,8 +32,18 @@ from rag_eval.contracts.adapter import (
     RAGResult,
     ResetResult,
 )
+from rag_eval.contracts.dataset import ObjectLocator, TableCellLocator
 from rag_eval.contracts.wire import HandshakeResponse
 from rag_eval.worker.app import WorkerDefinition
+
+from rag_eval_lightrag_adapter.canonical_provenance import (
+    CanonicalDocumentMap,
+    build_provenance_manifest,
+    load_canonical_document_map,
+    normalize_source_span,
+    sha256_text,
+    write_provenance_manifest,
+)
 
 ADAPTER_VERSION = "0.1.0"
 CAPABILITIES = AdapterCapabilities(
@@ -41,7 +51,7 @@ CAPABILITIES = AdapterCapabilities(
     raw_retrieval=True,
     ranked_retrieval=True,
     final_context=True,
-    object_provenance=False,
+    object_provenance=True,
     prompt_trace=False,
     rerank_trace=False,
     latency_breakdown=True,
@@ -156,6 +166,10 @@ class LightRAGAdapter:
         self._endpoint: str | None = None
         self._closed = False
         self._source_by_file: dict[str, str] = {}
+        self._source_text_by_document: dict[str, str] = {}
+        self._canonical_provenance_by_document: dict[str, CanonicalDocumentMap] = {}
+        self._runtime_provenance_by_chunk: dict[str, dict[str, Any]] = {}
+        self._provenance_map_digest: str | None = None
         self._index_fingerprint: str | None = None
         self._work_dir: Path | None = None
 
@@ -249,6 +263,12 @@ class LightRAGAdapter:
             digest.update(b"\0")
             source_name = safe_source_name(index, document.document_id)
             self._source_by_file[source_name] = document.document_id
+            self._source_text_by_document[document.document_id] = document.content
+            canonical = self._load_canonical_provenance(document)
+            if canonical is not None:
+                self._canonical_provenance_by_document[document.document_id] = canonical
+                digest.update(canonical.canonical_sidecar_sha256.encode())
+                digest.update(b"\0")
             try:
                 response = await self._post_document(
                     source_name,
@@ -270,7 +290,17 @@ class LightRAGAdapter:
                 break
         if failures:
             raise RuntimeError(f"LightRAG ingestion failed: {failures}")
+        provenance_manifest = self._build_ingestion_provenance_manifest()
+        provenance_path = self._require_work_dir() / "canonical-provenance-map.json"
+        self._provenance_map_digest = write_provenance_manifest(
+            provenance_path, provenance_manifest
+        )
+        self._runtime_provenance_by_chunk = provenance_manifest["runtime_chunks"]
         self._index_fingerprint = digest.hexdigest()
+        provenance_statuses: dict[str, int] = {}
+        for mapping in self._runtime_provenance_by_chunk.values():
+            status = str(mapping.get("provenance_status") or "missing")
+            provenance_statuses[status] = provenance_statuses.get(status, 0) + 1
         return IngestionResult(
             ingested_documents=len(documents),
             index_fingerprint=self._index_fingerprint,
@@ -279,6 +309,11 @@ class LightRAGAdapter:
                 "index_artifact_digest": directory_digest(
                     self._require_work_dir() / "storage"
                 ),
+                "canonical_provenance_map_digest": self._provenance_map_digest,
+                "canonical_provenance_documents": len(
+                    self._canonical_provenance_by_document
+                ),
+                "runtime_chunk_provenance": provenance_statuses,
             },
         )
 
@@ -327,6 +362,7 @@ class LightRAGAdapter:
                 "query_mode": config.query_mode,
                 "index_fingerprint": self._index_fingerprint,
                 "core_trace_schema": trace.get("schema_version"),
+                "canonical_provenance_map_digest": self._provenance_map_digest,
             },
         )
 
@@ -516,25 +552,218 @@ class LightRAGAdapter:
             file_path = str(value.get("file_path") or "")
             document_id = self._source_by_file.get(Path(file_path).name)
             item_id = str(value.get("item_id") or f"{stage}-{expected_rank}")
-            items.append(
-                RAGEvidenceItem(
-                    item_id=f"{stage}:{item_id}",
-                    rank=expected_rank,
-                    content=str(value.get("content") or ""),
-                    document_id=document_id,
-                    score=value.get("score")
-                    if isinstance(value.get("score"), (int, float))
-                    else None,
-                    native_id=str(value.get("native_id"))
-                    if value.get("native_id") is not None
-                    else None,
-                    metadata={
-                        "file_path": file_path or None,
-                        "source_type": value.get("source_type"),
-                    },
-                )
+            native_id = (
+                str(value.get("native_id"))
+                if value.get("native_id") is not None
+                else None
             )
+            content = str(value.get("content") or "")
+            mapping = (
+                self._runtime_provenance_by_chunk.get(native_id)
+                if native_id is not None
+                else None
+            )
+            trace_span = normalize_source_span(value.get("source_span"))
+            if mapping is not None:
+                document_id = (
+                    str(mapping.get("document_id") or document_id or "") or None
+                )
+            mapping_span = normalize_source_span(
+                mapping.get("source_span") if mapping is not None else None
+            )
+            mapping_valid = bool(
+                mapping is not None
+                and trace_span is not None
+                and trace_span == mapping_span
+                and mapping.get("content_sha256") == sha256_text(content)
+            )
+            canonical_objects = (
+                list(mapping.get("canonical_objects") or [])
+                if mapping_valid and mapping is not None
+                else []
+            )
+            full_objects = [
+                entry
+                for entry in canonical_objects
+                if isinstance(entry, dict) and entry.get("coverage") == "full"
+            ]
+            base_metadata = {
+                "file_path": file_path or None,
+                "source_type": value.get("source_type"),
+                "runtime_chunk_id": native_id,
+                "runtime_source_span": (
+                    {"start": trace_span[0], "end": trace_span[1]}
+                    if trace_span is not None
+                    else None
+                ),
+                "provenance_status": (
+                    mapping.get("provenance_status")
+                    if mapping_valid and mapping is not None
+                    else "missing"
+                ),
+                "provenance_reason": (
+                    mapping.get("reason")
+                    if mapping_valid and mapping is not None
+                    else "trace_ingestion_mapping_mismatch"
+                ),
+                "canonical_object_ids": [
+                    entry.get("object_id")
+                    for entry in canonical_objects
+                    if isinstance(entry, dict)
+                ],
+                "canonical_full_object_ids": [
+                    entry.get("object_id") for entry in full_objects
+                ],
+                "canonical_partial_object_ids": [
+                    entry.get("object_id")
+                    for entry in canonical_objects
+                    if isinstance(entry, dict) and entry.get("coverage") == "partial"
+                ],
+                "source_witness_sha256": (
+                    mapping.get("source_witness_sha256")
+                    if mapping_valid and mapping is not None
+                    else None
+                ),
+                "canonical_provenance_map_digest": self._provenance_map_digest,
+            }
+            if not full_objects:
+                items.append(
+                    self._evidence_item(
+                        stage=stage,
+                        item_id=item_id,
+                        expected_rank=expected_rank,
+                        content=content,
+                        document_id=document_id,
+                        native_id=native_id,
+                        score=value.get("score"),
+                        locator=None,
+                        metadata=base_metadata,
+                    )
+                )
+                continue
+            for projection, entry in enumerate(full_objects, start=1):
+                locator = entry.get("locator")
+                if not isinstance(locator, dict):
+                    continue
+                parsed_locator = (
+                    TableCellLocator.model_validate(locator)
+                    if locator.get("type") == "table_cell"
+                    else ObjectLocator.model_validate(locator)
+                )
+                projection_key = hashlib.sha256(
+                    str(entry.get("object_id") or "").encode()
+                ).hexdigest()[:12]
+                items.append(
+                    self._evidence_item(
+                        stage=stage,
+                        item_id=f"{item_id}:provenance-{projection_key}",
+                        expected_rank=expected_rank,
+                        content=content,
+                        document_id=document_id,
+                        native_id=native_id,
+                        score=value.get("score"),
+                        locator=parsed_locator,
+                        metadata={
+                            **base_metadata,
+                            "provenance_projection": projection,
+                            "provenance_projection_count": len(full_objects),
+                            "canonical_object_id": entry.get("object_id"),
+                            "canonical_object_type": entry.get("object_type"),
+                            "canonical_object_status": entry.get("status"),
+                            "canonical_object_span": entry.get("source_span"),
+                            "canonical_overlap_span": entry.get("overlap_span"),
+                            "canonical_witness_sha256": entry.get("witness_sha256"),
+                            "canonical_alignment_method": entry.get("alignment_method"),
+                        },
+                    )
+                )
         return items
+
+    @staticmethod
+    def _evidence_item(
+        *,
+        stage: str,
+        item_id: str,
+        expected_rank: int,
+        content: str,
+        document_id: str | None,
+        native_id: str | None,
+        score: Any,
+        locator: ObjectLocator | TableCellLocator | None,
+        metadata: dict[str, Any],
+    ) -> RAGEvidenceItem:
+        return RAGEvidenceItem(
+            item_id=f"{stage}:{item_id}",
+            rank=expected_rank,
+            content=content,
+            document_id=document_id,
+            locator=locator,
+            score=score if isinstance(score, (int, float)) else None,
+            native_id=native_id,
+            metadata=metadata,
+        )
+
+    def _load_canonical_provenance(
+        self, document: DocumentInput
+    ) -> CanonicalDocumentMap | None:
+        raw_path = document.metadata.get("canonical_provenance_path")
+        raw_digest = document.metadata.get("canonical_provenance_sha256")
+        if raw_path is None and raw_digest is None:
+            return None
+        if not isinstance(raw_path, str) or Path(raw_path).name != raw_path:
+            raise ValueError("canonical provenance path is not a safe staged filename")
+        # The Platform stages every manifest canonical_path for source-only
+        # workers. Only the authoring object-graph JSONL has the bridge contract;
+        # ordinary canonical text files remain valid inputs with no provenance.
+        if not raw_path.lower().endswith(".jsonl"):
+            return None
+        if (
+            not isinstance(raw_digest, str)
+            or len(raw_digest) != 64
+            or any(character not in "0123456789abcdef" for character in raw_digest)
+        ):
+            raise ValueError("canonical provenance digest is malformed")
+        if self._context is None or document.content is None:
+            raise RuntimeError("canonical provenance requires prepared text ingestion")
+        sidecar_path = Path(self._context.source_dir) / raw_path
+        if not sidecar_path.is_file():
+            raise ValueError(
+                "canonical provenance sidecar is missing from source sandbox"
+            )
+        return load_canonical_document_map(
+            document_id=document.document_id,
+            source=document.content,
+            sidecar_path=sidecar_path,
+            expected_sidecar_sha256=raw_digest,
+        )
+
+    def _build_ingestion_provenance_manifest(self) -> dict[str, Any]:
+        if not self._canonical_provenance_by_document:
+            return build_provenance_manifest(
+                documents={},
+                sources={},
+                document_by_file={},
+                stored_chunks={},
+            )
+        candidates = sorted(
+            (self._require_work_dir() / "storage").rglob("kv_store_text_chunks.json")
+        )
+        if len(candidates) != 1:
+            raise RuntimeError(
+                "LightRAG canonical provenance requires one authoritative "
+                f"text chunk store; observed {len(candidates)}"
+            )
+        payload = json.loads(candidates[0].read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or any(
+            not isinstance(value, dict) for value in payload.values()
+        ):
+            raise RuntimeError("LightRAG text chunk store is malformed")
+        return build_provenance_manifest(
+            documents=self._canonical_provenance_by_document,
+            sources=self._source_text_by_document,
+            document_by_file=self._source_by_file,
+            stored_chunks=payload,
+        )
 
     def _require_prepared(self) -> LightRAGAdapterConfig:
         if self._closed:
