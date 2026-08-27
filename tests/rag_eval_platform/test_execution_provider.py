@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rag_eval.execution_provider import DockerProvider, ExecutionRequest
+from rag_eval.execution_provider import (
+    DockerProvider,
+    ExecutionRequest,
+    record_cancelled_liveness,
+)
 from rag_eval.worker.process import WorkerCommand
 
 
@@ -103,3 +107,21 @@ def test_docker_handle_closes_adapter_and_redacts_runtime_logs(
     assert client.closed_adapter and client.closed
     assert calls == [["rm", "--force", "container-id"]]
     assert endpoint not in log.read_text(encoding="utf-8")
+
+
+def test_confirmed_cancellation_is_persisted_for_native_liveness(tmp_path: Path) -> None:
+    status = tmp_path / "ingestion-liveness.json"
+    status.write_text(
+        '{"schema_version":1,"stage":"parsing","active_stage":"parsing"}',
+        encoding="utf-8",
+    )
+
+    record_cancelled_liveness(tmp_path, confirmed=True)
+
+    import json
+
+    payload = json.loads(status.read_text(encoding="utf-8"))
+    assert payload["stage"] == "cancelled"
+    assert payload["terminal"] is True
+    assert payload["cancellation_confirmed"] is True
+    assert payload["details"]["event"] == "worker_process_group_terminated"

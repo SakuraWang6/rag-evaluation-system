@@ -10,6 +10,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
@@ -106,22 +107,35 @@ class WorkerProcess:
                 except Exception as exc:  # noqa: BLE001
                     logger.debug("best-effort worker close failed: %s", exc)
                 self.client.close()
-            if process.poll() is None:
-                try:
-                    os.killpg(process.pid, signal.SIGTERM)
-                    process.wait(timeout=grace_seconds)
-                except (ProcessLookupError, subprocess.TimeoutExpired):
-                    if process.poll() is None:
-                        try:
-                            os.killpg(process.pid, signal.SIGKILL)
-                        except ProcessLookupError:
-                            pass
-                        process.wait(timeout=grace_seconds)
-            if self._log_file is not None:
-                self._log_file.close()
-            self.process = None
-            self.client = None
-            self._log_file = None
+            terminate_process_group(process.pid, process=process, grace_seconds=grace_seconds)
+            self._clear()
+
+    def cancel(self, *, grace_seconds: float = 3.0) -> bool:
+        """Cancel immediately without waiting on an adapter `/close` request.
+
+        A native parser may be serving a long-running ingest request. Calling
+        `/close` in that state waits behind the parser and defeats cancellation,
+        so cancellation terminates the isolated process group first.
+        """
+
+        with self._lock:
+            process = self.process
+            if process is None:
+                return True
+            confirmed = terminate_process_group(
+                process.pid, process=process, grace_seconds=grace_seconds
+            )
+            if self.client is not None:
+                self.client.close()
+            self._clear()
+            return confirmed
+
+    def _clear(self) -> None:
+        if self._log_file is not None:
+            self._log_file.close()
+        self.process = None
+        self.client = None
+        self._log_file = None
 
     def __enter__(self) -> WorkerClient:
         return self.start()
@@ -134,3 +148,75 @@ def reserve_loopback_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def terminate_process_group(
+    process_group_id: int,
+    *,
+    process: subprocess.Popen[str] | None = None,
+    grace_seconds: float = 3.0,
+) -> bool:
+    """Terminate and verify a worker session, including parser descendants."""
+
+    try:
+        os.killpg(process_group_id, signal.SIGTERM)
+    except ProcessLookupError:
+        if process is not None:
+            _reap_process(process)
+        return True
+    deadline = time.monotonic() + grace_seconds
+    while time.monotonic() < deadline and process_group_has_live_members(
+        process_group_id
+    ):
+        time.sleep(0.05)
+    if process_group_has_live_members(process_group_id):
+        try:
+            os.killpg(process_group_id, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        deadline = time.monotonic() + grace_seconds
+        while time.monotonic() < deadline and process_group_has_live_members(
+            process_group_id
+        ):
+            time.sleep(0.05)
+    if process is not None:
+        _reap_process(process)
+    return not process_group_has_live_members(process_group_id)
+
+
+def process_group_has_live_members(process_group_id: int) -> bool:
+    """Treat reaped-or-waiting zombies as ended, not as live parser work."""
+
+    try:
+        result = subprocess.run(
+            ["ps", "-axo", "pgid=,stat="],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        result = None
+    if result is None or result.returncode != 0:
+        try:
+            os.killpg(process_group_id, 0)
+        except ProcessLookupError:
+            return False
+        return True
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) != 2:
+            continue
+        try:
+            pgid = int(fields[0])
+        except ValueError:
+            continue
+        if pgid == process_group_id and not fields[1].startswith("Z"):
+            return True
+    return False
+
+
+def _reap_process(process: subprocess.Popen[str]) -> None:
+    try:
+        process.wait(timeout=0.5)
+    except subprocess.TimeoutExpired:
+        pass

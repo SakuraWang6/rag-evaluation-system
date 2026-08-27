@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import signal
 import subprocess
 import threading
 import uuid
@@ -16,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from rag_eval.contracts.run import ExperimentSpec
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.runs import safe_id
+from rag_eval.worker.process import terminate_process_group
 
 
 class JobStatus(StrEnum):
@@ -195,8 +194,4 @@ def terminate_verified_worker(pid: int, run_id: str | None) -> bool:
     command = result.stdout.strip()
     if "rag_eval.worker.main" not in command or run_id not in command:
         return False
-    try:
-        os.killpg(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return False
-    return True
+    return terminate_process_group(pid)

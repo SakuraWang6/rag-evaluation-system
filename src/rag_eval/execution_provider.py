@@ -12,14 +12,14 @@ import os
 import platform
 import secrets
 import shutil
-import socket
 import subprocess
-import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
 from rag_eval.contracts.adapter import PrepareContext
+from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.worker.client import WorkerClient
 from rag_eval.worker.process import WorkerCommand, WorkerProcess, reserve_loopback_port
 
@@ -41,6 +41,7 @@ class WorkerHandle(Protocol):
 
     def prepare_context(self, context: PrepareContext) -> PrepareContext: ...
     def stop(self) -> None: ...
+    def cancel(self) -> bool: ...
 
 
 class ExecutionProvider(Protocol):
@@ -55,6 +56,7 @@ class LocalWorkerHandle:
     process: WorkerProcess
     client: WorkerClient
     worker_pid: int | None
+    work_dir: Path | None = None
     handle_id: str | None = None
     launch_metadata: dict[str, object] = None  # type: ignore[assignment]
 
@@ -68,6 +70,12 @@ class LocalWorkerHandle:
     def stop(self) -> None:
         self.process.stop()
 
+    def cancel(self) -> bool:
+        confirmed = self.process.cancel()
+        if self.work_dir is not None:
+            record_cancelled_liveness(self.work_dir, confirmed=confirmed)
+        return confirmed
+
 
 class LocalProcessProvider:
     name = "local"
@@ -79,6 +87,7 @@ class LocalProcessProvider:
             process=process,
             client=client,
             worker_pid=process.process.pid if process.process is not None else None,
+            work_dir=request.work_dir,
         )
 
     def terminate(self, handle_id: str) -> bool:
@@ -137,6 +146,13 @@ class DockerWorkerHandle:
             _docker(["rm", "--force", self.container_id], check=False)
             _redact_runtime_endpoint_logs(self.host_work, self.runtime_endpoints)
             self.client.close()
+
+    def cancel(self) -> bool:
+        result = _docker(["rm", "--force", self.container_id], check=False)
+        confirmed = isinstance(result, subprocess.CompletedProcess) and result.returncode == 0
+        record_cancelled_liveness(self.host_work, confirmed=confirmed)
+        self.client.close()
+        return confirmed
 
 
 class DockerProvider:
@@ -272,3 +288,31 @@ def _redact_runtime_endpoint_logs(directory: Path, values: tuple[str, ...]) -> N
             digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
             text = text.replace(value, f"[redacted endpoint sha256:{digest}]")
         path.write_text(text, encoding="utf-8")
+
+
+def record_cancelled_liveness(work_dir: Path, *, confirmed: bool) -> None:
+    """Finalize an adapter liveness record after its worker group has ended."""
+
+    path = work_dir / "ingestion-liveness.json"
+    if not path.is_file():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError):
+        return
+    if not isinstance(payload, dict):
+        return
+    now = datetime.now(UTC).isoformat()
+    payload.update(
+        {
+            "stage": "cancelled",
+            "updated_at": now,
+            "terminal": True,
+            "cancellation_confirmed": confirmed,
+            "details": {
+                "event": "worker_process_group_terminated",
+                "termination_confirmed": confirmed,
+            },
+        }
+    )
+    atomic_write_json(path, payload)

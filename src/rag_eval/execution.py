@@ -53,17 +53,17 @@ from rag_eval.evaluation.evidence import (
     CorpusEvidenceIndex,
 )
 from rag_eval.evaluation.failures import assess_failure
-from rag_eval.report import markdown_report
-from rag_eval.reproducibility import capture_reproducibility
-from rag_eval.storage.atomic import atomic_write_json
-from rag_eval.storage.runs import RunStore
-from rag_eval.worker.client import WorkerRemoteError
 from rag_eval.execution_provider import (
     ExecutionProvider,
     ExecutionRequest,
     LocalProcessProvider,
     WorkerHandle,
 )
+from rag_eval.report import markdown_report
+from rag_eval.reproducibility import capture_reproducibility
+from rag_eval.storage.atomic import atomic_write_json
+from rag_eval.storage.runs import RunStore
+from rag_eval.worker.client import WorkerRemoteError
 from rag_eval.worker.process import WorkerCommand
 
 
@@ -667,7 +667,7 @@ def watch_cancellation(
 ) -> None:
     while not done.wait(0.05):
         if cancelled():
-            process.stop()
+            process.cancel()
             return
 
 

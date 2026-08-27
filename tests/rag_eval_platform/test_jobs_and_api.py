@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -84,6 +85,25 @@ def test_api_keeps_system_registration_local_and_legacy_out(tmp_path: Path) -> N
     job_id = queued.json()["job_id"]
     cancelled = client.post(f"/api/v1/jobs/{job_id}/cancel")
     assert cancelled.json()["status"] == "cancelled"
+
+    liveness_dir = service.paths.runs / "native-active" / "work" / "rep-0001"
+    liveness_dir.mkdir(parents=True)
+    (liveness_dir / "ingestion-liveness.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "stage": "parsing",
+                "active_stage": "parsing",
+                "progress_seq": 2,
+                "details": {"child_processes": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+    liveness = client.get("/api/v1/runs/native-active/liveness")
+    assert liveness.status_code == 200
+    assert liveness.json()["status"] == "parsing"
+    assert liveness.json()["repetitions"][0]["progress_seq"] == 2
 
     legacy = service.paths.runs / "old-legacy"
     legacy.mkdir()

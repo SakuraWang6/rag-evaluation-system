@@ -16,19 +16,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict
 
-from rag_eval.comparison import validate_comparison
-from rag_eval.contracts.research import ComparisonSpec
-from rag_eval.contracts.run import ComparisonTier, ExperimentSpec
-from rag_eval.service import PlatformService
-from rag_eval.datasets.drafts import DatasetDraft
-from rag_eval.execution_provider import ExecutionRequest
-from rag_eval.products import EvaluationDraft, SystemConnection, canonical_experiment
-from rag_eval.authoring.storage import AuthoringStorageError
 from rag_eval.authoring.models import (
     AnswerEvidenceCandidate,
     DiscoveryMethod,
 )
+from rag_eval.authoring.storage import AuthoringStorageError
 from rag_eval.authoring.workflow import AuthoringWorkflowError
+from rag_eval.comparison import validate_comparison
+from rag_eval.contracts.research import ComparisonSpec
+from rag_eval.contracts.run import ComparisonTier, ExperimentSpec
+from rag_eval.datasets.drafts import DatasetDraft
+from rag_eval.execution_provider import ExecutionRequest
+from rag_eval.products import EvaluationDraft, SystemConnection, canonical_experiment
+from rag_eval.service import PlatformService
+from rag_eval.storage.runs import safe_id
 
 
 class APIModel(BaseModel):
@@ -447,6 +448,35 @@ def create_app(
             return service.runs.get(run_id).model_dump(mode="json")
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/v1/runs/{run_id}/liveness")
+    async def run_liveness(run_id: str) -> dict[str, Any]:
+        """Expose privacy-safe adapter stage/progress records for active runs."""
+
+        try:
+            run_dir = service.paths.runs / safe_id(run_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if not run_dir.is_dir():
+            raise HTTPException(status_code=404, detail="run does not exist")
+        repetitions: list[dict[str, Any]] = []
+        for path in sorted((run_dir / "work").glob("rep-*/ingestion-liveness.json")):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, TypeError, ValueError):
+                continue
+            if isinstance(payload, dict):
+                repetitions.append(
+                    {
+                        "repetition": path.parent.name,
+                        **payload,
+                    }
+                )
+        return {
+            "run_id": run_id,
+            "status": repetitions[0].get("stage") if repetitions else "pending",
+            "repetitions": repetitions,
+        }
 
     @app.get("/api/v1/runs/{run_id}/cases")
     async def run_cases(run_id: str) -> list[dict[str, Any]]:
