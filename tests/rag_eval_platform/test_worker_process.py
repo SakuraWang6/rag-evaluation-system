@@ -127,8 +127,9 @@ def test_process_group_cancellation_ends_parser_descendants(tmp_path: Path) -> N
     marker = tmp_path / "child-started"
     script = (
         "import pathlib,subprocess,sys,time;"
-        "subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)']);"
-        "pathlib.Path(sys.argv[1]).write_text('ready');"
+        "child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'],"
+        "start_new_session=True);"
+        "pathlib.Path(sys.argv[1]).write_text(str(child.pid));"
         "time.sleep(60)"
     )
     process = subprocess.Popen(
@@ -140,14 +141,21 @@ def test_process_group_cancellation_ends_parser_descendants(tmp_path: Path) -> N
         while not marker.exists() and time.monotonic() < deadline:
             time.sleep(0.01)
         assert marker.exists()
+        child_pid = int(marker.read_text())
         assert process_group_has_live_members(process.pid)
+        assert process_group_has_live_members(child_pid)
 
         assert terminate_process_group(process.pid, process=process, grace_seconds=1.0)
         assert not process_group_has_live_members(process.pid)
+        assert not process_group_has_live_members(child_pid)
     finally:
         if process.poll() is None:
             os.killpg(process.pid, 9)
             process.wait(timeout=1)
+        if marker.exists():
+            child_pid = int(marker.read_text())
+            if process_group_has_live_members(child_pid):
+                os.killpg(child_pid, 9)
 
 
 def test_worker_cancel_does_not_wait_for_adapter_close(
