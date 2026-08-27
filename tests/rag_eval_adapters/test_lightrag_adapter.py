@@ -76,6 +76,8 @@ def test_legacy_profile_preserves_original_defaults(tmp_path) -> None:
     assert environment["LIGHTRAG_KV_STORAGE"] == "JsonKVStorage"
     assert environment["LIGHTRAG_VECTOR_STORAGE"] == "NanoVectorDBStorage"
     assert environment["RERANK_BINDING"] == "null"
+    assert environment["OLLAMA_LLM_NUM_CTX"] == "32768"
+    assert environment["QUERY_OLLAMA_LLM_NUM_CTX"] == "32768"
 
 
 def test_structured_profile_is_explicit_and_effective(tmp_path) -> None:

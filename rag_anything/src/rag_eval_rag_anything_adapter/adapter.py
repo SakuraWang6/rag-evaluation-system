@@ -63,6 +63,7 @@ class OllamaModelConfig(BaseModel):
     embedding_model: str = Field(default="bge-m3:latest", min_length=1)
     embedding_dim: int = Field(default=1024, ge=1)
     embedding_max_tokens: int = Field(default=8192, ge=1)
+    llm_num_ctx: int = Field(default=32768, ge=1024)
     request_timeout_seconds: float = Field(default=180.0, gt=0)
 
 
@@ -225,6 +226,7 @@ class OfficialRAGAnythingRuntime:
                 "llm_model_kwargs": {
                     "host": config.model.host,
                     "timeout": config.model.request_timeout_seconds,
+                    "options": ollama_llm_options(config),
                     **{
                         key: value
                         for key, value in config.generation.model_dump(
@@ -944,6 +946,10 @@ def generation_options(
     if config.generation.user_prompt is not None:
         options.setdefault("user_prompt", config.generation.user_prompt)
     return options
+
+
+def ollama_llm_options(config: RAGAnythingAdapterConfig) -> dict[str, int]:
+    return {"num_ctx": config.model.llm_num_ctx}
 
 
 def normalize_ollama_digest(value: str | None) -> str | None:

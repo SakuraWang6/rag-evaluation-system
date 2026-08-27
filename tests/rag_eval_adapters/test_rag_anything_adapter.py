@@ -17,6 +17,7 @@ from rag_eval_rag_anything_adapter.adapter import (
     force_run_scoped_environment,
     model_artifacts,
     normalize_ollama_digest,
+    ollama_llm_options,
     parse_cpu_time,
     resolve_config,
     verified_source_path,
@@ -130,6 +131,7 @@ def test_config_is_strict_and_model_identity_is_explicit() -> None:
     assert config.model.embedding_model == "bge-m3:latest"
     assert config.query_mode == "mix"
     assert config.native_liveness.parse_timeout_seconds == 1200.0
+    assert ollama_llm_options(config) == {"num_ctx": 32768}
     with pytest.raises(ValueError, match="chunk overlap"):
         resolve_config(
             {

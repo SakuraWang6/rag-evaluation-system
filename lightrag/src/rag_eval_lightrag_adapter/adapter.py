@@ -76,6 +76,7 @@ class ModelConfig(BaseModel):
     embedding_binding: str | None = None
     embedding_model: str | None = None
     embedding_host: str | None = None
+    llm_num_ctx: int = Field(default=32768, ge=1024)
 
 
 class GenerationConfig(BaseModel):
@@ -624,6 +625,8 @@ def build_server_environment(
             "RERANK_BY_DEFAULT": bool_env(config.enable_rerank),
             "RERANK_BINDING": "cohere" if config.enable_rerank else "null",
             "RERANK_MODEL": config.rerank_model or "",
+            "OLLAMA_LLM_NUM_CTX": str(config.model.llm_num_ctx),
+            "QUERY_OLLAMA_LLM_NUM_CTX": str(config.model.llm_num_ctx),
         }
     )
     apply_model_environment(environment, config.model)
