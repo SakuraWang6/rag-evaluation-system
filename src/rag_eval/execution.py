@@ -711,6 +711,23 @@ def source_only_documents(
         content = None
         if document.mime_type.startswith("text/"):
             content = original.read_text(encoding="utf-8")
+        metadata: dict[str, object] = {"original_name": original.name}
+        if document.canonical_path is not None:
+            canonical = bundle.root / document.canonical_path
+            canonical_suffix = "".join(canonical.suffixes).lower() or ".data"
+            canonical_sandbox_path = (
+                source_dir
+                / f"canonical-{len(inputs):05d}-{safe_digest}{canonical_suffix}"
+            )
+            shutil.copyfile(canonical, canonical_sandbox_path)
+            metadata.update(
+                {
+                    "canonical_provenance_path": canonical_sandbox_path.name,
+                    "canonical_provenance_sha256": hashlib.sha256(
+                        canonical.read_bytes()
+                    ).hexdigest(),
+                }
+            )
         inputs.append(
             DocumentInput(
                 document_id=document.document_id,
@@ -718,7 +735,7 @@ def source_only_documents(
                 source_path=sandbox_path.name,
                 sha256=document.sha256,
                 mime_type=document.mime_type,
-                metadata={"original_name": original.name},
+                metadata=metadata,
             )
         )
     return inputs
