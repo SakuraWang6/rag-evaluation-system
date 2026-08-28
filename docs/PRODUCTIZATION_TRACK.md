@@ -30,17 +30,28 @@ Basic option.
 
 ## Dataset lifecycle
 
+The primary lifecycle is **Private DOCX → Authoring → reviewer-approved
+Dataset → RAG Evaluation**. The Authoring workspace is the only current
+product path for private documents. `memory_data_service` and synthetic
+generation are legacy/diagnostic assets outside this flow; they are not
+invoked by the Platform.
+
 - **Upload Bundle** accepts one Bundle ZIP over the browser API. Platform
   rejects unsafe ZIP paths and validates it in a staging directory before
   copying it into the immutable Bundle Store.
 - **Register local path** is Advanced-only. The path is resolved by the
   Platform host, not the browser, then copied into managed storage.
-- **Create Dataset** currently supports UTF-8 TXT/Markdown. The first editor is
-  intentionally small: select a TextSpan, enter Question and Gold Answer,
-  validate, then seal. Seal produces a new immutable Bundle ID.
+- **Create from Document** accepts a private DOCX and runs the Authoring flow:
+  deterministic canonicalization, structure-first targets, separate
+  question/answer/evidence resolution, validation gates, reviewer decisions,
+  and export/register of an immutable Bundle ID.
+- **Create Dataset** supports UTF-8 TXT/Markdown as a small manual/diagnostic
+  fallback: select a TextSpan, enter Question and Gold Answer, validate, then
+  seal. It is not the private-document Authoring mainline.
 
-Gold generation, automatic amendment, PDF, OCR, and Office-document import are
-not part of this track.
+Gold generation, automatic amendment, PDF, OCR, and non-DOCX Office-document
+import are not part of this track. Native-DOCX execution is diagnostic only;
+the normal evaluation view is canonical-text.
 
 ## Credentials and endpoints
 

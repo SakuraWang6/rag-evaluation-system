@@ -61,9 +61,20 @@ Native-DOCX runs are never compared as winner claims against canonical-text runs
 
 ## Product API and WebUI
 
-Authoring APIs are under `/api/v1/authoring/*`. The initial surface supports upload, list/detail, analysis, canonical-context inspection, and explicit deletion. Later endpoints add targets, candidates, reviews, export, and registration.
+Authoring APIs are under `/api/v1/authoring/*`. The current surface supports
+upload, list/detail, analysis, canonical-context inspection, source retrieval,
+explicit deletion, structure-first target discovery, target creation,
+candidate generation and resolution, reviewer actions, approved-case views,
+export, and Bundle registration. Representability profiles and export
+registration are also exposed for the review/export boundary.
 
-The Dataset product entry points are: Upload Dataset Bundle, Create Manually, and Create from Document. The document flow is Upload → Analysis → Target Discovery → Candidate Review → Dataset Summary → Export/Register. Basic UI never exposes object IDs, digests, MSES serialization, worker paths, or adapter internals; Advanced views can expose source-grounding diagnostics needed for review.
+The Dataset product entry points are: Create from Document, Upload Dataset
+Bundle, and Create Manually. The primary document flow is Upload → Analysis →
+Target Discovery → Candidate Review → Dataset Summary → Export/Register →
+Evaluation. Basic UI never exposes object IDs, digests, MSES serialization,
+worker paths, or adapter internals; Advanced views can expose
+source-grounding diagnostics needed for review. The manual TXT/Markdown editor
+is a small diagnostic fallback, not a replacement for DOCX Authoring.
 
 ## Export and sealing
 

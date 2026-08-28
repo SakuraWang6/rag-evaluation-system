@@ -1,8 +1,24 @@
 # RAG Evaluation Platform
 
-`rag_eval_platform` is a system-neutral evaluation service. It owns dataset
-bundles, evaluation semantics, immutable run artifacts, job state, comparison,
-and reports. It deliberately has no dependency on LightRAG or RAG-Anything.
+`rag_eval_platform` is a system-neutral evaluation service. It owns private
+document authoring, reviewed dataset bundles, evaluation semantics, immutable
+run artifacts, job state, comparison, and reports. It deliberately has no
+dependency on LightRAG or RAG-Anything.
+
+## Current baseline
+
+The single supported product/research mainline is:
+
+```text
+Private DOCX → Authoring → reviewer-approved Dataset → RAG Evaluation
+```
+
+Authoring preserves the private source, canonical evidence, candidate history,
+and review decisions before exporting a sealed canonical-text Bundle. The
+Bundle is then evaluated through the unchanged Worker Protocol 1.0 and
+Artifact Contract 1.2. The current diagnostic release contains 20 cases; see
+[CURRENT_STATUS.md](CURRENT_STATUS.md) for the frozen run IDs, metrics, and
+known limitations.
 
 Artifact Contract **1.2** and Wire Protocol **1.0** are frozen. A formal run
 requires verified model artifact identities: display names and mutable tags such
@@ -10,12 +26,12 @@ as `latest` are resolver inputs, never benchmark identities. See
 [Artifact Contract 1.2](docs/ARTIFACT_CONTRACT_1_2.md) and the
 [Wire Protocol Contract](CONTRACT.md).
 
-Phase 8 Golden Smoke real-model validation passed; its model lock, accepted
-runs, checksums, and independent AI review are recorded in
-[the Phase 8 validation report](docs/PHASE_8_REAL_MODEL_VALIDATION_REPORT.md).
-Future formal benchmark work additionally requires the sealed public/Gold role
-boundary in the [Blind Benchmark Protocol](docs/BLIND_BENCHMARK_PROTOCOL.md),
-case-clustered (not case×seed) analysis, and a frozen latency lifecycle.
+The current 20-case diagnostic release is separate from historical Phase 8 and
+product-acceptance reports, which are retained under
+`docs/archive/reports/` for reproducibility. Future formal benchmark work
+additionally requires the sealed public/Gold role boundary in the
+[Blind Benchmark Protocol](docs/BLIND_BENCHMARK_PROTOCOL.md), case-clustered
+(not case×seed) analysis, and a frozen latency lifecycle.
 
 RAG systems run behind isolated adapter workers. The platform communicates
 with workers through frozen Wire Protocol 1.0 over authenticated loopback HTTP/JSON.
@@ -30,8 +46,11 @@ The WebUI-first Productization Track is independent of the research Phase
 sequence. It adds versioned System Profiles, Dataset/System resources,
 Evaluation Drafts, and Local/Docker execution selection without changing the
 frozen research contracts. See [Productization Track](docs/PRODUCTIZATION_TRACK.md).
-Current runtime acceptance evidence and explicitly remaining interactive checks
-are recorded in the [Productization Acceptance Report](docs/PRODUCTIZATION_ACCEPTANCE_REPORT.md).
+Historical runtime acceptance evidence is retained in
+`docs/archive/reports/PRODUCTIZATION_ACCEPTANCE_REPORT.md`. The current
+document-authoring design and product boundaries are in
+[Productization Track](docs/PRODUCTIZATION_TRACK.md) and
+[Private DOCX design](docs/PRIVATE_DOCUMENT_BENCHMARK_DESIGN.md).
 
 Ordinary users start at **Overview → New Evaluation**. Basic mode exposes only
 LightRAG and RAG-Anything. The Platform expands profile defaults into a full,
@@ -55,8 +74,11 @@ Workers are isolated and created by the Platform for each evaluation run.
 
 Open `http://127.0.0.1:4178`, then follow the three actions on **Overview**:
 
-1. **Upload dataset** — upload one validated Dataset Bundle ZIP, or create a
-   small TXT/Markdown Bundle and seal it after selecting Gold evidence.
+1. **Author a dataset** — upload a private DOCX, inspect canonicalization and
+   target discovery, resolve question/answer/evidence candidates, and review
+   them. Export and register the approved canonical-text Dataset Bundle.
+   Uploading an already sealed Bundle is an Advanced/import path; the small
+   TXT/Markdown editor remains a diagnostic/manual fallback.
 2. **Add RAG system** — select LightRAG or RAG-Anything, save it, and use
    **Test connection** to confirm the local model runtime is reachable.
 3. **New evaluation** — select the sealed Dataset and tested RAG system,

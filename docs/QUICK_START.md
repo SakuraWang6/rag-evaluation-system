@@ -16,10 +16,13 @@ Python path in its canonical ExperimentSpec.
 
 ## Complete the first run
 
-1. On **Overview**, choose **Upload dataset**. Upload one Dataset Bundle ZIP.
-   The Platform stages and validates it before copying the sealed Bundle into
-   its managed store. Alternatively, create a small UTF-8 TXT/Markdown Bundle:
-   select a TextSpan, enter the question and Gold answer, validate, then seal.
+1. On **Overview**, choose **Create from document** and upload the private
+   DOCX. Inspect analysis and canonical evidence, discover targets, resolve
+   candidates, and complete reviewer decisions before exporting/registering the
+   approved canonical-text Bundle. Uploading an existing Dataset Bundle ZIP is
+   an import path. The small UTF-8 TXT/Markdown editor remains a
+   manual/diagnostic fallback: select a TextSpan, enter the question and Gold
+   answer, validate, then seal.
 2. Choose **Add RAG system**. In Basic mode select LightRAG or RAG-Anything,
    give it a friendly name, keep **Local process** selected, save, then choose
    **Test connection**. The Overview runtime check becomes ready only after a
