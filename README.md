@@ -18,12 +18,28 @@ The interface deliberately distinguishes `unavailable`, `not_applicable`,
 always name their stage. V1 exposes deterministic groundedness and unsupported
 answer rate; it does not expose a hallucination-rate label.
 
-## Product workflow
+## Current product workflow
+
+The single current mainline is:
+
+```text
+Private DOCX → Platform Authoring → reviewer-approved Dataset Bundle
+             → RAG Evaluation
+```
+
+Use **Create from document** to upload the private DOCX, inspect analysis and
+canonical evidence, review candidates, and export/register the approved
+canonical-text Bundle. The WebUI displays the workflow; the Platform remains
+the owner of Authoring state, Gold, metrics, and run semantics. Native-DOCX is
+diagnostic only. The historical UI audit documents are retained under
+`docs/archive/reports/`.
 
 With Product Layer enabled (the default), use **Overview → New Evaluation**:
 
-1. Upload a validated Dataset Bundle ZIP, or create a TXT/Markdown draft with
-   a manually selected Gold TextSpan and seal it.
+1. Create from document and complete the private DOCX Authoring/review flow,
+   then export/register the canonical-text Dataset Bundle. Uploading an
+   already sealed Bundle is an import path; the TXT/Markdown editor is a
+   manual/diagnostic fallback.
 2. Add a standard LightRAG or RAG-Anything system and test its Worker handshake.
 3. Select Dataset, System, Model, Embedding, and Query Mode.
 4. Review the fully expanded canonical ExperimentSpec, then queue the run.
