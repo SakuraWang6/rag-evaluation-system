@@ -3,6 +3,11 @@
 This package runs inside a dedicated Adapter Worker environment. The Platform
 does not import `raganything`, `lightrag`, or this package.
 
+The Worker consumes a sealed Dataset Bundle produced by Platform Authoring.
+Private DOCX Authoring, reviewer decisions, Gold data, metrics, and comparison
+remain Platform responsibilities. Native-DOCX execution is a diagnostic view;
+the normal cross-system evaluation view is canonical text.
+
 The adapter targets the public RAG-Anything 1.3 API:
 
 - text documents use `insert_content_list` so ingestion does not invent a

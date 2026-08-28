@@ -15,6 +15,22 @@ Both adapters must pass the same Worker TCK. Capabilities are observational:
 `None` means a stage cannot be observed, while `[]` means it was observed
 and returned no evidence.
 
+## Current baseline boundary
+
+The current end-to-end mainline is:
+
+```text
+Private DOCX → Platform Authoring → reviewer-approved Dataset Bundle
+             → Platform RAG Evaluation → isolated Adapter Worker
+```
+
+This repository is the execution boundary only. It does not own private
+document Authoring, candidate/review state, Gold data, dataset generation,
+ranking policy, metrics, or comparison semantics. The Platform exports and
+registers the Bundle before an adapter is started. `legacy` and `structured`
+profiles are explicit diagnostic execution choices; this phase does not tune
+ranking or change the adapter contract.
+
 For a formal run, `prepare` must resolve each configured model and return a
 verified immutable digest/revision. The Platform compares that identity to the
 frozen model lock before ingestion. Mutable names and tags (including
