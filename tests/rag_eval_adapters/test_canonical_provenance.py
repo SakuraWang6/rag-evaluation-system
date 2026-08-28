@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from rag_eval.contracts.adapter import RAGEvidenceItem
 from rag_eval.contracts.dataset import GoldEvidence, ObjectLocator
 from rag_eval.evaluation.evidence import CorpusEvidenceIndex, match_evidence
 from rag_eval_lightrag_adapter.adapter import LightRAGAdapter
@@ -194,3 +195,200 @@ def test_gold_matches_projected_full_object_without_gold_aware_mapping(
     )
     assert match is not None
     assert match.kind == "exact_provenance"
+
+
+def test_structure_bridge_preserves_hierarchy_table_topology_and_round_trips(
+    tmp_path: Path,
+) -> None:
+    source = (
+        "## Alpha\n\n"
+        "Paragraph one.\n\n"
+        "| H | V |\n"
+        "| --- | --- |\n"
+        "| a | b |\n"
+    )
+    root_id = "doc-1:section:00000"
+    section_id = "doc-1:section:00001"
+    heading_id = "doc-1:block:00001"
+    paragraph_id = "doc-1:block:00002"
+    table_id = "doc-1:table:00001"
+    row_1 = "doc-1:row:00001"
+    row_2 = "doc-1:row:00002"
+    records = [
+        {
+            **_record(root_id, 0, "Document body"),
+            "object_type": "section",
+            "structural_locator": {"part": "word/document.xml", "ordinal": 0},
+        },
+        {
+            **_record(heading_id, 1, "Alpha"),
+            "block_kind": "heading",
+            "structural_locator": {
+                "part": "word/document.xml",
+                "body_ordinal": 1,
+                "section_id": root_id,
+            },
+        },
+        {
+            **_record(section_id, 1, "Alpha"),
+            "object_type": "section",
+            "structural_locator": {
+                "part": "word/document.xml",
+                "body_ordinal": 1,
+                "heading_level": 2,
+            },
+        },
+        {
+            **_record("doc-1:text_span:00002", 2, "Paragraph one."),
+            "object_type": "text_span",
+            "block_id": paragraph_id,
+            "structural_locator": {
+                "part": "word/document.xml",
+                "body_ordinal": 2,
+                "block_id": paragraph_id,
+                "span_ordinal": 1,
+            },
+        },
+        {
+            **_record(paragraph_id, 2, "Paragraph one."),
+            "structural_locator": {
+                "part": "word/document.xml",
+                "body_ordinal": 2,
+                "section_id": section_id,
+            },
+        },
+        {
+            **_record(table_id, 3, "H | V\na | b"),
+            "object_type": "table",
+            "row_count": 2,
+            "column_count": 2,
+            "structural_locator": {
+                "part": "word/document.xml",
+                "body_ordinal": 3,
+                "section_id": section_id,
+                "nested": False,
+            },
+        },
+    ]
+    for row_number, row_id, values in (
+        (1, row_1, ("H", "V")),
+        (2, row_2, ("a", "b")),
+    ):
+        records.append(
+            {
+                **_record(row_id, 3, " | ".join(values)),
+                "object_type": "row",
+                "table_id": table_id,
+                "row": row_number,
+                "structural_locator": {
+                    "part": "word/document.xml",
+                    "body_ordinal": 3,
+                    "table_id": table_id,
+                    "row": row_number,
+                },
+            }
+        )
+        for column, value in enumerate(values, start=1):
+            cell_id = f"doc-1:cell:{row_number:05d}{column:05d}"
+            records.append(
+                {
+                    **_record(cell_id, 3, value),
+                    "object_type": "cell",
+                    "table_id": table_id,
+                    "row_id": row_id,
+                    "row": row_number,
+                    "column": column,
+                    "structural_locator": {
+                        "part": "word/document.xml",
+                        "body_ordinal": 3,
+                        "table_id": table_id,
+                        "row": row_number,
+                        "column": column,
+                    },
+                }
+            )
+    sidecar = tmp_path / "evidence.jsonl"
+    sidecar.write_text(
+        "".join(json.dumps(record) + "\n" for record in records), encoding="utf-8"
+    )
+    document = load_canonical_document_map(
+        document_id="doc-1",
+        source=source,
+        sidecar_path=sidecar,
+        expected_sidecar_sha256=hashlib.sha256(sidecar.read_bytes()).hexdigest(),
+    )
+
+    sections = {entry["section_id"]: entry for entry in document.sections}
+    assert sections[section_id]["heading_path"] == "Alpha"
+    assert sections[section_id]["parent_section_id"] == root_id
+    assert sections[section_id]["active_source_span"] == {
+        "start": 0,
+        "end": len(source),
+    }
+    structures = {entry.object_id: entry.structure for entry in document.objects}
+    assert structures[paragraph_id]["document_order"] == 2
+    assert structures[paragraph_id]["section_id"] == section_id
+    assert structures["doc-1:text_span:00002"]["parent_object_id"] == paragraph_id
+    assert structures["doc-1:cell:0000200001"]["table_id"] == table_id
+    assert structures["doc-1:cell:0000200001"]["row_id"] == row_2
+    assert structures["doc-1:cell:0000200001"]["parent_object_id"] == row_2
+
+    table_start = source.index("| H | V |")
+    paragraph_start = source.index("Paragraph")
+    stored_chunks = {
+        "runtime-overlap": {
+            "file_path": "source.md",
+            "content": source[paragraph_start : table_start + 9],
+            "source_span": {"start": paragraph_start, "end": table_start + 9},
+        },
+        "runtime-table": {
+            "file_path": "source.md",
+            "content": source[table_start:],
+            "source_span": {"start": table_start, "end": len(source)},
+        },
+    }
+    manifest = build_provenance_manifest(
+        documents={"doc-1": document},
+        sources={"doc-1": source},
+        document_by_file={"source.md": "doc-1"},
+        stored_chunks=stored_chunks,
+    )
+    assert manifest["schema_version"] == 2
+    overlap = manifest["runtime_chunks"]["runtime-overlap"]
+    assert overlap["structure"]["metadata_status"] == "complete"
+    assert overlap["structure"]["heading_path"] == "Alpha"
+    assert {item["object_id"] for item in overlap["canonical_objects"]} >= {
+        paragraph_id,
+        table_id,
+    }
+    assert {
+        item["runtime_chunk_id"]
+        for item in manifest["object_to_runtime_chunks"][table_id]
+    } == {"runtime-overlap", "runtime-table"}
+
+    adapter = LightRAGAdapter()
+    adapter._source_by_file = {"source.md": "doc-1"}
+    adapter._runtime_provenance_by_chunk = manifest["runtime_chunks"]
+    adapter._provenance_map_digest = "structure-map-digest"
+    items = adapter._evidence_items(
+        [
+            {
+                "item_id": "runtime-table",
+                "native_id": "runtime-table",
+                "rank": 1,
+                "content": source[table_start:],
+                "file_path": "source.md",
+                "source_span": {"start": table_start, "end": len(source)},
+                "score": 0.9,
+            }
+        ],
+        "raw",
+    )
+    cell_item = next(
+        item
+        for item in items
+        if item.metadata["canonical_object_id"] == "doc-1:cell:0000200001"
+    )
+    assert cell_item.metadata["runtime_structure"]["heading_path"] == "Alpha"
+    assert cell_item.metadata["canonical_structure"]["row_id"] == row_2
+    assert RAGEvidenceItem.model_validate(cell_item.model_dump()).metadata == cell_item.metadata

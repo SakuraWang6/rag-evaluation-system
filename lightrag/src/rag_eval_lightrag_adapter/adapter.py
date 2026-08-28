@@ -587,6 +587,18 @@ class LightRAGAdapter:
                 for entry in canonical_objects
                 if isinstance(entry, dict) and entry.get("coverage") == "full"
             ]
+            runtime_structure = (
+                mapping.get("structure")
+                if mapping_valid
+                and mapping is not None
+                and isinstance(mapping.get("structure"), dict)
+                else {
+                    "metadata_status": "missing",
+                    "missing_fields": ["verified_runtime_structure"],
+                    "section_ids": [],
+                    "canonical_object_count": 0,
+                }
+            )
             base_metadata = {
                 "file_path": file_path or None,
                 "source_type": value.get("source_type"),
@@ -618,6 +630,13 @@ class LightRAGAdapter:
                     entry.get("object_id")
                     for entry in canonical_objects
                     if isinstance(entry, dict) and entry.get("coverage") == "partial"
+                ],
+                "runtime_structure": runtime_structure,
+                "canonical_object_structures": [
+                    entry.get("structure")
+                    for entry in canonical_objects
+                    if isinstance(entry, dict)
+                    and isinstance(entry.get("structure"), dict)
                 ],
                 "source_witness_sha256": (
                     mapping.get("source_witness_sha256")
@@ -674,6 +693,7 @@ class LightRAGAdapter:
                             "canonical_overlap_span": entry.get("overlap_span"),
                             "canonical_witness_sha256": entry.get("witness_sha256"),
                             "canonical_alignment_method": entry.get("alignment_method"),
+                            "canonical_structure": entry.get("structure"),
                         },
                     )
                 )
