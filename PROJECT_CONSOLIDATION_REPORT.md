@@ -112,7 +112,7 @@ Baseline and post-cleanup runs were kept contract-focused:
 | Platform Python tests | 89 passed, 3 skipped (dependency-complete existing environment) |
 | Adapter Python tests | 29 passed, 4 skipped |
 | WebUI external `bun test` | 5 passed |
-| WebUI nested submodule `bun test` | 92 passed |
+| LightRAG built-in WebUI `bun test` | 92 passed |
 | LightRAG targeted legacy/migration tests | 88 passed |
 | LightRAG full `pytest -q` | collection blocked by missing optional backends; 15 tests skipped, 26 dependency import errors |
 
