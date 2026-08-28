@@ -67,6 +67,14 @@ class AuthoringQuestionRequest(APIModel):
     language: str = "zh-CN"
 
 
+class AuthoringTargetRequest(APIModel):
+    capability: str
+    source_object_ids: list[str]
+    retrieval_route: list[str]
+    distractor_object_ids: list[str] = []
+    rationale: str = "manual reviewer target"
+
+
 class AuthoringQuestionGenerationRequest(APIModel):
     target_id: str
     provider: DiscoveryMethod = DiscoveryMethod.OLLAMA
@@ -95,6 +103,15 @@ class AuthoringReviewRequest(APIModel):
 class AuthoringExportRequest(APIModel):
     name: str
     version: str
+    approved_case_ids: list[str] | None = None
+
+
+class AuthoringRepresentabilityProfileRequest(APIModel):
+    profile_id: str
+    system_id: str
+    adapter_id: str
+    execution_profile_digest: str
+    runtime_map: dict[str, Any]
 
 
 def create_app(
@@ -237,11 +254,68 @@ def create_app(
         except (ValueError, AuthoringWorkflowError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/v1/authoring/datasets/{authoring_dataset_id}/targets", status_code=201)
+    async def create_authoring_target(
+        authoring_dataset_id: str, request: AuthoringTargetRequest
+    ) -> dict[str, Any]:
+        authoring = require_authoring()
+        try:
+            dataset = authoring.get(authoring_dataset_id)
+            target = authoring.workflow.create_target(
+                dataset,
+                capability=request.capability,
+                source_object_ids=request.source_object_ids,
+                retrieval_route=request.retrieval_route,
+                distractor_object_ids=request.distractor_object_ids,
+                rationale=request.rationale,
+            )
+            return target.model_dump(mode="json")
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="authoring dataset not found") from exc
+        except (ValueError, AuthoringWorkflowError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/v1/authoring/datasets/{authoring_dataset_id}/candidates")
     async def list_authoring_candidates(authoring_dataset_id: str) -> list[dict[str, Any]]:
         authoring = require_authoring()
         try:
             return [item.model_dump(mode="json") for item in authoring.workflow.list_candidates(authoring.get(authoring_dataset_id))]
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="authoring dataset not found") from exc
+        except (ValueError, AuthoringWorkflowError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/v1/authoring/datasets/{authoring_dataset_id}/representability-profiles")
+    async def list_authoring_representability_profiles(authoring_dataset_id: str) -> list[dict[str, Any]]:
+        authoring = require_authoring()
+        try:
+            dataset = authoring.get(authoring_dataset_id)
+            return [
+                item.model_dump(mode="json")
+                for item in authoring.workflow.list_representability_profiles(dataset)
+            ]
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="authoring dataset not found") from exc
+        except (ValueError, AuthoringWorkflowError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/v1/authoring/datasets/{authoring_dataset_id}/representability-profiles", status_code=201)
+    async def register_authoring_representability_profile(
+        authoring_dataset_id: str,
+        request: AuthoringRepresentabilityProfileRequest,
+    ) -> dict[str, Any]:
+        authoring = require_authoring()
+        try:
+            dataset = authoring.get(authoring_dataset_id)
+            profile = authoring.workflow.register_representability_profile(
+                dataset,
+                profile_id=request.profile_id,
+                system_id=request.system_id,
+                adapter_id=request.adapter_id,
+                execution_profile_digest=request.execution_profile_digest,
+                runtime_map=request.runtime_map,
+            )
+            return profile.model_dump(mode="json")
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail="authoring dataset not found") from exc
         except (ValueError, AuthoringWorkflowError) as exc:
@@ -332,7 +406,7 @@ def create_app(
     async def export_authoring_dataset(authoring_dataset_id: str, request: AuthoringExportRequest) -> dict[str, Any]:
         authoring = require_authoring()
         try:
-            return authoring.workflow.export(authoring.get(authoring_dataset_id), name=request.name, version=request.version).model_dump(mode="json")
+            return authoring.workflow.export(authoring.get(authoring_dataset_id), name=request.name, version=request.version, approved_case_ids=request.approved_case_ids).model_dump(mode="json")
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail="authoring dataset not found") from exc
         except (ValueError, AuthoringWorkflowError) as exc:

@@ -76,6 +76,49 @@ def mini_docx() -> bytes:
     return value.getvalue()
 
 
+def runtime_provenance_map(
+    *,
+    document_id: str,
+    canonical_digest: str,
+    object_id: str,
+    coverage: str,
+) -> dict[str, object]:
+    chunk_id = "runtime-chunk-001"
+    overlap_span = {"start": 10, "end": 20}
+    return {
+        "schema_version": 1,
+        "documents": {
+            document_id: {
+                "document_id": document_id,
+                "canonical_digest": canonical_digest,
+            }
+        },
+        "runtime_chunks": {
+            chunk_id: {
+                "runtime_chunk_id": chunk_id,
+                "document_id": document_id,
+                "provenance_status": "full",
+                "canonical_objects": [
+                    {
+                        "object_id": object_id,
+                        "coverage": coverage,
+                        "overlap_span": overlap_span,
+                    }
+                ],
+            }
+        },
+        "object_to_runtime_chunks": {
+            object_id: [
+                {
+                    "runtime_chunk_id": chunk_id,
+                    "coverage": coverage,
+                    "overlap_span": overlap_span,
+                }
+            ]
+        },
+    }
+
+
 def test_docx_ingest_rejects_extension_zip_and_traversal(tmp_path: Path) -> None:
     authoring = AuthoringService(tmp_path / "authoring")
     with pytest.raises(AuthoringStorageError, match=".docx"):
@@ -197,6 +240,210 @@ def test_rule_targets_manual_candidate_review_export_and_registration(tmp_path: 
     registered = service.datasets.register(root / export.views["canonical-text"])
     marked = service.authoring.workflow.mark_registered(service.authoring.get(dataset.authoring_dataset_id), release_id=export.release_id, view="canonical-text", bundle_id=registered.bundle_id)
     assert marked.registered_bundle_ids["canonical-text"] == registered.bundle_id
+
+
+@pytest.mark.parametrize(
+    ("coverage", "expected_gate_status", "expected_case_status"),
+    [
+        ("full", "PASS", "FULL"),
+        ("partial", "FLAG", "PARTIAL_UNOBSERVABLE"),
+    ],
+)
+def test_runtime_evidence_representability_is_diagnostic_and_exported(
+    tmp_path: Path,
+    coverage: str,
+    expected_gate_status: str,
+    expected_case_status: str,
+) -> None:
+    authoring = AuthoringService(tmp_path / coverage / "authoring")
+    dataset = authoring.analyze(
+        authoring.upload_docx(filename="private.docx", payload=mini_docx()).authoring_dataset_id
+    )
+    target = next(
+        item
+        for item in authoring.workflow.discover_targets(dataset, provider=DiscoveryMethod.RULE)
+        if item.capability == "table_lookup" and not item.flags
+    )
+    assert dataset.document_id and dataset.canonical_digest
+    profile = authoring.workflow.register_representability_profile(
+        authoring.get(dataset.authoring_dataset_id),
+        profile_id="lightrag-canonical-fixture",
+        system_id="lightrag",
+        adapter_id="lightrag",
+        execution_profile_digest="0" * 64,
+        runtime_map=runtime_provenance_map(
+            document_id=dataset.document_id,
+            canonical_digest=dataset.canonical_digest,
+            object_id=target.source_object_ids[0],
+            coverage=coverage,
+        ),
+    )
+    assert profile.runtime_chunk_count == 1
+    candidate = authoring.workflow.create_question(
+        authoring.get(dataset.authoring_dataset_id),
+        target_id=target.target_id,
+        question="延迟指标对应的数值是多少？",
+    )
+    resolved = authoring.workflow.resolve_answer_evidence(
+        authoring.get(dataset.authoring_dataset_id),
+        candidate_id=candidate.candidate_id,
+        resolution=AnswerEvidenceCandidate(
+            answer_kind="text",
+            canonical_answer="42 ms",
+            evidence=[CandidateEvidence(source_object_id=target.source_object_ids[0])],
+        ),
+    )
+    gate = next(
+        item
+        for item in resolved.gates
+        if item.gate_id == "runtime_evidence_representability"
+    )
+    assert gate.status == expected_gate_status
+    assert gate.details["case_status"] == expected_case_status
+
+    approved = authoring.workflow.review(
+        authoring.get(dataset.authoring_dataset_id),
+        candidate_id=candidate.candidate_id,
+        decision="accept",
+        reviewer="fixture-reviewer",
+        note="representability classification reviewed",
+    )
+    assert approved.state == CandidateState.APPROVED
+    exported = authoring.workflow.export(
+        authoring.get(dataset.authoring_dataset_id),
+        name=f"representability-{coverage}",
+        version="1.0.0",
+    )
+    bundle = load_bundle(
+        authoring.store.workspace(dataset.authoring_dataset_id)
+        / exported.views["canonical-text"]
+    )
+    diagnostic = bundle.questions[0].metadata["runtime_evidence_representability"]
+    assert diagnostic["gate_status"] == expected_gate_status
+    assert diagnostic["case_status"] == expected_case_status
+
+
+def test_runtime_evidence_representability_rejects_non_round_tripping_map(
+    tmp_path: Path,
+) -> None:
+    authoring = AuthoringService(tmp_path / "authoring")
+    dataset = authoring.analyze(
+        authoring.upload_docx(filename="private.docx", payload=mini_docx()).authoring_dataset_id
+    )
+    target = next(
+        item
+        for item in authoring.workflow.discover_targets(dataset, provider=DiscoveryMethod.RULE)
+        if item.capability == "table_lookup" and not item.flags
+    )
+    assert dataset.document_id and dataset.canonical_digest
+    runtime_map = runtime_provenance_map(
+        document_id=dataset.document_id,
+        canonical_digest=dataset.canonical_digest,
+        object_id=target.source_object_ids[0],
+        coverage="full",
+    )
+    runtime_map["runtime_chunks"]["runtime-chunk-001"]["canonical_objects"] = []  # type: ignore[index]
+    with pytest.raises(AuthoringWorkflowError, match="round-trip"):
+        authoring.workflow.register_representability_profile(
+            authoring.get(dataset.authoring_dataset_id),
+            profile_id="invalid-map",
+            system_id="lightrag",
+            adapter_id="lightrag",
+            execution_profile_digest="0" * 64,
+            runtime_map=runtime_map,
+        )
+
+
+def test_negative_cell_scope_exports_table_cell_locator_and_release_can_select_cases(
+    tmp_path: Path,
+) -> None:
+    authoring = AuthoringService(tmp_path / "authoring")
+    dataset = authoring.analyze(
+        authoring.upload_docx(filename="private.docx", payload=mini_docx()).authoring_dataset_id
+    )
+    targets = authoring.workflow.discover_targets(dataset, provider=DiscoveryMethod.RULE)
+    cell_target = next(
+        item
+        for item in targets
+        if item.capability == "table_lookup" and not item.flags
+    )
+    records = [
+        json.loads(line)
+        for line in (
+            authoring.store.workspace(dataset.authoring_dataset_id)
+            / "canonical/evidence.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    cell = next(
+        item
+        for item in records
+        if item["object_type"] == "cell" and item["canonical_value"] == "42 ms"
+    )
+    target = authoring.workflow.create_target(
+        authoring.get(dataset.authoring_dataset_id),
+        capability="negative_abstention",
+        source_object_ids=[cell["object_id"]],
+        retrieval_route=["table", "scoped_absence"],
+    )
+    negative = authoring.workflow.create_question(
+        authoring.get(dataset.authoring_dataset_id),
+        target_id=target.target_id,
+        question="该表是否提供了未列出的延迟版本？",
+    )
+    negative = authoring.workflow.resolve_answer_evidence(
+        authoring.get(dataset.authoring_dataset_id),
+        candidate_id=negative.candidate_id,
+        resolution=AnswerEvidenceCandidate(
+            answer_kind="abstain",
+            negative_scope_object_ids=[cell["object_id"]],
+            negative_rationale="the scoped cell contains no separate version field",
+        ),
+    )
+    negative = authoring.workflow.review(
+        authoring.get(dataset.authoring_dataset_id),
+        candidate_id=negative.candidate_id,
+        decision="accept",
+        reviewer="fixture-reviewer",
+    )
+    excluded = authoring.workflow.create_question(
+        authoring.get(dataset.authoring_dataset_id),
+        target_id=cell_target.target_id,
+        question="延迟指标的值是多少？",
+    )
+    excluded = authoring.workflow.resolve_answer_evidence(
+        authoring.get(dataset.authoring_dataset_id),
+        candidate_id=excluded.candidate_id,
+        resolution=AnswerEvidenceCandidate(
+            answer_kind="text",
+            canonical_answer="42 ms",
+            evidence=[CandidateEvidence(source_object_id=cell_target.source_object_ids[0])],
+        ),
+    )
+    excluded = authoring.workflow.review(
+        authoring.get(dataset.authoring_dataset_id),
+        candidate_id=excluded.candidate_id,
+        decision="accept",
+        reviewer="fixture-reviewer",
+    )
+    selected_case_id = f"case-{negative.candidate_id.removeprefix('candidate-')}"
+    excluded_case_id = f"case-{excluded.candidate_id.removeprefix('candidate-')}"
+    export = authoring.workflow.export(
+        authoring.get(dataset.authoring_dataset_id),
+        name="selected-negative",
+        version="1.0.0",
+        approved_case_ids=[selected_case_id],
+    )
+    assert export.approved_case_ids == [selected_case_id]
+    assert excluded_case_id not in export.approved_case_ids
+    bundle = load_bundle(
+        authoring.store.workspace(dataset.authoring_dataset_id)
+        / export.views["canonical-text"]
+    )
+    locator = next(iter(bundle.gold_evidence_sets.values())).evidence[0].locator
+    assert locator.type == "table_cell"
+    assert locator.table_id == cell["table_id"]
+    assert locator.row == cell["row"]
+    assert locator.column == cell["column"]
 
 
 def test_failed_leakage_candidate_cannot_be_accepted_and_edit_versions_candidate(tmp_path: Path) -> None:

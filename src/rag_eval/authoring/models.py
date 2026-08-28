@@ -79,6 +79,37 @@ class GateStatus(StrEnum):
     FAIL = "FAIL"
 
 
+class EvidenceRepresentabilityStatus(StrEnum):
+    FULL = "FULL"
+    PARTIAL_UNOBSERVABLE = "PARTIAL_UNOBSERVABLE"
+    UNOBSERVABLE = "UNOBSERVABLE"
+    NOT_CONFIGURED = "NOT_CONFIGURED"
+
+
+class RuntimeEvidenceCoverage(AuthoringModel):
+    runtime_chunk_id: str = Field(min_length=1)
+    coverage: Literal["full", "partial"]
+    overlap_span: dict[str, int]
+
+
+class EvidenceRepresentabilityProfile(AuthoringModel):
+    """Gold-independent runtime coverage projected into Authoring diagnostics."""
+
+    profile_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    system_id: str = Field(min_length=1)
+    adapter_id: str = Field(min_length=1)
+    execution_view: Literal["canonical-text"] = "canonical-text"
+    execution_profile_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    provenance_map_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    canonical_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    document_id: str = Field(min_length=1)
+    runtime_chunk_count: int = Field(ge=1)
+    runtime_status_counts: dict[str, int] = Field(default_factory=dict)
+    object_to_runtime_chunks: dict[str, list[RuntimeEvidenceCoverage]] = Field(
+        default_factory=dict
+    )
+
+
 class DiscoveryMethod(StrEnum):
     RULE = "rule"
     OLLAMA = "ollama"

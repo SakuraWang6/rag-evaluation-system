@@ -201,6 +201,13 @@ class AuthoringWorkspaceStore:
     def candidate_path(self, authoring_dataset_id: str, candidate_id: str) -> Path:
         return self.workspace(authoring_dataset_id) / "candidates" / f"{safe_id(candidate_id)}.json"
 
+    def representability_profile_path(
+        self, authoring_dataset_id: str, profile_id: str
+    ) -> Path:
+        root = self.workspace(authoring_dataset_id) / "diagnostics" / "representability"
+        root.mkdir(exist_ok=True)
+        return root / f"{safe_id(profile_id)}.json"
+
     def review_path(self, authoring_dataset_id: str, review_id: str) -> Path:
         return self.workspace(authoring_dataset_id) / "reviews" / f"{safe_id(review_id)}.json"
 

@@ -26,10 +26,13 @@ from rag_eval.authoring.models import (
     BenchmarkTargetCandidate,
     CandidateState,
     DiscoveryMethod,
+    EvidenceRepresentabilityProfile,
+    EvidenceRepresentabilityStatus,
     GateStatus,
     QualityGateResult,
     QuestionCandidate,
     ReviewRecord,
+    RuntimeEvidenceCoverage,
 )
 from rag_eval.authoring.providers import (
     ConfiguredRemoteProvider,
@@ -121,6 +124,56 @@ class AuthoringWorkflow:
         if payload.get("source_sha256") != dataset.source.sha256 or payload.get("canonical_digest") != dataset.canonical_digest:
             raise AuthoringWorkflowError("target discovery was created against a different frozen source")
         return [BenchmarkTargetCandidate.model_validate(value) for value in payload.get("targets", [])]
+
+    def create_target(
+        self,
+        dataset: AuthoringDataset,
+        *,
+        capability: str,
+        source_object_ids: list[str],
+        retrieval_route: list[str],
+        distractor_object_ids: list[str] | None = None,
+        rationale: str = "manual reviewer target",
+    ) -> BenchmarkTargetCandidate:
+        """Add one reviewer-authored, source-frozen target without inventing truth."""
+
+        self._require_analyzed(dataset)
+        if not capability.strip() or not source_object_ids or not retrieval_route:
+            raise AuthoringWorkflowError(
+                "manual target requires capability, source objects, and retrieval route"
+            )
+        records = {
+            str(record["object_id"]): record
+            for record in self._records(dataset.authoring_dataset_id)
+        }
+        cited = set(source_object_ids) | set(distractor_object_ids or [])
+        unknown = sorted(cited.difference(records))
+        if unknown:
+            raise AuthoringWorkflowError("manual target cites an unknown canonical object")
+        target = self._target_value(
+            dataset,
+            digest=self._canonical_digest(dataset),
+            capability=capability.strip(),
+            source_ids=source_object_ids,
+            route=retrieval_route,
+            distractors=distractor_object_ids,
+            confidence=1.0,
+            rationale=rationale.strip(),
+            method=DiscoveryMethod.MANUAL,
+        )
+        targets = {item.target_id: item for item in self.list_targets(dataset)}
+        targets[target.target_id] = target
+        ordered = [targets[key] for key in sorted(targets)]
+        atomic_write_json(
+            self.store.target_path(dataset.authoring_dataset_id),
+            {
+                "source_sha256": dataset.source.sha256,
+                "canonical_digest": dataset.canonical_digest,
+                "targets": [item.model_dump(mode="json") for item in ordered],
+            },
+        )
+        self._advance_state(dataset, AuthoringState.TARGETS_READY)
+        return target
 
     def create_question(
         self,
@@ -365,11 +418,139 @@ class AuthoringWorkflow:
         root = self.store.workspace(dataset.authoring_dataset_id) / "approved"
         return [self.store.load_model(path, ApprovedCase) for path in sorted(root.glob("*.json"))]
 
-    def export(self, dataset: AuthoringDataset, *, name: str, version: str) -> AuthoringExport:
+    def register_representability_profile(
+        self,
+        dataset: AuthoringDataset,
+        *,
+        profile_id: str,
+        system_id: str,
+        adapter_id: str,
+        execution_profile_digest: str,
+        runtime_map: dict[str, Any],
+    ) -> EvidenceRepresentabilityProfile:
+        """Persist a content-free, Gold-independent canonical/runtime map.
+
+        The input is the public provenance bridge contract, not an Adapter
+        implementation type. Authoring retains only identifiers, coverage, and
+        spans needed to diagnose whether approved canonical evidence is
+        observable under the declared execution profile.
+        """
+
+        self._require_analyzed(dataset)
+        if runtime_map.get("schema_version") != 1:
+            raise AuthoringWorkflowError("unsupported runtime provenance map schema")
+        if not dataset.document_id:
+            raise AuthoringWorkflowError("analyzed source has no document ID")
+        documents = runtime_map.get("documents")
+        runtime_chunks = runtime_map.get("runtime_chunks")
+        reverse = runtime_map.get("object_to_runtime_chunks")
+        if not isinstance(documents, dict) or not isinstance(runtime_chunks, dict) or not isinstance(reverse, dict):
+            raise AuthoringWorkflowError("runtime provenance map is incomplete")
+        document = documents.get(dataset.document_id)
+        if not isinstance(document, dict):
+            raise AuthoringWorkflowError("runtime provenance map does not contain the canonical document")
+        if document.get("canonical_digest") != self._canonical_digest(dataset):
+            raise AuthoringWorkflowError("runtime provenance map canonical digest mismatch")
+
+        normalized: dict[str, list[RuntimeEvidenceCoverage]] = {}
+        for object_id, raw_edges in sorted(reverse.items()):
+            if not isinstance(object_id, str) or not isinstance(raw_edges, list):
+                raise AuthoringWorkflowError("runtime provenance reverse map is invalid")
+            edges: list[RuntimeEvidenceCoverage] = []
+            for raw_edge in raw_edges:
+                if not isinstance(raw_edge, dict):
+                    raise AuthoringWorkflowError("runtime provenance edge is invalid")
+                try:
+                    edge = RuntimeEvidenceCoverage.model_validate(raw_edge)
+                except ValueError as exc:
+                    raise AuthoringWorkflowError(f"runtime provenance edge is invalid: {exc}") from exc
+                raw_chunk = runtime_chunks.get(edge.runtime_chunk_id)
+                if not isinstance(raw_chunk, dict):
+                    raise AuthoringWorkflowError("runtime provenance edge cites an unknown chunk")
+                forward_objects = raw_chunk.get("canonical_objects")
+                if not isinstance(forward_objects, list) or not any(
+                    isinstance(item, dict)
+                    and item.get("object_id") == object_id
+                    and item.get("coverage") == edge.coverage
+                    and item.get("overlap_span") == edge.overlap_span
+                    for item in forward_objects
+                ):
+                    raise AuthoringWorkflowError("runtime provenance map does not round-trip")
+                edges.append(edge)
+            normalized[object_id] = sorted(
+                edges,
+                key=lambda item: (
+                    item.runtime_chunk_id,
+                    item.coverage,
+                    item.overlap_span.get("start", -1),
+                    item.overlap_span.get("end", -1),
+                ),
+            )
+
+        status_counts = Counter(
+            str(value.get("provenance_status", "missing"))
+            for value in runtime_chunks.values()
+            if isinstance(value, dict)
+        )
+        profile = EvidenceRepresentabilityProfile(
+            profile_id=profile_id,
+            system_id=system_id,
+            adapter_id=adapter_id,
+            execution_profile_digest=execution_profile_digest,
+            provenance_map_digest=_json_digest(runtime_map),
+            canonical_digest=self._canonical_digest(dataset),
+            document_id=dataset.document_id,
+            runtime_chunk_count=len(runtime_chunks),
+            runtime_status_counts=dict(sorted(status_counts.items())),
+            object_to_runtime_chunks=normalized,
+        )
+        self.store.save_model(
+            self.store.representability_profile_path(
+                dataset.authoring_dataset_id, profile.profile_id
+            ),
+            profile,
+        )
+        return profile
+
+    def list_representability_profiles(
+        self, dataset: AuthoringDataset
+    ) -> list[EvidenceRepresentabilityProfile]:
+        root = self.store.workspace(dataset.authoring_dataset_id) / "diagnostics" / "representability"
+        if not root.is_dir():
+            return []
+        profiles = [
+            self.store.load_model(path, EvidenceRepresentabilityProfile)
+            for path in sorted(root.glob("*.json"))
+        ]
+        for profile in profiles:
+            if (
+                profile.canonical_digest != self._canonical_digest(dataset)
+                or profile.document_id != dataset.document_id
+            ):
+                raise AuthoringWorkflowError("representability profile belongs to a different frozen source")
+        return profiles
+
+    def export(
+        self,
+        dataset: AuthoringDataset,
+        *,
+        name: str,
+        version: str,
+        approved_case_ids: list[str] | None = None,
+    ) -> AuthoringExport:
         self._require_analyzed(dataset)
         if not name.strip() or not version.strip():
             raise AuthoringWorkflowError("export name and version are required")
-        approved = self.list_approved(dataset)
+        all_approved = self.list_approved(dataset)
+        if approved_case_ids is None:
+            approved = all_approved
+        else:
+            requested = set(approved_case_ids)
+            known = {item.case_id for item in all_approved}
+            unknown = sorted(requested.difference(known))
+            if unknown:
+                raise AuthoringWorkflowError("release selection contains an unknown approved case")
+            approved = [item for item in all_approved if item.case_id in requested]
         blocked = self._blocked_cases(dataset)
         if not approved:
             raise AuthoringWorkflowError("at least one reviewer-approved case is required for export")
@@ -559,8 +740,113 @@ class AuthoringWorkflow:
             gates.extend([self._gate("single_block_shortcut", GateStatus.PASS, "target does not claim multi-hop reasoning"), self._gate("multi_hop_removal", GateStatus.PASS, "target does not claim multi-hop reasoning")])
         representable = not missing and not unsupported and (answer.answer_kind == "abstain" or bool(answer.evidence))
         gates.append(self._gate("export_representability", GateStatus.PASS if representable else GateStatus.FAIL, "answer/evidence maps to Bundle 2.0" if representable else "answer/evidence cannot be faithfully exported"))
+        gates.append(self._evidence_representability_gate(dataset, answer))
         gates.append(self._gate("alternative_answers", GateStatus.FLAG, "alternative answer audit requires mandatory human review"))
         return gates
+
+    def _evidence_representability_gate(
+        self,
+        dataset: AuthoringDataset,
+        resolution: AnswerEvidenceCandidate,
+    ) -> QualityGateResult:
+        profiles = self.list_representability_profiles(dataset)
+        if not profiles:
+            return self._gate(
+                "runtime_evidence_representability",
+                GateStatus.FLAG,
+                "no canonical execution representability profile is configured",
+                {"case_status": EvidenceRepresentabilityStatus.NOT_CONFIGURED, "profiles": []},
+            )
+
+        grouped: dict[str, list[str]] = defaultdict(list)
+        if resolution.answer_kind == "abstain":
+            grouped["negative-scope"].extend(resolution.negative_scope_object_ids)
+        else:
+            for evidence in resolution.evidence:
+                grouped[evidence.required_group].append(evidence.source_object_id)
+
+        profile_results: list[dict[str, Any]] = []
+        aggregate = EvidenceRepresentabilityStatus.FULL
+        for profile in profiles:
+            group_results: list[dict[str, Any]] = []
+            profile_status = EvidenceRepresentabilityStatus.FULL
+            for group_id, object_ids in sorted(grouped.items()):
+                evidence_results: list[dict[str, Any]] = []
+                has_full = False
+                has_partial = False
+                for object_id in sorted(set(object_ids)):
+                    edges = profile.object_to_runtime_chunks.get(object_id, [])
+                    full_chunks = sorted(
+                        {edge.runtime_chunk_id for edge in edges if edge.coverage == "full"}
+                    )
+                    partial_chunks = sorted(
+                        {edge.runtime_chunk_id for edge in edges if edge.coverage == "partial"}
+                    )
+                    has_full = has_full or bool(full_chunks)
+                    has_partial = has_partial or bool(partial_chunks)
+                    evidence_results.append(
+                        {
+                            "source_object_id": object_id,
+                            "status": (
+                                EvidenceRepresentabilityStatus.FULL
+                                if full_chunks
+                                else EvidenceRepresentabilityStatus.PARTIAL_UNOBSERVABLE
+                                if partial_chunks
+                                else EvidenceRepresentabilityStatus.UNOBSERVABLE
+                            ),
+                            "full_runtime_chunk_ids": full_chunks,
+                            "partial_runtime_chunk_ids": partial_chunks,
+                        }
+                    )
+                group_status = (
+                    EvidenceRepresentabilityStatus.FULL
+                    if has_full
+                    else EvidenceRepresentabilityStatus.PARTIAL_UNOBSERVABLE
+                    if has_partial
+                    else EvidenceRepresentabilityStatus.UNOBSERVABLE
+                )
+                if group_status == EvidenceRepresentabilityStatus.UNOBSERVABLE:
+                    profile_status = EvidenceRepresentabilityStatus.UNOBSERVABLE
+                elif (
+                    group_status == EvidenceRepresentabilityStatus.PARTIAL_UNOBSERVABLE
+                    and profile_status == EvidenceRepresentabilityStatus.FULL
+                ):
+                    profile_status = EvidenceRepresentabilityStatus.PARTIAL_UNOBSERVABLE
+                group_results.append(
+                    {
+                        "required_group": group_id,
+                        "status": group_status,
+                        "evidence": evidence_results,
+                    }
+                )
+            if profile_status == EvidenceRepresentabilityStatus.UNOBSERVABLE:
+                aggregate = EvidenceRepresentabilityStatus.UNOBSERVABLE
+            elif (
+                profile_status == EvidenceRepresentabilityStatus.PARTIAL_UNOBSERVABLE
+                and aggregate == EvidenceRepresentabilityStatus.FULL
+            ):
+                aggregate = EvidenceRepresentabilityStatus.PARTIAL_UNOBSERVABLE
+            profile_results.append(
+                {
+                    "profile_id": profile.profile_id,
+                    "system_id": profile.system_id,
+                    "adapter_id": profile.adapter_id,
+                    "execution_profile_digest": profile.execution_profile_digest,
+                    "provenance_map_digest": profile.provenance_map_digest,
+                    "status": profile_status,
+                    "groups": group_results,
+                }
+            )
+        return self._gate(
+            "runtime_evidence_representability",
+            GateStatus.PASS if aggregate == EvidenceRepresentabilityStatus.FULL else GateStatus.FLAG,
+            (
+                "every required evidence group has full runtime chunk coverage"
+                if aggregate == EvidenceRepresentabilityStatus.FULL
+                else "runtime chunk coverage is partial or unobservable; do not classify as an ordinary retrieval miss"
+            ),
+            {"case_status": aggregate, "profiles": profile_results},
+        )
 
     @staticmethod
     def _gate(gate_id: str, status: GateStatus, message: str, details: dict[str, Any] | None = None) -> QualityGateResult:
@@ -634,7 +920,8 @@ class AuthoringWorkflow:
                 raise AuthoringWorkflowError(f"approved case {approved_case.case_id} has no answer/evidence")
             answer_id = f"answer-{approved_case.case_id}"
             evidence_set_id = f"evidence-set-{approved_case.case_id}"
-            questions.append({"case_id": approved_case.case_id, "question": candidate.question, "gold_answer_id": answer_id, "gold_evidence_set_id": evidence_set_id, "tags": [self._target(dataset, candidate.target_id).capability], "metadata": {"authoring_candidate_id": candidate.candidate_id, "authoring_candidate_version": candidate.version}})
+            representability = self._evidence_representability_gate(dataset, resolution)
+            questions.append({"case_id": approved_case.case_id, "question": candidate.question, "gold_answer_id": answer_id, "gold_evidence_set_id": evidence_set_id, "tags": [self._target(dataset, candidate.target_id).capability], "metadata": {"authoring_candidate_id": candidate.candidate_id, "authoring_candidate_version": candidate.version, "runtime_evidence_representability": {"gate_status": representability.status, **representability.details}}})
             answer = {"gold_answer_id": answer_id, "kind": resolution.answer_kind, "canonical": resolution.canonical_answer, "accepted_values": resolution.accepted_values, "locale": resolution.locale, "unit": resolution.unit, "tolerance": resolution.model_dump(mode="json")["tolerance"]}
             answers.append({key: value for key, value in answer.items() if value is not None})
             evidence: list[dict[str, Any]] = []
@@ -658,7 +945,16 @@ class AuthoringWorkflow:
                     raise AuthoringWorkflowError("abstention export requires scoped negative evidence")
                 record = records[resolution.negative_scope_object_ids[0]]
                 evidence_id = f"evidence-{approved_case.case_id}-negative-scope"
-                evidence.append({"evidence_id": evidence_id, "document_id": document_id, "locator": {"type": "object", "object_type": record["object_type"], "object_id": record["object_id"]}, "canonical_value": record["canonical_value"], "quote_anchor": None})
+                if record["object_type"] == "cell":
+                    locator = {
+                        "type": "table_cell",
+                        "table_id": record["table_id"],
+                        "row": record["row"],
+                        "column": record["column"],
+                    }
+                else:
+                    locator = {"type": "object", "object_type": record["object_type"], "object_id": record["object_id"]}
+                evidence.append({"evidence_id": evidence_id, "document_id": document_id, "locator": locator, "canonical_value": record["canonical_value"], "quote_anchor": None})
                 grouped["negative-scope"].append(evidence_id)
             evidence_sets.append({"gold_evidence_set_id": evidence_set_id, "evidence": evidence, "required_groups": [grouped[key] for key in sorted(grouped)]})
         atomic_write_json(root / "manifest.json", manifest)
