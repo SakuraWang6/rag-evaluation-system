@@ -33,6 +33,9 @@ additionally requires the sealed public/Gold role boundary in the
 [Blind Benchmark Protocol](docs/BLIND_BENCHMARK_PROTOCOL.md), case-clustered
 (not case×seed) analysis, and a frozen latency lifecycle.
 
+The current LightRAG structural metadata and fixed-budget Evidence Pack audit
+is recorded in [LIGHTRAG_STRUCTURAL_CONTEXT_EVIDENCE_PACK.md](LIGHTRAG_STRUCTURAL_CONTEXT_EVIDENCE_PACK.md).
+
 RAG systems run behind isolated adapter workers. The platform communicates
 with workers through frozen Wire Protocol 1.0 over authenticated loopback HTTP/JSON.
 
