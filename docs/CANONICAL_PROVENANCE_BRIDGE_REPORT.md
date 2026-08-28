@@ -1,9 +1,9 @@
 # Canonical Evidence Provenance Bridge Report
 
 **Date:** 2026-08-28  
-**Decision:** BLOCKED — bridge implementation and offline validation pass; the
-required real 4-case reruns could not start because this execution environment
-rejects all local loopback `bind` calls.
+**Decision:** PASS — bridge implementation, offline validation, and the required
+real four-case Legacy/Enhanced reruns all pass. Retrieval misses are now
+separable from partial or unobservable provenance.
 
 This report contains no private DOCX body, question wording, answer value, or
 evidence quote.
@@ -111,14 +111,15 @@ alignment diagnostics. The four approved cases' Gold object locators are
 supported body blocks and both distinct block IDs used by the cases have an
 aligned source span. No private source text is reproduced here.
 
-The prior canonical runs remain the pre-bridge baseline:
+The prior canonical runs are the pre-bridge baseline:
 
 - Legacy: `4ee55a24304f4ae8bb1874c4c117abe4`;
 - Enhanced: `20bc5e70446c49279cdf4e24e229e987`.
 
 Those runs contain no bridge metadata and therefore cannot be retroactively
-classified. Their observed zero retrieval recall must remain **unclassified**
-until the same Bundle is executed through the new bridge.
+classified. Their observed zero retrieval recall remains **unclassified**. The
+post-bridge reruns described below use the same Bundle, cases, Gold, model lock,
+seed, and retrieval configuration.
 
 ## 5. Tests
 
@@ -143,23 +144,84 @@ until the same Bundle is executed through the new bridge.
   overlapping intervals, exact Gold locator matching, and missing/partial
   fail-closed behavior.
 
-## 6. Required rerun status
+## 6. Real rerun acceptance
 
-No new LightRAG Legacy or Enhanced run ID was created. The attempted Platform
-job failed before a worker/run was allocated with:
+The reruns were executed in a host context that permits the local loopback
+worker. Both formal runs completed all four cases with no timeout, system error,
+or cancellation:
 
-```text
-PermissionError: [Errno 1] Operation not permitted
-```
+| Profile | Run ID | Cases | Artifact verification |
+|---|---|---:|---|
+| LightRAG Legacy | `088137b9d3964d1aaf8cfde04da1a93a` | 4/4 | valid; no missing, unexpected, or mismatched files |
+| LightRAG Enhanced | `815c9099d9244c2d8d38d3d9c606dc49` | 4/4 | valid; no missing, unexpected, or mismatched files |
 
-The same restriction is reproducible with a minimal `socket.bind((127.0.0.1,
-0))` probe in this environment. The privileged rerun request was rejected by
-the host usage-limit policy. It is therefore not valid to report retrieval
-Recall, MRR, Gold Rank, `REAL_RETRIEVAL_MISS`, or `PROVENANCE_MATCHED` for this
-bridge attempt.
+Both runs produced the same deterministic provenance-map digest. Each map has
+58 runtime chunks, 6,275 reverse-mapped canonical object IDs, and 6,945 mapping
+edges. Of the runtime chunks, 56 have full source-span provenance and two have
+explicit `missing` provenance. Forward and reverse edge verification found zero
+missing or inconsistent round trips in either run.
 
-The required comparison was consequently not run. Existing comparison and
-metric semantics remain untouched.
+### Trace observability
+
+Legacy and Enhanced produced identical provenance coverage for this controlled
+run:
+
+| Trace stage | Projected items | Runtime chunk ID | Runtime source span | Canonical object locator |
+|---|---:|---:|---:|---:|
+| raw | 12,083 | 12,083 | 12,081 | 5,600 |
+| ranked | 12,083 | 12,083 | 12,081 | 5,600 |
+| final context | 3,660 | 3,660 | 3,659 | 1,749 |
+
+The item counts exceed the configured runtime candidate count because one
+runtime chunk may deterministically project to many canonical objects at the
+same rank. This does not manufacture extra ranks. Every projected item carries
+the provenance-map digest; fallback items from the two spanless runtime chunks
+remain visible with `provenance_status=missing` and no invented locator.
+
+### Retrieval metrics
+
+No scorer or metric was changed. These are the values emitted by the existing
+evaluation pipeline:
+
+| Run | raw Recall@1/@3/@5 | raw MRR | ranked Recall@1/@3/@5 | ranked MRR | final-context Recall@1/@3/@5 |
+|---|---|---:|---|---:|---|
+| Legacy | 0 / 0 / 0 | 0.0125 | 0 / 0 / 0 | 0.0125 | 0 / 0 / 0 |
+| Enhanced | 0 / 0 / 0 | 0.0125 | 0 / 0 / 0 | 0.0125 | 0 / 0 / 0 |
+
+The non-zero MRR with zero Recall@5 is expected: one exact Gold object is at
+rank 20. Across four cases, `(1 / 20) / 4 = 0.0125`.
+
+### Per-case Gold classification
+
+The two profiles produced the same classification and Gold ranks:
+
+| Case ID | Legacy raw / ranked / final Gold rank | Enhanced raw / ranked / final Gold rank | Classification | Evidence |
+|---|---|---|---|---|
+| `case-09a8ceb2fd234fa792053c48363f488b` | — / — / — | — / — / — | `REAL_RETRIEVAL_MISS` | The Gold object has a full runtime mapping, but its runtime chunk was absent from every retrieval stage. |
+| `case-6f4c41dbfd8649c1a42f789b82204736` | partial 4,17 / partial 4,17 / partial 4 | partial 4,17 / partial 4,17 / partial 4 | `PARTIAL / UNOBSERVABLE` | The Gold object crosses runtime chunks 002 and 003. Neither chunk fully covers it; partial overlap is visible but intentionally cannot become an exact locator. |
+| `case-a68460e6f98542e7be69f243d234c3a6` | 20 / 20 / — | 20 / 20 / — | `PROVENANCE_MATCHED` | Exact canonical Gold locator matched at raw/ranked rank 20 and was dropped before the top-five final context. |
+| `case-e81b1553b4d64bbfbd872f95fab83dad` | — / — / — | — / — / — | `REAL_RETRIEVAL_MISS` | The Gold object has a full runtime mapping, but its runtime chunk was absent from every retrieval stage. |
+
+Thus, the prior blanket zero recall did not describe one homogeneous failure:
+two cases are real retrieval misses, one is an exact but low-ranked retrieval,
+and one cannot be scored as an exact object hit under the current chunk
+boundaries. The formal metric remains unchanged and correctly reports the last
+partial case as zero rather than weakening Gold.
+
+### Compare
+
+The new runs pass `task_comparable` validation with no compatibility reasons.
+All retrieval metrics are comparable at coverage 1.0. `may_declare_winner` is
+false: both profiles have identical retrieval results on this four-case run,
+and answer accuracy, groundedness, and unsupported-answer rate remain
+`needs_review` with zero automatic coverage. No winner is declared.
+
+### Historical environment blocker
+
+The earlier attempt failed before run allocation because that sandbox rejected
+local loopback `bind` with `PermissionError: [Errno 1] Operation not permitted`.
+It was an execution-environment restriction, not a bridge or worker failure.
+The successful reruns above close that blocker.
 
 ## 7. Limitations
 
@@ -180,16 +242,21 @@ metric semantics remain untouched.
 ## 8. Decision and next step
 
 **Canonical Provenance Bridge implementation: PASS.**  
-**BYOD-10 bridge acceptance: BLOCKED pending real reruns.**
+**BYOD-10 bridge acceptance: PASS.**
 
-The bridge is ready for an environment with local loopback worker permission.
-At that point, rerun the unchanged four-case Bundle on Legacy and Enhanced,
-inspect each Gold item using exact provenance, and only then classify old zero
-recalls as `REAL_RETRIEVAL_MISS` or `PROVENANCE_MATCHED`.
+The required real runs, exact/partial classification, Artifact verification,
+round-trip validation, and Compare are complete. The bridge now makes the
+difference between retrieval failure, low ranking, final-context selection
+loss, and unrepresentable partial evidence observable without changing Gold or
+metric semantics.
 
-**Benchmark Dataset Expansion: do not enter yet.** The provenance contract and
-offline tests are in place, but the real retrieval classification and Compare
-evidence are still missing.
+**Benchmark Dataset Expansion: may proceed, with an evidence-representability
+gate.** Before adding many cases, Authoring validation should flag approved
+Gold objects that no runtime chunk fully covers for each declared execution
+profile. Such cases may remain useful diagnostics, but they must be labeled
+partial/unobservable rather than silently counted as ordinary retrieval misses.
+The next expansion should also retain the exact provenance audit used here and
+must not optimize questions or Gold to the current LightRAG chunker.
 
 ## Commits
 
