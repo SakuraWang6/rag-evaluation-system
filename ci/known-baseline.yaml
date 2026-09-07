@@ -8,6 +8,9 @@ adapter_pytest:
     pytest -q --tb=short
     tests/rag_eval_adapters/test_canonical_provenance.py
     tests/rag_eval_adapters/test_lightrag_adapter.py
+  test_paths:
+    - tests/rag_eval_adapters/test_canonical_provenance.py
+    - tests/rag_eval_adapters/test_lightrag_adapter.py
   expected_passed: 18
   exact_failed_node_ids:
     - node_id: tests/rag_eval_adapters/test_canonical_provenance.py::test_gold_matches_projected_full_object_without_gold_aware_mapping
@@ -29,7 +32,31 @@ adapter_dirty_tests:
     adapters/lightrag/tests/test_benchmark_segment_trace.py
     adapters/lightrag/tests/test_canonical_segment_provenance.py
     adapters/lightrag/tests/test_runtime_docx_and_trace.py
+  test_paths:
+    - adapters/lightrag/tests/test_benchmark_segment_trace.py
+    - adapters/lightrag/tests/test_canonical_segment_provenance.py
+    - adapters/lightrag/tests/test_runtime_docx_and_trace.py
   expected_passed: 17
+
+platform_pytest:
+  python: "3.12.12"
+  pytest: "9.1.1"
+  test_paths:
+    - platform/tests
+  minimum_passed_local: 264
+  minimum_passed_ci: 267
+  required_passed_node_ids:
+    - platform/tests/rag_eval_platform/test_history_provenance.py::test_real_reconstruction_proves_stream_and_native_join
+    - platform/tests/rag_eval_platform/test_history_provenance.py::test_real_matrix_is_exact_gold_not_semantic_duplicate
+    - platform/tests/rag_eval_platform/test_history_provenance.py::test_split_table_has_partial_table_and_full_row_cells
+    - platform/tests/rag_eval_platform/test_history_provenance.py::test_shared_evidence_index_round_trips_map_and_digest
+    - platform/tests/rag_eval_platform/test_history_provenance.py::test_production_localizer_is_audited_without_catalog_bypass
+    - platform/tests/rag_eval_platform/test_history_provenance.py::test_baseline_and_destination_guards_are_read_only
+    - platform/tests/rag_eval_platform/test_history_provenance.py::test_real_versioned_rescore_uses_production_metrics_and_pins_inputs
+  allowed_local_skipped_node_ids:
+    - platform/tests/rag_eval_platform/test_worker_process.py::test_fake_adapter_runs_over_real_loopback_process
+    - platform/tests/rag_eval_platform/test_worker_process.py::test_process_group_cancellation_ends_parser_descendants
+    - platform/tests/rag_eval_platform/test_executor_integration.py::test_standalone_fake_adapter_run_is_reproducible_and_source_only
 
 platform_ruff:
   tool: "ruff 0.16.1"
