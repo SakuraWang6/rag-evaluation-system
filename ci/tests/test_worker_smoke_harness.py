@@ -192,3 +192,27 @@ def test_pull_is_explicit_and_precedes_start(lock_path: Path) -> None:
     )
     assert docker.calls[0] == ("pull", spec.locked_image)
     assert docker.calls[1][0] == "start"
+
+
+def test_print_locked_image_does_not_invoke_docker(
+    lock_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = MODULE.main(
+        [
+            "--worker",
+            "lightrag",
+            "--lock",
+            str(lock_path),
+            "--print-locked-image",
+            "--docker",
+            "definitely-not-a-real-docker-command",
+        ]
+    )
+    assert result == 0
+    assert (
+        capsys.readouterr()
+        .out.strip()
+        .endswith(
+            "@sha256:c1b5391b0a113a54a9c9773b70fcab466ae295da97f3866a74b4e66de5c93a94"
+        )
+    )

@@ -1,0 +1,148 @@
+{
+  "$defs": {
+    "GoldAnswer": {
+      "additionalProperties": false,
+      "properties": {
+        "gold_answer_id": {
+          "minLength": 1,
+          "title": "Gold Answer Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/GoldAnswerKind"
+        },
+        "canonical": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical"
+        },
+        "accepted_values": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Accepted Values",
+          "type": "array"
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locale"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "tolerance": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tolerance"
+        }
+      },
+      "required": [
+        "gold_answer_id",
+        "kind"
+      ],
+      "title": "GoldAnswer",
+      "type": "object"
+    },
+    "GoldAnswerKind": {
+      "enum": [
+        "text",
+        "numeric",
+        "formula",
+        "set",
+        "abstain"
+      ],
+      "title": "GoldAnswerKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Gold answer and segment-native MSES evidence semantics.\n\n``evidence_paths`` follows OR(paths) -> AND(clauses) -> OR(segment IDs).\nEvery segment ID in a positive Gold path is a leaf retrieval unit.",
+  "properties": {
+    "gold_id": {
+      "minLength": 1,
+      "title": "Gold Id",
+      "type": "string"
+    },
+    "case_id": {
+      "minLength": 1,
+      "title": "Case Id",
+      "type": "string"
+    },
+    "answer": {
+      "$ref": "#/$defs/GoldAnswer"
+    },
+    "evidence_paths": {
+      "default": [],
+      "items": {
+        "items": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": "array"
+      },
+      "title": "Evidence Paths",
+      "type": "array"
+    },
+    "source_evidence_segment_ids": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Source Evidence Segment Ids",
+      "type": "object"
+    }
+  },
+  "required": [
+    "gold_id",
+    "case_id",
+    "answer"
+  ],
+  "title": "BenchmarkGold",
+  "type": "object"
+}

@@ -62,6 +62,7 @@
     },
     "FailureLabel": {
       "enum": [
+        "provenance_unavailable",
         "retrieval_missing",
         "ranking_failure",
         "context_selection_loss",
@@ -70,6 +71,10 @@
         "timeout",
         "adapter_error",
         "dataset_issue",
+        "partial_coverage",
+        "unsupported_stage",
+        "runtime_error",
+        "mapping_corrupted",
         "needs_review"
       ],
       "title": "FailureLabel",
@@ -267,6 +272,27 @@
           },
           "title": "Required Groups",
           "type": "array"
+        },
+        "mses_paths": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mses Paths"
         }
       },
       "required": [
@@ -674,10 +700,316 @@
           "additionalProperties": true,
           "title": "Native Metadata",
           "type": "object"
+        },
+        "segment_traces": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SegmentTraceSet"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "RAGResult",
       "type": "object"
+    },
+    "SegmentClauseMatrix": {
+      "additionalProperties": false,
+      "properties": {
+        "path_index": {
+          "minimum": 0,
+          "title": "Path Index",
+          "type": "integer"
+        },
+        "clause_index": {
+          "minimum": 0,
+          "title": "Clause Index",
+          "type": "integer"
+        },
+        "alternatives": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Alternatives",
+          "type": "array"
+        },
+        "matched_segment_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Matched Segment Ids",
+          "type": "array"
+        },
+        "earliest_rank": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Earliest Rank"
+        }
+      },
+      "required": [
+        "path_index",
+        "clause_index",
+        "alternatives"
+      ],
+      "title": "SegmentClauseMatrix",
+      "type": "object"
+    },
+    "SegmentEvaluationOutcome": {
+      "enum": [
+        "complete",
+        "retrieval_missing",
+        "partial_coverage",
+        "unsupported_stage",
+        "runtime_error",
+        "mapping_corrupted",
+        "not_applicable"
+      ],
+      "title": "SegmentEvaluationOutcome",
+      "type": "string"
+    },
+    "SegmentEvaluationStage": {
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "enum": [
+            "raw",
+            "ranked",
+            "context"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SegmentTraceStatus"
+        },
+        "outcome": {
+          "$ref": "#/$defs/SegmentEvaluationOutcome"
+        },
+        "strict_rankable": {
+          "title": "Strict Rankable",
+          "type": "boolean"
+        },
+        "clause_matrix": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SegmentClauseMatrix"
+          },
+          "title": "Clause Matrix",
+          "type": "array"
+        },
+        "complete_path_indices": {
+          "default": [],
+          "items": {
+            "type": "integer"
+          },
+          "title": "Complete Path Indices",
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "stage",
+        "status",
+        "outcome",
+        "strict_rankable"
+      ],
+      "title": "SegmentEvaluationStage",
+      "type": "object"
+    },
+    "SegmentEvaluationTrace": {
+      "additionalProperties": false,
+      "properties": {
+        "benchmark_contract_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Benchmark Contract Digest",
+          "type": "string"
+        },
+        "raw": {
+          "$ref": "#/$defs/SegmentEvaluationStage"
+        },
+        "ranked": {
+          "$ref": "#/$defs/SegmentEvaluationStage"
+        },
+        "context": {
+          "$ref": "#/$defs/SegmentEvaluationStage"
+        }
+      },
+      "required": [
+        "benchmark_contract_digest",
+        "raw",
+        "ranked",
+        "context"
+      ],
+      "title": "SegmentEvaluationTrace",
+      "type": "object"
+    },
+    "SegmentTraceItem": {
+      "additionalProperties": false,
+      "description": "A native retrieval item with an adapter-auditable segment relation.",
+      "properties": {
+        "native_chunk_id": {
+          "minLength": 1,
+          "title": "Native Chunk Id",
+          "type": "string"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "content": {
+          "default": "",
+          "title": "Content",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "source_segment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Segment Ids",
+          "type": "array"
+        },
+        "mapping_receipt_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Mapping Receipt Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_chunk_id",
+        "rank",
+        "source_segment_ids",
+        "mapping_receipt_digest"
+      ],
+      "title": "SegmentTraceItem",
+      "type": "object"
+    },
+    "SegmentTraceSet": {
+      "additionalProperties": false,
+      "description": "The full stage set returned for one query under the vNext contract.",
+      "properties": {
+        "raw": {
+          "$ref": "#/$defs/SegmentTraceStage"
+        },
+        "ranked": {
+          "$ref": "#/$defs/SegmentTraceStage"
+        },
+        "context": {
+          "$ref": "#/$defs/SegmentTraceStage"
+        }
+      },
+      "required": [
+        "raw",
+        "ranked",
+        "context"
+      ],
+      "title": "SegmentTraceSet",
+      "type": "object"
+    },
+    "SegmentTraceStage": {
+      "additionalProperties": false,
+      "description": "One of raw, ranked, or final-context retrieval observations.",
+      "properties": {
+        "stage": {
+          "enum": [
+            "raw",
+            "ranked",
+            "context"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SegmentTraceStatus"
+        },
+        "items": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SegmentTraceItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "mapping_manifest_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mapping Manifest Digest"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "stage",
+        "status"
+      ],
+      "title": "SegmentTraceStage",
+      "type": "object"
+    },
+    "SegmentTraceStatus": {
+      "description": "Observation state for one retrieval boundary in a benchmark query.",
+      "enum": [
+        "observed",
+        "unsupported_stage",
+        "runtime_error",
+        "mapping_corrupted"
+      ],
+      "title": "SegmentTraceStatus",
+      "type": "string"
     },
     "TableCellLocator": {
       "additionalProperties": false,
@@ -812,6 +1144,17 @@
       },
       "title": "Metrics",
       "type": "array"
+    },
+    "segment_evaluation_trace": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SegmentEvaluationTrace"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "error": {
       "anyOf": [

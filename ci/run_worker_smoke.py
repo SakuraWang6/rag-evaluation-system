@@ -485,6 +485,11 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--image", help="candidate image override; default is locked digest"
     )
     parser.add_argument(
+        "--print-locked-image",
+        action="store_true",
+        help="print the immutable image reference and exit without Docker",
+    )
+    parser.add_argument(
         "--pull",
         choices=("always", "missing", "never"),
         default="missing",
@@ -501,6 +506,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.startup_timeout <= 0:
             raise SmokeError("--startup-timeout must be positive")
         spec = load_worker_spec(args.lock.resolve(), args.worker)
+        if args.print_locked_image:
+            print(spec.locked_image)
+            return 0
         image = args.image or spec.locked_image
         docker = DockerCli(args.docker)
         if args.pull == "always":

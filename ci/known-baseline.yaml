@@ -27,6 +27,8 @@ adapter_pytest:
     additional_failure: forbidden
 
 adapter_dirty_tests:
+  python: "3.12.12"
+  pytest: "9.1.1"
   command: >-
     PYTHONPATH=platform/src:adapters/lightrag/src pytest -q
     adapters/lightrag/tests/test_benchmark_segment_trace.py

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform as python_platform
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -172,6 +173,14 @@ def main() -> int:
     config = baseline[args.section]
     pytest_exit, recorder = run_pytest([str(value) for value in config["test_paths"]])
     errors = validate_outcomes(args.section, config, recorder, profile=args.profile)
+    if (expected_python := config.get("python")) and (
+        python_platform.python_version() != str(expected_python)
+    ):
+        errors.append(f"Python {python_platform.python_version()} != {expected_python}")
+    if (expected_pytest := config.get("pytest")) and (
+        pytest.__version__ != str(expected_pytest)
+    ):
+        errors.append(f"pytest {pytest.__version__} != {expected_pytest}")
     summary = {
         "section": args.section,
         "profile": args.profile,

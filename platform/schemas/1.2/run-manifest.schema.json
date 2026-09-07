@@ -52,6 +52,16 @@
           "default": false,
           "title": "Reset",
           "type": "boolean"
+        },
+        "segment_traces": {
+          "default": false,
+          "title": "Segment Traces",
+          "type": "boolean"
+        },
+        "strict_segment_ranking": {
+          "default": false,
+          "title": "Strict Segment Ranking",
+          "type": "boolean"
         }
       },
       "title": "AdapterCapabilities",
@@ -325,6 +335,37 @@
       "title": "Experiment Id",
       "type": "string"
     },
+    "display_name": {
+      "anyOf": [
+        {
+          "maxLength": 160,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Display Name"
+    },
+    "execution_view": {
+      "anyOf": [
+        {
+          "maxLength": 80,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution View"
+    },
+    "diagnostic_only": {
+      "default": false,
+      "title": "Diagnostic Only",
+      "type": "boolean"
+    },
     "status": {
       "$ref": "#/$defs/RunStatus"
     },
@@ -332,6 +373,44 @@
       "minLength": 1,
       "title": "Bundle Id",
       "type": "string"
+    },
+    "dataset_release_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dataset Release Id"
+    },
+    "benchmark_contract_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Benchmark Contract Version"
+    },
+    "benchmark_contract_digest": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Benchmark Contract Digest"
     },
     "case_selection_id": {
       "minLength": 1,

@@ -182,6 +182,150 @@
       "title": "RAGEvidenceItem",
       "type": "object"
     },
+    "SegmentTraceItem": {
+      "additionalProperties": false,
+      "description": "A native retrieval item with an adapter-auditable segment relation.",
+      "properties": {
+        "native_chunk_id": {
+          "minLength": 1,
+          "title": "Native Chunk Id",
+          "type": "string"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "content": {
+          "default": "",
+          "title": "Content",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "source_segment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Segment Ids",
+          "type": "array"
+        },
+        "mapping_receipt_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Mapping Receipt Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_chunk_id",
+        "rank",
+        "source_segment_ids",
+        "mapping_receipt_digest"
+      ],
+      "title": "SegmentTraceItem",
+      "type": "object"
+    },
+    "SegmentTraceSet": {
+      "additionalProperties": false,
+      "description": "The full stage set returned for one query under the vNext contract.",
+      "properties": {
+        "raw": {
+          "$ref": "#/$defs/SegmentTraceStage"
+        },
+        "ranked": {
+          "$ref": "#/$defs/SegmentTraceStage"
+        },
+        "context": {
+          "$ref": "#/$defs/SegmentTraceStage"
+        }
+      },
+      "required": [
+        "raw",
+        "ranked",
+        "context"
+      ],
+      "title": "SegmentTraceSet",
+      "type": "object"
+    },
+    "SegmentTraceStage": {
+      "additionalProperties": false,
+      "description": "One of raw, ranked, or final-context retrieval observations.",
+      "properties": {
+        "stage": {
+          "enum": [
+            "raw",
+            "ranked",
+            "context"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SegmentTraceStatus"
+        },
+        "items": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SegmentTraceItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "mapping_manifest_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mapping Manifest Digest"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "stage",
+        "status"
+      ],
+      "title": "SegmentTraceStage",
+      "type": "object"
+    },
+    "SegmentTraceStatus": {
+      "description": "Observation state for one retrieval boundary in a benchmark query.",
+      "enum": [
+        "observed",
+        "unsupported_stage",
+        "runtime_error",
+        "mapping_corrupted"
+      ],
+      "title": "SegmentTraceStatus",
+      "type": "string"
+    },
     "TableCellLocator": {
       "additionalProperties": false,
       "properties": {
@@ -361,6 +505,17 @@
       "additionalProperties": true,
       "title": "Native Metadata",
       "type": "object"
+    },
+    "segment_traces": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SegmentTraceSet"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "title": "RAGResult",
