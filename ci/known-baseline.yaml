@@ -4,6 +4,7 @@ captured_at: "2026-09-07T15:38:00+08:00"
 adapter_pytest:
   python: "3.12.12"
   pytest: "9.1.1"
+  pytest_asyncio: "1.4.0"
   command: >-
     pytest -q --tb=short
     tests/rag_eval_adapters/test_canonical_provenance.py
@@ -29,6 +30,7 @@ adapter_pytest:
 adapter_dirty_tests:
   python: "3.12.12"
   pytest: "9.1.1"
+  pytest_asyncio: "1.4.0"
   command: >-
     PYTHONPATH=platform/src:adapters/lightrag/src pytest -q
     adapters/lightrag/tests/test_benchmark_segment_trace.py

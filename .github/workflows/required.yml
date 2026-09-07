@@ -87,13 +87,13 @@ jobs:
         run: >-
           uv run --project adapters/lightrag --frozen
           --python "${PYTHON_BASELINE}"
-          --with pytest==9.1.1 --with pyyaml==6.0.3
+          --with pytest==9.1.1 --with pytest-asyncio==1.4.0 --with pyyaml==6.0.3
           python ci/pytest_signal_gate.py --section adapter_pytest
       - name: Validate retained Adapter regression tests
         run: >-
           uv run --project adapters/lightrag --frozen
           --python "${PYTHON_BASELINE}"
-          --with pytest==9.1.1 --with pyyaml==6.0.3
+          --with pytest==9.1.1 --with pytest-asyncio==1.4.0 --with pyyaml==6.0.3
           python ci/pytest_signal_gate.py --section adapter_dirty_tests
 
   ruff-differential:

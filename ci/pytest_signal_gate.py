@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import platform as python_platform
 from collections.abc import Mapping, Sequence
@@ -181,6 +182,13 @@ def main() -> int:
         pytest.__version__ != str(expected_pytest)
     ):
         errors.append(f"pytest {pytest.__version__} != {expected_pytest}")
+    if expected_asyncio := config.get("pytest_asyncio"):
+        try:
+            actual_asyncio = importlib.metadata.version("pytest-asyncio")
+        except importlib.metadata.PackageNotFoundError:
+            actual_asyncio = "not installed"
+        if actual_asyncio != str(expected_asyncio):
+            errors.append(f"pytest-asyncio {actual_asyncio} != {expected_asyncio}")
     summary = {
         "section": args.section,
         "profile": args.profile,
