@@ -1,0 +1,143 @@
+{
+  "case_id": "fixture-case-05",
+  "completed_at": "2020-01-01T00:00:01Z",
+  "gold_answer": {
+    "accepted_values": [],
+    "canonical": "deterministic answer 05",
+    "gold_answer_id": "gold-answer-05",
+    "kind": "text"
+  },
+  "gold_evidence_set": {
+    "evidence": [
+      {
+        "canonical_value": "Synthetic signal 12 establishes deterministic evidence 12.",
+        "document_id": "doc-synthetic-history-v1",
+        "evidence_id": "fixture-evidence-12",
+        "locator": {
+          "object_id": "doc-synthetic-history-v1:paragraph:00012",
+          "object_type": "paragraph",
+          "type": "object"
+        }
+      },
+      {
+        "canonical_value": "Synthetic signal 13 establishes deterministic evidence 13.",
+        "document_id": "doc-synthetic-history-v1",
+        "evidence_id": "fixture-evidence-13",
+        "locator": {
+          "object_id": "doc-synthetic-history-v1:paragraph:00013",
+          "object_type": "paragraph",
+          "type": "object"
+        }
+      }
+    ],
+    "gold_evidence_set_id": "gold-evidence-set-05",
+    "mses_paths": [
+      [
+        [
+          "fixture-evidence-12"
+        ],
+        [
+          "fixture-evidence-13"
+        ]
+      ]
+    ],
+    "required_groups": [
+      [
+        "fixture-evidence-12"
+      ],
+      [
+        "fixture-evidence-13"
+      ]
+    ]
+  },
+  "metrics": [
+    {
+      "metric_id": "legacy-placeholder",
+      "reason": "intentionally replaced by the production evaluator",
+      "scorer_digest": "synthetic-fixture-v1",
+      "scorer_id": "synthetic-legacy-scorer",
+      "scorer_version": "1",
+      "status": "unavailable"
+    }
+  ],
+  "question": "Which synthetic signals belong to case 05?",
+  "rag_result": {
+    "answer": "deterministic answer 05",
+    "final_context": [
+      {
+        "content": "Synthetic signal 12 establishes deterministic evidence 12.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "context:chunk-paragraph-12",
+        "metadata": {
+          "fixture_stage": "context"
+        },
+        "native_id": "chunk-paragraph-12",
+        "rank": 1
+      },
+      {
+        "content": "Synthetic signal 13 establishes deterministic evidence 13.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "context:chunk-paragraph-13",
+        "metadata": {
+          "fixture_stage": "context"
+        },
+        "native_id": "chunk-paragraph-13",
+        "rank": 2
+      }
+    ],
+    "latency": {
+      "fixture_seconds": 0.01
+    },
+    "native_metadata": {
+      "fixture": "history-provenance-fixture/1"
+    },
+    "ranked_retrieval": [
+      {
+        "content": "Synthetic signal 12 establishes deterministic evidence 12.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "ranked:chunk-paragraph-12",
+        "metadata": {
+          "fixture_stage": "ranked"
+        },
+        "native_id": "chunk-paragraph-12",
+        "rank": 1
+      },
+      {
+        "content": "Synthetic signal 13 establishes deterministic evidence 13.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "ranked:chunk-paragraph-13",
+        "metadata": {
+          "fixture_stage": "ranked"
+        },
+        "native_id": "chunk-paragraph-13",
+        "rank": 2
+      }
+    ],
+    "raw_retrieval": [
+      {
+        "content": "Synthetic signal 12 establishes deterministic evidence 12.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "raw:chunk-paragraph-12",
+        "metadata": {
+          "fixture_stage": "raw"
+        },
+        "native_id": "chunk-paragraph-12",
+        "rank": 1
+      },
+      {
+        "content": "Synthetic signal 13 establishes deterministic evidence 13.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "raw:chunk-paragraph-13",
+        "metadata": {
+          "fixture_stage": "raw"
+        },
+        "native_id": "chunk-paragraph-13",
+        "rank": 2
+      }
+    ]
+  },
+  "repetition": 1,
+  "seed": 0,
+  "started_at": "2020-01-01T00:00:00Z",
+  "status": "completed"
+}

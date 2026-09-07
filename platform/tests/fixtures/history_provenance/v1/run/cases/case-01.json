@@ -1,0 +1,189 @@
+{
+  "case_id": "fixture-case-01",
+  "completed_at": "2020-01-01T00:00:01Z",
+  "gold_answer": {
+    "accepted_values": [],
+    "canonical": "deterministic answer 01",
+    "gold_answer_id": "gold-answer-01",
+    "kind": "text"
+  },
+  "gold_evidence_set": {
+    "evidence": [
+      {
+        "canonical_value": "Synthetic signal 01 establishes deterministic evidence 01.",
+        "document_id": "doc-synthetic-history-v1",
+        "evidence_id": "fixture-evidence-01",
+        "locator": {
+          "object_id": "doc-synthetic-history-v1:paragraph:00001",
+          "object_type": "paragraph",
+          "type": "object"
+        }
+      },
+      {
+        "canonical_value": "Synthetic signal 02 establishes deterministic evidence 02.",
+        "document_id": "doc-synthetic-history-v1",
+        "evidence_id": "fixture-evidence-02",
+        "locator": {
+          "object_id": "doc-synthetic-history-v1:paragraph:00002",
+          "object_type": "paragraph",
+          "type": "object"
+        }
+      },
+      {
+        "canonical_value": "Synthetic signal 03 establishes deterministic evidence 03.",
+        "document_id": "doc-synthetic-history-v1",
+        "evidence_id": "fixture-evidence-03",
+        "locator": {
+          "object_id": "doc-synthetic-history-v1:paragraph:00003",
+          "object_type": "paragraph",
+          "type": "object"
+        }
+      }
+    ],
+    "gold_evidence_set_id": "gold-evidence-set-01",
+    "mses_paths": [
+      [
+        [
+          "fixture-evidence-01"
+        ],
+        [
+          "fixture-evidence-02"
+        ],
+        [
+          "fixture-evidence-03"
+        ]
+      ]
+    ],
+    "required_groups": [
+      [
+        "fixture-evidence-01"
+      ],
+      [
+        "fixture-evidence-02"
+      ],
+      [
+        "fixture-evidence-03"
+      ]
+    ]
+  },
+  "metrics": [
+    {
+      "metric_id": "legacy-placeholder",
+      "reason": "intentionally replaced by the production evaluator",
+      "scorer_digest": "synthetic-fixture-v1",
+      "scorer_id": "synthetic-legacy-scorer",
+      "scorer_version": "1",
+      "status": "unavailable"
+    }
+  ],
+  "question": "Which synthetic signals belong to case 01?",
+  "rag_result": {
+    "answer": "deterministic answer 01",
+    "final_context": [
+      {
+        "content": "Synthetic signal 01 establishes deterministic evidence 01.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "context:chunk-paragraph-01",
+        "metadata": {
+          "fixture_stage": "context"
+        },
+        "native_id": "chunk-paragraph-01",
+        "rank": 1
+      },
+      {
+        "content": "Synthetic signal 02 establishes deterministic evidence 02.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "context:chunk-paragraph-02",
+        "metadata": {
+          "fixture_stage": "context"
+        },
+        "native_id": "chunk-paragraph-02",
+        "rank": 2
+      },
+      {
+        "content": "Synthetic signal 03 establishes deterministic evidence 03.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "context:chunk-paragraph-03",
+        "metadata": {
+          "fixture_stage": "context"
+        },
+        "native_id": "chunk-paragraph-03",
+        "rank": 3
+      }
+    ],
+    "latency": {
+      "fixture_seconds": 0.01
+    },
+    "native_metadata": {
+      "fixture": "history-provenance-fixture/1"
+    },
+    "ranked_retrieval": [
+      {
+        "content": "Synthetic signal 01 establishes deterministic evidence 01.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "ranked:chunk-paragraph-01",
+        "metadata": {
+          "fixture_stage": "ranked"
+        },
+        "native_id": "chunk-paragraph-01",
+        "rank": 1
+      },
+      {
+        "content": "Synthetic signal 02 establishes deterministic evidence 02.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "ranked:chunk-paragraph-02",
+        "metadata": {
+          "fixture_stage": "ranked"
+        },
+        "native_id": "chunk-paragraph-02",
+        "rank": 2
+      },
+      {
+        "content": "Synthetic signal 03 establishes deterministic evidence 03.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "ranked:chunk-paragraph-03",
+        "metadata": {
+          "fixture_stage": "ranked"
+        },
+        "native_id": "chunk-paragraph-03",
+        "rank": 3
+      }
+    ],
+    "raw_retrieval": [
+      {
+        "content": "Synthetic signal 01 establishes deterministic evidence 01.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "raw:chunk-paragraph-01",
+        "metadata": {
+          "fixture_stage": "raw"
+        },
+        "native_id": "chunk-paragraph-01",
+        "rank": 1
+      },
+      {
+        "content": "Synthetic signal 02 establishes deterministic evidence 02.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "raw:chunk-paragraph-02",
+        "metadata": {
+          "fixture_stage": "raw"
+        },
+        "native_id": "chunk-paragraph-02",
+        "rank": 2
+      },
+      {
+        "content": "Synthetic signal 03 establishes deterministic evidence 03.",
+        "document_id": "doc-synthetic-history-v1",
+        "item_id": "raw:chunk-paragraph-03",
+        "metadata": {
+          "fixture_stage": "raw"
+        },
+        "native_id": "chunk-paragraph-03",
+        "rank": 3
+      }
+    ]
+  },
+  "repetition": 1,
+  "seed": 0,
+  "started_at": "2020-01-01T00:00:00Z",
+  "status": "completed"
+}
