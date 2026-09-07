@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dictionaryKeys, locales, resolveLocale } from './index'
+import { dictionaryKeys, locales, resolveLocale, translate } from './index'
 
 describe('i18n foundation', () => {
   it('keeps zh-CN and en-US dictionaries in exact key parity', () => {
@@ -11,5 +11,13 @@ describe('i18n foundation', () => {
     expect(resolveLocale(null, ['zh-Hant-TW', 'en-US'])).toBe('zh-CN')
     expect(resolveLocale(null, ['fr-FR'])).toBe('en-US')
     expect(locales).toEqual(['zh-CN', 'en-US'])
+  })
+
+  it('keeps the compact dataset-creation labels available in both languages', () => {
+    for (const locale of locales) {
+      expect(translate(locale, 'product.datasets.createDataset')).not.toBe('')
+      expect(translate(locale, 'product.datasets.authoringBlocked')).not.toBe('')
+      expect(translate(locale, 'product.authoring.generateBatch', { count: 3 })).not.toBe('')
+    }
   })
 })

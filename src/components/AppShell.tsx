@@ -12,6 +12,9 @@ export function Toolbar({ children }: { children: ReactNode }) {
   return <header className="toolbar">{children}</header>
 }
 
-export function PageHeader({ title, description, actions }: { title: string; description: string; actions?: ReactNode }) {
-  return <section className="page-header"><div><h2>{title}</h2><p>{description}</p></div>{actions && <div className="page-header__actions">{actions}</div>}</section>
+export function PageHeader({ title: _title, actions }: { title: string; actions?: ReactNode }) {
+  // The application toolbar already provides the page heading.  Keep this
+  // component solely as an action rail so pages do not repeat their title.
+  if (!actions) return null
+  return <section className="page-header page-header--actions"><div className="page-header__actions">{actions}</div></section>
 }

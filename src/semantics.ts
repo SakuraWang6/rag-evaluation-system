@@ -14,6 +14,16 @@ export const metricLabel = (id: string): MetricLabelDescriptor => {
     ranked_mrr: 'metric.rankedMrr',
   }
   if (exact[id]) return { translationKey: exact[id], suffix: '' }
+  const localization = id.match(/^(raw|ranked|context)_localization_(matched|partial|retrieval_missed|provenance_missing)$/)
+  if (localization) {
+    const label: Record<string, string> = {
+      matched: '证据定位命中',
+      partial: '证据定位部分覆盖',
+      retrieval_missed: '证据未检索到',
+      provenance_missing: '原文坐标不可验证',
+    }
+    return { translationKey: null, suffix: label[localization[2]] }
+  }
   const prefixes: Array<[string, string]> = [
     ['raw_recall', 'metric.rawRecall'],
     ['ranked_recall', 'metric.rankedRecall'],

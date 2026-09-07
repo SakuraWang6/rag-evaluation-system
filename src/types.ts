@@ -60,13 +60,77 @@ export interface CaseResult {
     reasons: string[]
     review_required: boolean
   } | null
+  review: CaseReview | null
+  answer_support_review?: AnswerSupportReview | null
+  historical_rescore?: HistoricalRescore | null
+  answer_judgment: AnswerJudgment
+  evidence_judgment: EvidenceJudgment
+}
+
+export type AnswerJudgment = 'correct' | 'incorrect' | 'needs_review' | 'unavailable'
+export type EvidenceJudgment = 'grounded' | 'missing' | 'ungrounded' | 'unverifiable' | 'needs_review' | 'unavailable'
+
+export interface CaseReviewDecision {
+  revision: number
+  verdict: AnswerJudgment
+  source: 'human' | 'llm'
+  reviewer: string
+  note: string
+  created_at: string
+  model: string | null
+  prompt_digest: string | null
+}
+
+export interface CaseReview {
+  run_id: string
+  case_id: string
+  repetition: number
+  latest: CaseReviewDecision | null
+  history: CaseReviewDecision[]
+}
+
+export type AnswerSupportVerdict = 'supported' | 'unsupported' | 'needs_review'
+
+export interface AnswerSupportReviewDecision {
+  revision: number
+  verdict: AnswerSupportVerdict
+  source: 'human' | 'llm'
+  reviewer: string
+  note: string
+  created_at: string
+  model: string | null
+  prompt_digest: string | null
+}
+
+export interface AnswerSupportReview {
+  run_id: string
+  case_id: string
+  repetition: number
+  latest: AnswerSupportReviewDecision | null
+  history: AnswerSupportReviewDecision[]
+}
+
+export interface CaseListItem {
+  case_id: string
+  repetition: number
+  seed: number
+  status: 'completed' | 'timeout' | 'system_error' | 'cancelled'
+  question: string
+  answer_judgment: AnswerJudgment
+  evidence_judgment: EvidenceJudgment
+  review?: CaseReview | null
 }
 
 export interface RunManifest {
   run_id: string
   experiment_id: string
+  display_name?: string | null
+  display_name_source?: 'manifest' | 'override' | 'generated' | string
+  execution_view?: string | null
+  diagnostic_only?: boolean
   status: string
   bundle_id: string
+  dataset_release_id?: string | null
   case_selection_id: string
   adapter_id: string
   adapter_version: string
@@ -91,15 +155,90 @@ export interface SummaryMetric {
   mean?: number
   standard_deviation?: number
   denominator: number
+  numerator?: number
   errors?: number
   coverage?: number
   status_counts?: Record<string, number>
   repetition_values?: number[]
+  reason?: string | null
+}
+
+export interface RunDatasetIdentity {
+  name: string
+  version: string | null
+  case_count: number | null
+  selected_case_count: number
+  resolution: 'formal_release' | 'bundle_manifest' | 'unresolved' | string
+  dataset_id: string | null
+  release_id: string | null
+  bundle_id: string
+}
+
+export interface LocalizationStageSummary {
+  matched: number
+  partial: number
+  retrieval_missed: number
+  provenance_missing: number
+  denominator: number
+  observed_cases: number
+  unavailable_cases: number
+  coverage: number
+  status: 'observed' | 'unavailable' | string
+  reason: string | null
+}
+
+export interface LocalizationSummary {
+  scope: 'selected_path_clauses' | string
+  stages: Record<'raw' | 'ranked' | 'context', LocalizationStageSummary>
+}
+
+export interface HistoricalRescore {
+  status: string
+  source_rescore_status?: string
+  rescore_identity: string
+  method: string
+  source_artifacts_verified: boolean
+  note: string
+  acceptance?: {
+    reviewer?: string | null
+    reviewed_at?: string | null
+    scope?: { limitations?: string[]; worker_runtime_verified?: boolean } | null
+  }
+  diagnostic_matrix: {
+    decision_count?: number
+    status_counts?: Record<string, number>
+    by_stage?: Record<string, Record<string, number>>
+  }
+}
+
+export interface SemanticReviewStatus {
+  schema_version: number
+  run_id: string
+  state: 'not_started' | 'not_configured' | 'queued' | 'running' | 'completed' | 'completed_with_errors' | 'skipped' | string
+  candidate_count: number
+  processed_count: number
+  adjudicated_count: number
+  needs_human_count: number
+  error_count: number
+  detail: string | null
+  started_at: string | null
+  completed_at: string | null
 }
 
 export interface RunSummary {
   metrics: Record<string, SummaryMetric>
   execution: Record<string, number>
+  dataset?: RunDatasetIdentity
+  localization?: LocalizationSummary
+  historical_rescore?: HistoricalRescore | null
+  semantic_review?: SemanticReviewStatus | null
+  semantic_support_review?: SemanticReviewStatus | null
+  presentation?: { kind: string; raw_summary_available: boolean; notes: string[] }
+  judgments?: {
+    answer: Record<AnswerJudgment, number>
+    answer_support: Record<AnswerSupportVerdict | 'unavailable', number>
+    evidence: Record<EvidenceJudgment, number>
+  }
 }
 
 export interface DatasetSummary {
@@ -107,6 +246,183 @@ export interface DatasetSummary {
   name: string
   version: string
   cases: number
+}
+
+export interface FormalDatasetReleaseSummary {
+  release_id: string
+  dataset_id: string
+  name: string
+  version: string
+  release_digest: string
+  parent_release_id: string | null
+  case_count: number
+  gold_count: number
+  canonical_digest: string
+  validation_report_digest: string
+  runnable: boolean
+  runtime_reason: string | null
+}
+
+export interface FormalBundleV3Summary {
+  bundle_id: string
+  target_release_id: string
+  dataset_id: string
+  case_count: number
+  gold_count: number
+  evidence_count: number
+  runnable: boolean
+  visibility: string
+}
+
+export interface FormalDatasetsResponse {
+  releases: FormalDatasetReleaseSummary[]
+  bundles_v3: FormalBundleV3Summary[]
+}
+
+export interface FormalCanonicalObjectView {
+  object_id: string
+  document_id: string
+  object_type: string
+  representation_status: string
+  document_order: number
+  canonical_value: string | null
+  provenance: {
+    source_sha256: string
+    parser_identity: string
+    canonicalizer_identity: string
+    configuration_digest: string
+    extraction_method: string
+    source_spans: Array<Record<string, unknown>>
+    derived_from_object_ids: string[]
+  }
+  attributes: Record<string, unknown>
+}
+
+export interface FormalEvidenceView {
+  evidence_id: string
+  canonical_object_id: string
+  role: string
+  rationale: string | null
+  reachable: boolean
+  canonical: FormalCanonicalObjectView | null
+}
+
+export interface FormalMsesPathView {
+  path_id: string
+  clauses: Array<{ clause_id: string; alternatives: string[] }>
+}
+
+export interface FormalGoldContent {
+  gold_id: string
+  gold_revision_id: string
+  revision: number
+  lifecycle: string
+  answer: {
+    kind: string
+    canonical: string | string[] | null
+    accepted_values: string[]
+    locale: string | null
+    unit: string | null
+    tolerance: string | null
+  }
+  evidence: FormalEvidenceView[]
+  mses_paths: FormalMsesPathView[]
+  dependencies: Array<{ dependency_id: string; depends_on: string[]; description: string }>
+  negative_scope_object_ids: string[]
+  negative_rationale: string | null
+  origin: Record<string, unknown>
+  actor: string
+  reason: string
+  lineage: {
+    reviews: Array<Record<string, unknown>>
+    approvals: Array<Record<string, unknown>>
+    adjudications: Array<Record<string, unknown>>
+  }
+}
+
+export interface FormalCaseContent {
+  case_id: string
+  case_revision_id: string
+  revision: number
+  lifecycle: string
+  question: string
+  language: string
+  target_id: string
+  source_object_ids: string[]
+  source_digest: string
+  canonical_contract_digest: string | null
+  origin: Record<string, unknown>
+  actor: string
+  reason: string
+  gold: FormalGoldContent
+  relation_context: Array<{
+    relation_id: string
+    relation_type: string
+    source_object_id: string
+    target_object_id: string
+    attributes: Record<string, unknown>
+  }>
+  lineage: {
+    reviews: Array<Record<string, unknown>>
+    approvals: Array<Record<string, unknown>>
+    adjudications: Array<Record<string, unknown>>
+  }
+}
+
+export interface FormalReleaseContentResponse {
+  release: {
+    release_id: string
+    dataset_id: string
+    version: string
+    release_digest: string
+    parent_release_id: string | null
+    canonical_digest: string
+    source_digest: string
+    validation_report_digest: string
+    case_count: number
+    gold_count: number
+    canonical_schema_version: string
+  }
+  cases: FormalCaseContent[]
+}
+
+export interface FormalCaseListItem {
+  case_id: string
+  question: string
+  language: string
+  lifecycle: string
+}
+
+export interface FormalReleaseCaseIndexResponse {
+  release: FormalReleaseContentResponse['release']
+  cases: FormalCaseListItem[]
+}
+
+export interface FormalDocumentCell {
+  text: string
+  row: number
+  column: number
+  row_span: number
+  column_span: number
+  object_ids: string[]
+}
+
+export interface FormalDocumentBlock {
+  block_id: string
+  kind: string
+  text: string
+  document_order: number
+  object_ids: string[]
+  cells: FormalDocumentCell[]
+  heading_level: number | null
+  page_break_before: boolean
+  list_level: number | null
+}
+
+export interface FormalDocumentView {
+  document_id: string
+  filename: string
+  blocks: FormalDocumentBlock[]
 }
 
 export interface SystemProfile {
@@ -131,6 +447,52 @@ export interface ProductSystemSummary {
   connection_test_status: 'not_tested' | 'passed' | 'failed'
   last_connection_tested_at: string | null
   updated_at: string
+}
+
+export type LLMProviderKind = 'ollama' | 'openai_compatible'
+export type LLMHealthStatus = 'not_checked' | 'healthy' | 'unreachable' | 'model_unavailable' | 'invalid'
+export type LLMLatencyStatus = 'not_checked' | 'measured' | 'unreachable' | 'invalid'
+export type LLMStage = 'target_discovery' | 'question_generation' | 'answer_evidence' | 'review_assist' | 'calibration' | 'runtime_generation' | 'runtime_embedding'
+
+export interface LLMProviderConfig {
+  provider_id: string
+  display_name: string
+  kind: LLMProviderKind
+  endpoint: string
+  model: string
+  embedding_model: string | null
+  enabled: boolean
+  api_key_configured: boolean
+  health_status: LLMHealthStatus
+  available_models: string[]
+  available_chat_models: string[]
+  available_embedding_models: string[]
+  health_message: string | null
+  last_checked_at: string | null
+  latency_status: LLMLatencyStatus
+  latency_ms: number | null
+  last_latency_checked_at: string | null
+}
+
+export interface LLMStageBinding {
+  stage: LLMStage
+  provider_id: string
+  model: string | null
+  enabled: boolean
+  fallback_provider_id: string | null
+}
+
+export interface LLMConfigRevision {
+  schema_version: string
+  revision_id: string
+  config_version: number
+  created_at: string
+  actor: string
+  reason: string
+  parent_revision_id: string | null
+  config_digest: string
+  providers: LLMProviderConfig[]
+  bindings: LLMStageBinding[]
 }
 
 export interface SystemConnectionPayload {
@@ -177,11 +539,13 @@ export interface AuthoringDataset {
   state: string
   created_at: string
   updated_at: string
+  archived_at?: string | null
   source: { original_filename: string; sha256: string; size_bytes: number }
   document_id: string | null
   canonical_digest: string | null
   analysis: { record_count?: number; records_by_status?: Record<string, number>; records_by_object_type?: Record<string, number> }
   failure: string | null
+  formal_release_ids?: string[]
 }
 
 export interface AuthoringTarget {
@@ -194,6 +558,23 @@ export interface AuthoringTarget {
   discovery_method: string
   flags: string[]
   rationale: string
+}
+
+export interface AuthoringTargetPreviewItem {
+  object_type: string
+  text: string
+  table: {
+    row: number | null
+    column: number | null
+    header_path: string[]
+  } | null
+}
+
+export interface AuthoringTargetPreview {
+  target_id: string
+  source: AuthoringTargetPreviewItem[]
+  context: AuthoringTargetPreviewItem[]
+  distractors: AuthoringTargetPreviewItem[]
 }
 
 export interface AuthoringEvidence {
@@ -230,6 +611,57 @@ export interface AuthoringCandidate {
   gates: Array<{ gate_id: string; status: 'PASS' | 'FLAG' | 'FAIL'; message: string }>
 }
 
+export type AuthoringGenerationJobState = 'queued' | 'running' | 'completed' | 'partial' | 'failed' | 'cancelled'
+export type AuthoringGenerationItemState = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+
+export interface AuthoringGenerationJobItem {
+  target_id: string
+  state: AuthoringGenerationItemState
+  attempts: number
+  candidate_id: string | null
+  error_code: string | null
+  error_detail: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface AuthoringGenerationJob {
+  job_id: string
+  authoring_dataset_id: string
+  provider: string
+  seed: number
+  remote_consent: boolean
+  state: AuthoringGenerationJobState
+  items: AuthoringGenerationJobItem[]
+  requested_at: string
+  started_at: string | null
+  completed_at: string | null
+  cancel_requested: boolean
+}
+
+export type AuthoringDiscoveryJobState = 'queued' | 'running' | 'completed' | 'failed'
+export type AuthoringDiscoveryJobPhase = 'queued' | 'building_rule_targets' | 'awaiting_model' | 'saving_results' | 'completed' | 'failed'
+
+export interface AuthoringDiscoveryJob {
+  job_id: string
+  authoring_dataset_id: string
+  provider: string
+  seed: number
+  remote_consent: boolean
+  state: AuthoringDiscoveryJobState
+  phase: AuthoringDiscoveryJobPhase
+  phase_detail: string
+  requested_at: string
+  started_at: string | null
+  completed_at: string | null
+  total_source_records: number
+  model_source_records: number
+  rule_target_count: number
+  target_count: number
+  error_code: string | null
+  error_detail: string | null
+}
+
 export interface AuthoringExport {
   release_id: string
   name: string
@@ -244,6 +676,7 @@ export interface EvaluationDraft {
   draft_id?: string
   mode: 'basic' | 'advanced'
   bundle_id: string | null
+  dataset_release_id?: string | null
   system_id: string | null
   profile_id: string | null
   profile_version: string | null
@@ -269,7 +702,9 @@ export interface SystemSummary {
 
 export interface ExperimentSpec {
   experiment_id: string
+  display_name?: string | null
   bundle_id: string
+  dataset_release_id?: string | null
   system_id: string
   adapter_id: string
   adapter_config: Record<string, unknown>

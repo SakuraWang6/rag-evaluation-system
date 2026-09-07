@@ -36,10 +36,10 @@ diagnostic only. The historical UI audit documents are retained under
 
 With Product Layer enabled (the default), use **Overview → New Evaluation**:
 
-1. Create from document and complete the private DOCX Authoring/review flow,
-   then export/register the canonical-text Dataset Bundle. Uploading an
-   already sealed Bundle is an import path; the TXT/Markdown editor is a
-   manual/diagnostic fallback.
+1. Create a dataset from a document and complete the private DOCX
+   Authoring/review flow, then export/register the canonical-text Bundle. The
+   dataset page also supports importing an already sealed Bundle ZIP and
+   creating a small dataset from pasted TXT/Markdown.
 2. Add a standard LightRAG or RAG-Anything system and test its Worker handshake.
 3. Select Dataset, System, Model, Embedding, and Query Mode.
 4. Review the fully expanded canonical ExperimentSpec, then queue the run.
