@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rag-eval-adapter-rag-anything"
+version = "0.1.0"
+description = "Isolated RAG-Anything worker adapter for rag-eval-platform"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.28",
+  "pydantic>=2.10",
+  "rag-eval-platform>=0.1.0",
+  "raganything>=1.3.1,<1.4",
+  "lightrag-hku>=1.4,<1.5",
+  "ollama>=0.4,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rag_eval_rag_anything_adapter"]
