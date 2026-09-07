@@ -1,7 +1,0 @@
-INFO: RAGAnything initialized with config:
-INFO:   Working directory: /Users/sakura/RAG/rag-eval-platform/examples/golden-smoke-v1-execution/platform-home/runs/4df57c23e7a9480382f9efed357c01e0/work/rep-0001/storage
-INFO:   Parser: mineru
-INFO:   Parse method: txt
-INFO:   Multimodal processing - Image: False, Table: False, Equation: False
-INFO:   Max concurrent files: 1
-ERROR: Parser 'mineru' is not properly installed. Please install it using 'pip install' or 'uv pip install'.

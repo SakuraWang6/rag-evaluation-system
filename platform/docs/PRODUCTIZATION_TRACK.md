@@ -90,9 +90,9 @@ capabilities, read-only root filesystem, temporary `/tmp`, and explicit cleanup.
 Build standard images from the workspace root:
 
 ```bash
-docker build -f rag-eval-adapters/lightrag/Dockerfile \
+docker build -f evaluation-system/adapters/lightrag/Dockerfile \
   -t rag-eval-adapter-lightrag:0.1.0 .
-docker build -f rag-eval-adapters/rag_anything/Dockerfile \
+docker build -f evaluation-system/adapters/rag-anything/Dockerfile \
   -t rag-eval-adapter-rag-anything:0.1.0 .
 ```
 

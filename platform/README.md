@@ -111,8 +111,8 @@ RAG_EVAL_WEBUI_PORT=4178 \
 ```
 
 The startup script expects an installed Platform environment (`.venv/bin/rag-eval` or
-`rag-eval` on `PATH`) and an installed sibling WebUI (`npm ci` in
-`../rag-eval-webui`). Use `RAG_EVAL_WEBUI_DIR` when that checkout is elsewhere.
+`rag-eval` on `PATH`) and the monorepo WebUI (`npm ci` in `../webui`). Use
+`RAG_EVAL_WEBUI_DIR` when that directory is elsewhere.
 
 Completed runs contain a frozen `experiment.json`, per-repetition case files,
 `summary.json` with mean/standard deviation and execution-failure rate,

@@ -176,9 +176,15 @@ def _local_standard_runtime_sources(profile_id: str) -> tuple[str, ...]:
     execute the current Platform/Adapter sources.  Docker images contain their
     own sources and intentionally never receive host paths.
     """
-    workspace = Path(__file__).resolve().parents[3]
-    adapter_source = workspace / "rag-eval-adapters" / profile_id.replace("-", "_") / "src"
-    platform_source = workspace / "rag-eval-platform" / "src"
+    monorepo = Path(__file__).resolve().parents[3]
+    adapter_directory = {
+        "lightrag": "lightrag",
+        "rag-anything": "rag-anything",
+    }.get(profile_id)
+    if adapter_directory is None:
+        return ()
+    adapter_source = monorepo / "adapters" / adapter_directory / "src"
+    platform_source = monorepo / "platform" / "src"
     if adapter_source.is_dir() and platform_source.is_dir():
         return (str(platform_source), str(adapter_source))
     return ()

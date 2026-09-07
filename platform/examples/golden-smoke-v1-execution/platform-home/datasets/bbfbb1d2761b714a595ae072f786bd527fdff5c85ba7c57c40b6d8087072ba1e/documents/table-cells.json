@@ -1,6 +1,0 @@
-[
-  {"table_id": "inventory-q2", "row": "north", "column": "units", "value": "47"},
-  {"table_id": "inventory-q2", "row": "south", "column": "units", "value": "31"},
-  {"table_id": "inventory-q2", "row": "east", "column": "restock_day", "value": "Thursday"},
-  {"table_id": "inventory-q2", "row": "west", "column": "restock_day", "value": "Monday"}
-]

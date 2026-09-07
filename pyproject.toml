@@ -1,0 +1,7 @@
+[tool.uv.workspace]
+members = [
+  "platform",
+  "adapters/lightrag",
+  "adapters/rag-anything",
+]
+

@@ -9,10 +9,11 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLATFORM_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-WORKSPACE_ROOT="$(cd "$PLATFORM_ROOT/.." && pwd)"
+MONOREPO_ROOT="$(cd "$PLATFORM_ROOT/.." && pwd)"
+WORKSPACE_ROOT="$(cd "$MONOREPO_ROOT/.." && pwd)"
 
-WEBUI_ROOT="${RAG_EVAL_WEBUI_DIR:-$WORKSPACE_ROOT/rag-eval-webui}"
-PLATFORM_HOME="${RAG_EVAL_HOME:-$WORKSPACE_ROOT/.rag-eval-real-benchmark-pilot}"
+WEBUI_ROOT="${RAG_EVAL_WEBUI_DIR:-$MONOREPO_ROOT/webui}"
+PLATFORM_HOME="${RAG_EVAL_HOME:-$WORKSPACE_ROOT/data/evaluation-system/platform-home}"
 API_PORT="${RAG_EVAL_API_PORT:-8765}"
 WEBUI_PORT="${RAG_EVAL_WEBUI_PORT:-4178}"
 API_URL="http://127.0.0.1:${API_PORT}/api/v1"
@@ -79,7 +80,7 @@ fi
 API_URL="http://127.0.0.1:${API_PORT}/api/v1"
 if [[ ! -f "$WEBUI_ROOT/package.json" ]]; then
   echo "WebUI checkout not found: $WEBUI_ROOT" >&2
-  echo "Set RAG_EVAL_WEBUI_DIR to the rag-eval-webui checkout." >&2
+  echo "Set RAG_EVAL_WEBUI_DIR to the evaluation-system WebUI directory." >&2
   exit 2
 fi
 if [[ ! -x "$WEBUI_ROOT/node_modules/.bin/vite" ]]; then

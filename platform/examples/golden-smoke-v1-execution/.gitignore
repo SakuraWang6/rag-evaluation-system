@@ -1,8 +1,0 @@
-# Run-scoped LightRAG/RAG-Anything indexes are deliberately excluded from the
-# immutable Platform artifact checksum set and can be rebuilt from the retained
-# source-only inputs plus frozen ExperimentSpec.
-platform-home/runs/*/work/
-
-# Pre-manifest Worker startup logs are diagnostic only; accepted-run logs are
-# retained below their run directories after successful startup.
-platform-home/runs/.*.worker.log

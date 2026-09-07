@@ -1,0 +1,79 @@
+schema_version: 1
+captured_at: "2026-09-07T15:38:00+08:00"
+
+adapter_pytest:
+  python: "3.12.12"
+  pytest: "9.1.1"
+  command: >-
+    pytest -q --tb=short
+    tests/rag_eval_adapters/test_canonical_provenance.py
+    tests/rag_eval_adapters/test_lightrag_adapter.py
+  expected_passed: 18
+  exact_failed_node_ids:
+    - node_id: tests/rag_eval_adapters/test_canonical_provenance.py::test_gold_matches_projected_full_object_without_gold_aware_mapping
+      classification: IMPLEMENTATION_REGRESSION
+    - node_id: tests/rag_eval_adapters/test_canonical_provenance.py::test_structure_bridge_preserves_hierarchy_table_topology_and_round_trips
+      classification: IMPLEMENTATION_REGRESSION
+    - node_id: tests/rag_eval_adapters/test_lightrag_adapter.py::test_capabilities_claim_object_provenance_but_not_prompt_trace
+      classification: STALE_TEST_CONTRACT_CLARIFICATION
+  policy:
+    xfail: forbidden
+    skip: forbidden
+    missing_node: forbidden
+    unexpected_green: manual_review_required
+    additional_failure: forbidden
+
+adapter_dirty_tests:
+  command: >-
+    pytest -q
+    adapters/lightrag/tests/test_benchmark_segment_trace.py
+    adapters/lightrag/tests/test_canonical_segment_provenance.py
+    adapters/lightrag/tests/test_runtime_docx_and_trace.py
+  expected_passed: 17
+
+platform_ruff:
+  tool: "ruff 0.16.1"
+  command_before: "ruff check . --output-format=json"
+  command_after: "ruff check platform --output-format=json"
+  expected_before_diagnostics: 291
+  expected_before_fixable: 182
+  raw_baseline: ci/baselines/platform-ruff-before.json
+  raw_baseline_sha256: 5c572ab9e0bc8414fcbbf993b739e505a4556a9c8de6d2dd5a2933ec098ec4c0
+  policy: no_new_normalized_diagnostics
+
+lightrag_collection:
+  python: "3.11.15"
+  command: "python -m pytest --collect-only -q -p no:cacheprovider"
+  collected_before: 5508
+  expected_environment_blocked_files:
+    - tests/kg/memgraph_impl/test_memgraph_graph_read_contract.py
+    - tests/kg/memgraph_impl/test_memgraph_kg_tie_break.py
+    - tests/kg/memgraph_impl/test_memgraph_storage.py
+    - tests/kg/milvus_impl/test_milvus_deferred_embedding.py
+    - tests/kg/milvus_impl/test_milvus_escape_filter.py
+    - tests/kg/milvus_impl/test_milvus_index_config.py
+    - tests/kg/milvus_impl/test_milvus_index_creation.py
+    - tests/kg/milvus_impl/test_milvus_kwargs_bridge.py
+    - tests/kg/milvus_impl/test_milvus_migration_memory.py
+    - tests/kg/milvus_impl/test_milvus_migration_retry.py
+    - tests/kg/neo4j_impl/test_neo4j_graph_read_contract.py
+    - tests/kg/neo4j_impl/test_neo4j_kg_tie_break.py
+    - tests/kg/neo4j_impl/test_neo4j_robust_fallback_truncation.py
+    - tests/kg/neo4j_impl/test_search_labels_sanitize.py
+    - tests/kg/neo4j_impl/test_workspace_label_injection.py
+    - tests/kg/opensearch_impl/test_opensearch_strict_reads.py
+    - tests/kg/opensearch_impl/test_os_scheduling_pages.py
+    - tests/kg/redis_impl/test_redis_doc_status_lookup.py
+    - tests/kg/redis_impl/test_redis_eviction_guard.py
+    - tests/kg/redis_impl/test_redis_finalize.py
+    - tests/kg/redis_impl/test_redis_scheduling_pages.py
+    - tests/kg/test_doc_status_strict_parse_branches.py
+    - tests/llm/anthropic_impl/test_anthropic_client_cleanup.py
+    - tests/llm/bedrock_impl/test_bedrock_llm.py
+    - tests/llm/test_dimension_mismatch.py
+    - tests/llm/test_no_model_suffix_safety.py
+  raw_baseline: ci/baselines/lightrag-collection-before.xml
+  raw_baseline_sha256: 18670799edc18a995ee389a197d1ec6b57fe424283aeae072a05870796e51c24
+  classification: ENV_BLOCKED
+  policy: no_new_collection_error_file
+
