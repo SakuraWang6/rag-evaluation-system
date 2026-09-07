@@ -6,10 +6,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /opt/rag-eval
 COPY evaluation-system/platform /opt/rag-eval/platform
 COPY evaluation-system/adapters/rag-anything /opt/rag-eval/adapter
+COPY rags/RAG-Anything /opt/rag-eval/rag-anything
 # RAG-Anything validates the configured parser during initialization even for
 # source-only TXT/Markdown ingestion.  Keep MinerU explicit so the standard
 # image fails neither at handshake nor at the first fresh Worker run.
-RUN pip install --no-cache-dir /opt/rag-eval/platform /opt/rag-eval/adapter "mineru>=3.4,<3.5" \
+RUN pip install --no-cache-dir /opt/rag-eval/platform /opt/rag-eval/rag-anything /opt/rag-eval/adapter "mineru>=3.4,<3.5" \
     && useradd --uid 10001 --create-home --shell /usr/sbin/nologin ragworker
 # MinerU imports OpenCV during its documented `mineru --version` health check.
 # Python slim omits these native libraries by default.
