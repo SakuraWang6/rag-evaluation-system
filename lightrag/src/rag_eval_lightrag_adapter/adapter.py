@@ -12,6 +12,7 @@ import socket
 import subprocess
 import sys
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
@@ -31,32 +32,61 @@ from rag_eval.contracts.adapter import (
     RAGQuery,
     RAGResult,
     ResetResult,
+    SegmentTraceItem,
+    SegmentTraceSet,
+    SegmentTraceStage,
+    SegmentTraceStatus,
+)
+from rag_eval.contracts.benchmark import (
+    BENCHMARK_CONTRACT_SCHEMA_VERSION,
+    segment_mapping_receipt,
 )
 from rag_eval.contracts.dataset import ObjectLocator, TableCellLocator
 from rag_eval.contracts.wire import HandshakeResponse
+from rag_eval.datasets.canonical_segments import (
+    CanonicalSegmentError,
+    CanonicalSegmentManifest,
+    load_staged_canonical_segment_manifest,
+)
 from rag_eval.worker.app import WorkerDefinition
 
 from rag_eval_lightrag_adapter.canonical_provenance import (
     CanonicalDocumentMap,
+    NativeDocxDocumentMap,
+    SUPPORTED_NATIVE_DOCX_CANONICALIZERS,
+    build_native_docx_provenance_manifest,
+    build_canonical_segment_provenance_manifest,
     build_provenance_manifest,
     load_canonical_document_map,
+    load_native_docx_document_map,
+    merge_provenance_manifests,
     normalize_source_span,
     sha256_text,
     write_provenance_manifest,
 )
 
 ADAPTER_VERSION = "0.1.0"
+# A query completion can reach the worker just after the model deadline.  The
+# configured deadline remains identical for LightRAG's query LLM and the
+# experiment contract; this short, non-configurable allowance is only for the
+# loopback server to serialize and return that result without racing httpx.
+QUERY_RESPONSE_GRACE_SECONDS = 15.0
 CAPABILITIES = AdapterCapabilities(
     answer=True,
     raw_retrieval=True,
     ranked_retrieval=True,
     final_context=True,
     object_provenance=True,
-    prompt_trace=False,
+    # LightRAG's evaluation trace exposes the rendered final prompt when the
+    # native server supplies ``final_prompt``.  The query method still marks
+    # it unavailable on a per-result basis when that field is absent.
+    prompt_trace=True,
     rerank_trace=False,
     latency_breakdown=True,
     token_usage=False,
     reset=False,
+    segment_traces=True,
+    strict_segment_ranking=True,
 )
 
 
@@ -102,6 +132,24 @@ class LightRAGAdapterConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     profile: Literal["legacy", "structured"] = "legacy"
+    evaluation_corpus: Literal[
+        "source_document", "canonical_segments", "benchmark_segments"
+    ] = (
+        "source_document"
+    )
+    # The platform uses this value while materializing the canonical segment
+    # corpus.  Keeping it in the adapter contract makes the complete runtime
+    # configuration reproducible and avoids silently accepting an unknown
+    # platform-only field.
+    canonical_segment_max_batch_characters: int | None = Field(
+        default=None,
+        ge=256,
+    )
+    # A benchmark leaf remains one logical Adapter input and one required
+    # native chunk.  This controls only the number of independent upload
+    # requests admitted to LightRAG together so its pipeline can embed a
+    # bounded group rather than flushing one vector per HTTP round-trip.
+    benchmark_upload_batch_size: int = Field(default=64, ge=1, le=128)
     query_mode: Literal["naive"] = "naive"
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     retrieval_candidate_k: int = Field(default=20, ge=1)
@@ -121,8 +169,19 @@ class LightRAGAdapterConfig(BaseModel):
     model: ModelConfig = Field(default_factory=ModelConfig)
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
     server_start_timeout_seconds: float = Field(default=90.0, gt=0)
+    # Per-native-track deadline.  It is intentionally distinct from the
+    # total Worker RPC budget below: a benchmark corpus has many bounded
+    # batches, each of which may take this long without implying the full
+    # corpus has stalled.
     ingestion_timeout_seconds: float = Field(default=900.0, gt=0)
-    query_timeout_seconds: float = Field(default=180.0, gt=0)
+    # End-to-end allowance for one Platform -> Worker ingest call.  This is
+    # persisted in effective configuration and lets a large segment-native
+    # corpus finish without a hidden connection-level ReadTimeout.
+    ingestion_run_timeout_seconds: float = Field(default=7200.0, gt=0)
+    # One user-visible deadline governs both the evaluation request and
+    # LightRAG's query-role LLM.  Keep this integral because LightRAG reads
+    # QUERY_LLM_TIMEOUT as an integer environment value.
+    query_timeout_seconds: int = Field(default=300, ge=30)
     poll_interval_seconds: float = Field(default=0.25, gt=0)
 
     def validate_invariants(self) -> None:
@@ -137,6 +196,20 @@ class LightRAGAdapterConfig(BaseModel):
             raise ValueError(f"invalid exact-ID prefixes: {invalid}")
         if self.enable_rerank and not self.rerank_model:
             raise ValueError("rerank_model is required when enable_rerank is true")
+        if self.ingestion_run_timeout_seconds < self.ingestion_timeout_seconds:
+            raise ValueError(
+                "ingestion_run_timeout_seconds must not be shorter than ingestion_timeout_seconds"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkSegmentInputs:
+    """Verified one-leaf-per-native-input relation for a vNext run."""
+
+    contract_digest: str
+    segment_by_input_document: dict[str, str]
+    rendered_content_by_input_document: dict[str, str]
+    rendered_sha256_by_input_document: dict[str, str]
 
 
 def resolve_config(raw: dict[str, Any]) -> LightRAGAdapterConfig:
@@ -168,6 +241,11 @@ class LightRAGAdapter:
         self._source_by_file: dict[str, str] = {}
         self._source_text_by_document: dict[str, str] = {}
         self._canonical_provenance_by_document: dict[str, CanonicalDocumentMap] = {}
+        self._native_docx_provenance_by_document: dict[str, NativeDocxDocumentMap] = {}
+        self._canonical_segment_manifest: CanonicalSegmentManifest | None = None
+        self._benchmark_segment_inputs: BenchmarkSegmentInputs | None = None
+        self._benchmark_runtime_by_chunk: dict[str, dict[str, Any]] = {}
+        self._benchmark_mapping_file_digest: str | None = None
         self._runtime_provenance_by_chunk: dict[str, dict[str, Any]] = {}
         self._provenance_map_digest: str | None = None
         self._index_fingerprint: str | None = None
@@ -247,74 +325,166 @@ class LightRAGAdapter:
 
     async def ingest(self, documents: list[DocumentInput]) -> IngestionResult:
         config = self._require_prepared()
+        self._benchmark_segment_inputs = self._load_benchmark_segment_contract(
+            documents, config
+        )
+        self._canonical_segment_manifest = (
+            None
+            if self._benchmark_segment_inputs is not None
+            else self._load_canonical_segment_contract(documents, config)
+        )
         digest = hashlib.sha256()
         digest.update(
             json.dumps(
                 ingestion_identity(config), sort_keys=True, separators=(",", ":")
             ).encode()
         )
-        failures: list[dict[str, str]] = []
+        staged_documents: list[tuple[DocumentInput, str | None, str, bytes]] = []
         for index, document in enumerate(documents):
-            if document.content is None:
-                raise ValueError("LightRAGAdapter only supports text source documents")
+            content, source_name, source_bytes = self._materialize_document(
+                index, document
+            )
             digest.update(document.document_id.encode())
             digest.update(b"\0")
-            digest.update(document.content.encode())
+            digest.update(source_bytes)
             digest.update(b"\0")
-            source_name = safe_source_name(index, document.document_id)
             self._source_by_file[source_name] = document.document_id
-            self._source_text_by_document[document.document_id] = document.content
+            if content is not None:
+                self._source_text_by_document[document.document_id] = content
             canonical = self._load_canonical_provenance(document)
             if canonical is not None:
                 self._canonical_provenance_by_document[document.document_id] = canonical
                 digest.update(canonical.canonical_sidecar_sha256.encode())
                 digest.update(b"\0")
-            try:
-                response = await self._post_document(
-                    source_name,
-                    document.content.encode("utf-8"),
-                    document.mime_type,
+            native_docx = self._load_native_docx_provenance(document)
+            if native_docx is not None:
+                observed_source_sha = hashlib.sha256(source_bytes).hexdigest()
+                if (
+                    native_docx.source_sha256
+                    and native_docx.source_sha256 != observed_source_sha
+                ):
+                    raise ValueError(
+                        "native canonical provenance source checksum does not "
+                        "match the uploaded DOCX"
+                    )
+                self._native_docx_provenance_by_document[document.document_id] = (
+                    native_docx
                 )
-                track_id = response.get("track_id")
-                if not isinstance(track_id, str) or not track_id:
-                    raise RuntimeError("LightRAG ingestion did not return a track_id")
-                await self._wait_for_ingestion(track_id)
-            except Exception as exc:  # noqa: BLE001
-                failures.append(
-                    {
-                        "document_id": document.document_id,
-                        "exception_type": type(exc).__name__,
-                        "message": exception_diagnostic(exc),
-                    }
-                )
-                break
+                digest.update(native_docx.canonical_sidecar_sha256.encode())
+                digest.update(b"\0")
+            staged_documents.append((document, content, source_name, source_bytes))
+
+        failures: list[dict[str, str]] = []
+        if self._benchmark_segment_inputs is not None:
+            failures = await self._ingest_benchmark_upload_batches(staged_documents)
+        else:
+            for document, _content, source_name, source_bytes in staged_documents:
+                try:
+                    response = await self._post_document(
+                        source_name,
+                        source_bytes,
+                        document.mime_type,
+                    )
+                    track_id = response.get("track_id")
+                    if not isinstance(track_id, str) or not track_id:
+                        raise RuntimeError("LightRAG ingestion did not return a track_id")
+                    await self._wait_for_ingestion(track_id)
+                except Exception as exc:  # noqa: BLE001
+                    failures.append(
+                        {
+                            "document_id": document.document_id,
+                            "exception_type": type(exc).__name__,
+                            "message": exception_diagnostic(exc),
+                        }
+                    )
+                    break
         if failures:
             raise RuntimeError(f"LightRAG ingestion failed: {failures}")
-        provenance_manifest = self._build_ingestion_provenance_manifest()
-        provenance_path = self._require_work_dir() / "canonical-provenance-map.json"
-        self._provenance_map_digest = write_provenance_manifest(
-            provenance_path, provenance_manifest
-        )
-        self._runtime_provenance_by_chunk = provenance_manifest["runtime_chunks"]
+        if self._benchmark_segment_inputs is not None:
+            benchmark_manifest = self._build_benchmark_segment_mapping(
+                self._benchmark_segment_inputs
+            )
+            benchmark_path = self._require_work_dir() / "benchmark-segment-map.json"
+            self._benchmark_mapping_file_digest = write_provenance_manifest(
+                benchmark_path, benchmark_manifest
+            )
+            self._benchmark_runtime_by_chunk = benchmark_manifest["runtime_chunks"]
+            # This vNext map deliberately has no Word/canonical-object
+            # provenance claims.  Keep legacy fields empty so no caller can
+            # accidentally reinterpret it as a DOCX locator map.
+            self._runtime_provenance_by_chunk = {}
+            self._provenance_map_digest = None
+        else:
+            provenance_manifest = self._build_ingestion_provenance_manifest()
+            provenance_path = self._require_work_dir() / "canonical-provenance-map.json"
+            self._provenance_map_digest = write_provenance_manifest(
+                provenance_path, provenance_manifest
+            )
+            self._runtime_provenance_by_chunk = provenance_manifest["runtime_chunks"]
         self._index_fingerprint = digest.hexdigest()
         provenance_statuses: dict[str, int] = {}
         for mapping in self._runtime_provenance_by_chunk.values():
             status = str(mapping.get("provenance_status") or "missing")
             provenance_statuses[status] = provenance_statuses.get(status, 0) + 1
+        details: dict[str, Any] = {
+            "failed_documents": 0,
+            "index_artifact_digest": directory_digest(
+                self._require_work_dir() / "storage"
+            ),
+            "canonical_provenance_map_digest": self._provenance_map_digest,
+            "canonical_provenance_map_path": "canonical-provenance-map.json"
+            if self._benchmark_segment_inputs is None
+            else None,
+            "canonical_provenance_documents": len(
+                self._canonical_provenance_by_document
+            )
+            + len(
+                self._native_docx_provenance_by_document
+            ),
+            "runtime_chunk_provenance": provenance_statuses,
+            "native_source_pins": {
+                document_id: {
+                    "source_sha256": native.source_sha256,
+                    "canonical_sidecar_sha256": native.canonical_sidecar_sha256,
+                    "canonicalizer": native.canonicalizer,
+                }
+                for document_id, native in sorted(
+                    self._native_docx_provenance_by_document.items()
+                )
+            },
+        }
+        if self._canonical_segment_manifest is not None:
+            details.update(
+                {
+                    "canonical_segment_manifest_digest": self._canonical_segment_manifest.manifest_digest,
+                    "canonical_segment_mapping_status": "verified",
+                    "canonical_segment_batches": len(self._canonical_segment_manifest.batches),
+                    "canonical_segment_segments": len(self._canonical_segment_manifest.segments),
+                    "canonical_segment_runtime_chunks": len(
+                        self._runtime_provenance_by_chunk
+                    ),
+                }
+            )
+        if self._benchmark_segment_inputs is not None:
+            details.update(
+                {
+                    "benchmark_contract_schema_version": BENCHMARK_CONTRACT_SCHEMA_VERSION,
+                    "benchmark_contract_digest": self._benchmark_segment_inputs.contract_digest,
+                    "benchmark_segment_mapping_file": "benchmark-segment-map.json",
+                    "benchmark_segment_mapping_file_digest": self._benchmark_mapping_file_digest,
+                    "benchmark_segment_mapping_status": "verified",
+                    "benchmark_segment_inputs": len(
+                        self._benchmark_segment_inputs.segment_by_input_document
+                    ),
+                    "benchmark_segment_runtime_chunks": len(
+                        self._benchmark_runtime_by_chunk
+                    ),
+                }
+            )
         return IngestionResult(
             ingested_documents=len(documents),
             index_fingerprint=self._index_fingerprint,
-            details={
-                "failed_documents": 0,
-                "index_artifact_digest": directory_digest(
-                    self._require_work_dir() / "storage"
-                ),
-                "canonical_provenance_map_digest": self._provenance_map_digest,
-                "canonical_provenance_documents": len(
-                    self._canonical_provenance_by_document
-                ),
-                "runtime_chunk_provenance": provenance_statuses,
-            },
+            details=details,
         )
 
     async def query(self, request: RAGQuery) -> RAGResult:
@@ -343,11 +513,31 @@ class LightRAGAdapter:
         if not isinstance(trace, dict):
             raise RuntimeError("LightRAG did not return the requested evaluation trace")
         stages = trace.get("retrieval_stages")
-        if not isinstance(stages, dict):
+        if not isinstance(stages, dict) and self._benchmark_segment_inputs is None:
             raise RuntimeError("LightRAG evaluation trace lacks retrieval stages")
-        raw_items = self._evidence_items(stages.get("raw_retrieval"), "raw")
-        ranked_items = self._evidence_items(stages.get("ranked_retrieval"), "ranked")
-        final_items = self._evidence_items(stages.get("final_context"), "context")
+        segment_traces = (
+            self._benchmark_segment_traces(stages)
+            if self._benchmark_segment_inputs is not None
+            else None
+        )
+        # Keep legacy evidence items additive for compatibility, but do not
+        # turn an unobservable vNext trace into a worker exception.  The typed
+        # SegmentTraceStage records the actual runtime error instead.
+        raw_items = (
+            self._evidence_items(stages.get("raw_retrieval"), "raw")
+            if isinstance(stages, dict) and isinstance(stages.get("raw_retrieval"), list)
+            else None
+        )
+        ranked_items = (
+            self._evidence_items(stages.get("ranked_retrieval"), "ranked")
+            if isinstance(stages, dict) and isinstance(stages.get("ranked_retrieval"), list)
+            else None
+        )
+        final_items = (
+            self._evidence_items(stages.get("final_context"), "context")
+            if isinstance(stages, dict) and isinstance(stages.get("final_context"), list)
+            else None
+        )
         answer = response.get("response") if request.generate_answer else None
         if request.generate_answer and not isinstance(answer, str):
             raise RuntimeError("LightRAG answer response is malformed")
@@ -356,13 +546,51 @@ class LightRAGAdapter:
             raw_retrieval=raw_items,
             ranked_retrieval=ranked_items,
             final_context=final_items,
+            segment_traces=segment_traces,
             latency={"native_query_latency": elapsed},
-            trace=None,
+            trace={
+                "schema_version": "rag-eval-lightrag-adapter-trace/1.0",
+                "query": {
+                    "case_id": request.case_id,
+                    "question": request.question,
+                    "endpoint": endpoint,
+                    "payload": payload,
+                },
+                "light_rag_evaluation_trace": trace,
+                "answer_prompt": {
+                    "status": "available",
+                    "value": trace.get("final_prompt"),
+                }
+                if isinstance(trace.get("final_prompt"), str)
+                and trace.get("final_prompt", "").strip()
+                else {
+                    "status": "unavailable",
+                    "reason": "lightrag_evaluation_trace_has_no_rendered_answer_prompt",
+                },
+                "query_rewrite": trace.get("query_rewrite")
+                if "query_rewrite" in trace
+                else {
+                    "status": "unavailable",
+                    "reason": "lightrag_evaluation_trace_has_no_query_rewrite",
+                },
+                "token_usage": response.get("token_usage")
+                if isinstance(response.get("token_usage"), dict)
+                else {
+                    "status": "unavailable",
+                    "reason": "lightrag_response_has_no_token_usage",
+                },
+            },
             native_metadata={
                 "query_mode": config.query_mode,
                 "index_fingerprint": self._index_fingerprint,
                 "core_trace_schema": trace.get("schema_version"),
                 "canonical_provenance_map_digest": self._provenance_map_digest,
+                "benchmark_contract_digest": (
+                    self._benchmark_segment_inputs.contract_digest
+                    if self._benchmark_segment_inputs is not None
+                    else None
+                ),
+                "benchmark_segment_mapping_file_digest": self._benchmark_mapping_file_digest,
             },
         )
 
@@ -438,7 +666,15 @@ class LightRAGAdapter:
             stderr=subprocess.STDOUT,
             text=True,
         )
-        self._client = httpx.AsyncClient(base_url=self._endpoint, timeout=180.0)
+        # This client only ever talks to the adapter-owned loopback server.
+        # Inheriting a developer's HTTP(S)/SOCKS proxy turns that private
+        # request into an external route (or a proxy connection failure),
+        # which made a successfully started LightRAG process look unhealthy.
+        self._client = httpx.AsyncClient(
+            base_url=self._endpoint,
+            timeout=180.0,
+            trust_env=False,
+        )
         deadline = monotonic() + self._config.server_start_timeout_seconds
         while monotonic() < deadline:
             if self._server.poll() is not None:
@@ -492,6 +728,110 @@ class LightRAGAdapter:
             await asyncio.sleep(self._config.poll_interval_seconds)
         raise TimeoutError(f"LightRAG ingestion timed out for track {track_id}")
 
+    async def _ingest_benchmark_upload_batches(
+        self,
+        staged_documents: list[tuple[DocumentInput, str | None, str, bytes]],
+    ) -> list[dict[str, str]]:
+        """Ingest independent leaves concurrently without changing their identity.
+
+        LightRAG accepts uploads while a processing pass is active and drains
+        them from its ingress mailbox together.  Waiting after every upload
+        makes the native pipeline persist one vector at a time, while sending
+        an unbounded corpus at once can overflow a deployment's admission
+        limit.  A small, declared batch is the middle ground: every leaf keeps
+        its own controlled filename and track ID, then each track is awaited
+        before the strict native-map acceptance gate runs.
+        """
+
+        config = self._require_prepared()
+        failures: list[dict[str, str]] = []
+
+        async def enqueue(
+            document: DocumentInput,
+            source_name: str,
+            source_bytes: bytes,
+        ) -> tuple[str, str | None, dict[str, str] | None]:
+            try:
+                response = await self._post_document(
+                    source_name,
+                    source_bytes,
+                    document.mime_type,
+                )
+                track_id = response.get("track_id")
+                if not isinstance(track_id, str) or not track_id:
+                    raise RuntimeError("LightRAG ingestion did not return a track_id")
+                return document.document_id, track_id, None
+            except Exception as exc:  # noqa: BLE001
+                return (
+                    document.document_id,
+                    None,
+                    {
+                        "document_id": document.document_id,
+                        "exception_type": type(exc).__name__,
+                        "message": exception_diagnostic(exc),
+                    },
+                )
+
+        async def await_track(
+            document_id: str, track_id: str
+        ) -> dict[str, str] | None:
+            try:
+                await self._wait_for_ingestion(track_id)
+                return None
+            except Exception as exc:  # noqa: BLE001
+                return {
+                    "document_id": document_id,
+                    "exception_type": type(exc).__name__,
+                    "message": exception_diagnostic(exc),
+                }
+
+        batch_size = config.benchmark_upload_batch_size
+        for offset in range(0, len(staged_documents), batch_size):
+            batch = staged_documents[offset : offset + batch_size]
+            # Benchmark inputs are always inline text after the contract
+            # validator.  Keep the explicit check here so a malformed input
+            # cannot silently use the native-DOCX path in this strict mode.
+            malformed = [
+                document.document_id
+                for document, content, _source_name, _source_bytes in batch
+                if content is None
+            ]
+            if malformed:
+                failures.extend(
+                    {
+                        "document_id": document_id,
+                        "exception_type": "ValueError",
+                        "message": "benchmark segment input must be inline text",
+                    }
+                    for document_id in malformed
+                )
+                break
+
+            accepted = await asyncio.gather(
+                *(
+                    enqueue(document, source_name, source_bytes)
+                    for document, _content, source_name, source_bytes in batch
+                )
+            )
+            tracks: list[tuple[str, str]] = []
+            for document_id, track_id, failure in accepted:
+                if failure is not None:
+                    failures.append(failure)
+                elif track_id is not None:
+                    tracks.append((document_id, track_id))
+
+            # Drain every accepted track even if a sibling upload failed.  It
+            # leaves the native server quiescent before the isolated worker is
+            # torn down and yields a complete diagnostic rather than a raced
+            # cancellation artifact.
+            waits = await asyncio.gather(
+                *(await_track(document_id, track_id) for document_id, track_id in tracks)
+            )
+            failures.extend(item for item in waits if item is not None)
+            if failures:
+                break
+        return failures
+
     async def _get_json(self, path: str, *, timeout: float) -> dict[str, Any]:
         if self._client is None:
             raise RuntimeError("LightRAG client is not initialized")
@@ -511,6 +851,7 @@ class LightRAGAdapter:
             timeout
             if timeout is not None
             else self._require_prepared().query_timeout_seconds
+            + QUERY_RESPONSE_GRACE_SECONDS
         )
         response = await self._client.post(path, json=payload, timeout=request_timeout)
         response.raise_for_status()
@@ -571,10 +912,64 @@ class LightRAGAdapter:
             mapping_span = normalize_source_span(
                 mapping.get("source_span") if mapping is not None else None
             )
+            mapping_mode = str(mapping.get("mapping_mode") or "") if mapping else ""
+            formal_native = mapping_mode == "native_docx_lineage"
+            canonical_segments = mapping_mode == "canonical_segment"
+            trace_document_id = value.get("document_id")
+            accepted_runtime_document_ids = {
+                str(mapping.get("document_id") or "")
+                if mapping is not None
+                else "",
+                str(mapping.get("native_document_id") or "")
+                if mapping is not None
+                else "",
+                str(mapping.get("full_doc_id") or "") if mapping is not None else "",
+                str(mapping.get("input_document_id") or "")
+                if mapping is not None
+                else "",
+            }
+            accepted_runtime_document_ids.discard("")
+            document_id_matches = not (
+                mapping is not None
+                and isinstance(trace_document_id, str)
+                and trace_document_id
+                and trace_document_id not in accepted_runtime_document_ids
+            )
+            if formal_native:
+                # A formal native scope may have no linear source span (a
+                # split table row piece).  In that case the trace must also
+                # omit a span; accepting an arbitrary trace span would turn a
+                # structural edge into a guessed text coordinate.
+                span_matches = (
+                    trace_span is None
+                    if mapping_span is None
+                    else trace_span == mapping_span
+                )
+                expected_lineage_sha = mapping.get("lineage_sha256")
+                trace_lineage_sha = value.get("lineage_sha256")
+                lineage_matches = (
+                    expected_lineage_sha is None
+                    or trace_lineage_sha == expected_lineage_sha
+                )
+            else:
+                span_matches = trace_span is not None and trace_span == mapping_span
+                lineage_matches = True
+            mapping_source_sha = (
+                str(mapping.get("source_sha256") or "") if mapping else ""
+            )
+            trace_source_sha = value.get("source_sha256")
+            source_matches = not (
+                formal_native
+                and isinstance(trace_source_sha, str)
+                and trace_source_sha
+                and trace_source_sha != mapping_source_sha
+            )
             mapping_valid = bool(
                 mapping is not None
-                and trace_span is not None
-                and trace_span == mapping_span
+                and document_id_matches
+                and span_matches
+                and lineage_matches
+                and source_matches
                 and mapping.get("content_sha256") == sha256_text(content)
             )
             canonical_objects = (
@@ -603,10 +998,16 @@ class LightRAGAdapter:
                 "file_path": file_path or None,
                 "source_type": value.get("source_type"),
                 "runtime_chunk_id": native_id,
-                "runtime_source_span": (
-                    {"start": trace_span[0], "end": trace_span[1]}
-                    if trace_span is not None
-                    else None
+                "runtime_document_id": (
+                    value.get("document_id")
+                    if isinstance(value.get("document_id"), str)
+                    else (
+                        mapping.get("input_document_id")
+                        if canonical_segments and mapping_valid and mapping is not None
+                        else mapping.get("native_document_id")
+                        if mapping_valid and mapping is not None
+                        else None
+                    )
                 ),
                 "provenance_status": (
                     mapping.get("provenance_status")
@@ -638,65 +1039,89 @@ class LightRAGAdapter:
                     if isinstance(entry, dict)
                     and isinstance(entry.get("structure"), dict)
                 ],
-                "source_witness_sha256": (
-                    mapping.get("source_witness_sha256")
-                    if mapping_valid and mapping is not None
-                    else None
-                ),
+                # The edge list is intentionally metadata on one runtime
+                # item.  It must not be expanded into one ranked item per
+                # canonical object: doing so changes top-k/rank semantics.
+                "canonical_edges": canonical_objects,
+                "canonical_edge_count": len(canonical_objects),
                 "canonical_provenance_map_digest": self._provenance_map_digest,
             }
-            if not full_objects:
-                items.append(
-                    self._evidence_item(
-                        stage=stage,
-                        item_id=item_id,
-                        expected_rank=expected_rank,
-                        content=content,
-                        document_id=document_id,
-                        native_id=native_id,
-                        score=value.get("score"),
-                        locator=None,
-                        metadata=base_metadata,
+            if trace_span is not None and not canonical_segments:
+                # Do not emit a null span.  Null is not an unavailable value
+                # in the wire metadata: a present-but-null span is malformed
+                # to the evaluator.  Spanless native row pieces simply omit
+                # this field and rely on their structural lineage digest.
+                base_metadata["runtime_source_span"] = {
+                    "start": trace_span[0],
+                    "end": trace_span[1],
+                }
+            if mapping_valid and mapping is not None:
+                base_metadata["content_sha256"] = mapping.get("content_sha256")
+                base_metadata["canonical_objects"] = canonical_objects
+                diagnostics = mapping.get("diagnostic_edges")
+                if isinstance(diagnostics, list) and diagnostics:
+                    # Diagnostic projections (partial scopes, renderer-only
+                    # merge continuations, or out-of-bounds spans) are
+                    # observable but never promoted to formal canonical
+                    # edges.  Keeping them separate prevents the evaluator's
+                    # forward/reverse catalog round-trip from treating a
+                    # non-proof witness as a retrievable object.
+                    base_metadata["provenance_diagnostics"] = diagnostics
+                if canonical_segments:
+                    base_metadata["provenance_schema"] = "canonical-segments/v1"
+                    base_metadata["canonical_segment_ids"] = list(
+                        mapping.get("segment_ids") or []
                     )
-                )
-                continue
-            for projection, entry in enumerate(full_objects, start=1):
-                locator = entry.get("locator")
-                if not isinstance(locator, dict):
-                    continue
-                parsed_locator = (
-                    TableCellLocator.model_validate(locator)
-                    if locator.get("type") == "table_cell"
-                    else ObjectLocator.model_validate(locator)
-                )
-                projection_key = hashlib.sha256(
-                    str(entry.get("object_id") or "").encode()
-                ).hexdigest()[:12]
-                items.append(
-                    self._evidence_item(
-                        stage=stage,
-                        item_id=f"{item_id}:provenance-{projection_key}",
-                        expected_rank=expected_rank,
-                        content=content,
-                        document_id=document_id,
-                        native_id=native_id,
-                        score=value.get("score"),
-                        locator=parsed_locator,
-                        metadata={
-                            **base_metadata,
-                            "provenance_projection": projection,
-                            "provenance_projection_count": len(full_objects),
-                            "canonical_object_id": entry.get("object_id"),
-                            "canonical_object_type": entry.get("object_type"),
-                            "canonical_object_status": entry.get("status"),
-                            "canonical_object_span": entry.get("source_span"),
-                            "canonical_overlap_span": entry.get("overlap_span"),
-                            "canonical_witness_sha256": entry.get("witness_sha256"),
-                            "canonical_alignment_method": entry.get("alignment_method"),
-                            "canonical_structure": entry.get("structure"),
-                        },
+                    base_metadata["canonical_segment_batch_id"] = mapping.get(
+                        "batch_id"
                     )
+                    base_metadata["canonical_segment_manifest_digest"] = mapping.get(
+                        "canonical_segment_manifest_digest"
+                    )
+                elif formal_native:
+                    base_metadata["provenance_schema"] = "canonical-runtime/v2"
+                else:
+                    base_metadata["provenance_schema"] = "canonical-provenance/v2"
+                for key in (
+                    "source_sha256",
+                    "lineage_sha256",
+                    "source_witness_sha256",
+                ):
+                    candidate = mapping.get(key)
+                    if candidate is not None:
+                        base_metadata[key] = candidate
+            if (
+                mapping_valid
+                and mapping is not None
+                and mapping.get("reason")
+                and isinstance(mapping.get("reason"), str)
+            ):
+                base_metadata["provenance_reason"] = mapping["reason"]
+            locator = None
+            if len(canonical_objects) == 1 and len(full_objects) == 1:
+                raw_locator = full_objects[0].get("locator")
+                if isinstance(raw_locator, dict):
+                    try:
+                        locator = (
+                            TableCellLocator.model_validate(raw_locator)
+                            if raw_locator.get("type") == "table_cell"
+                            else ObjectLocator.model_validate(raw_locator)
+                        )
+                    except (TypeError, ValueError):
+                        base_metadata["locator_status"] = "malformed"
+            items.append(
+                self._evidence_item(
+                    stage=stage,
+                    item_id=item_id,
+                    expected_rank=expected_rank,
+                    content=content,
+                    document_id=document_id,
+                    native_id=native_id,
+                    score=value.get("score"),
+                    locator=locator,
+                    metadata=base_metadata,
                 )
+            )
         return items
 
     @staticmethod
@@ -743,8 +1168,16 @@ class LightRAGAdapter:
             or any(character not in "0123456789abcdef" for character in raw_digest)
         ):
             raise ValueError("canonical provenance digest is malformed")
-        if self._context is None or document.content is None:
-            raise RuntimeError("canonical provenance requires prepared text ingestion")
+        if document.content is None:
+            # Native documents (for example DOCX) are deliberately uploaded
+            # unchanged so LightRAG can use its own parser.  The JSONL bridge
+            # maps chunks against the exact text source, which does not exist
+            # before that native parse, so it is not applicable here.  The
+            # absence of that optional attribution bridge must not prevent
+            # native document ingestion.
+            return None
+        if self._context is None:
+            raise RuntimeError("canonical provenance requires a prepared source sandbox")
         sidecar_path = Path(self._context.source_dir) / raw_path
         if not sidecar_path.is_file():
             raise ValueError(
@@ -757,8 +1190,445 @@ class LightRAGAdapter:
             expected_sidecar_sha256=raw_digest,
         )
 
+    def _load_canonical_segment_contract(
+        self,
+        documents: list[DocumentInput],
+        config: LightRAGAdapterConfig,
+    ) -> CanonicalSegmentManifest | None:
+        """Load and cross-check the Platform-staged primary corpus manifest."""
+
+        primary = [
+            document
+            for document in documents
+            if document.metadata.get("primary_evaluation_corpus")
+            == "canonical_segments"
+        ]
+        if not primary:
+            if config.evaluation_corpus == "canonical_segments":
+                raise ValueError(
+                    "LightRAG is configured for canonical_segments but received no canonical segment inputs"
+                )
+            return None
+        if len(primary) != len(documents):
+            raise ValueError(
+                "canonical segment ingestion cannot be mixed with source-document inputs"
+            )
+        if config.evaluation_corpus != "canonical_segments":
+            raise ValueError(
+                "canonical segment inputs require evaluation_corpus='canonical_segments'"
+            )
+        if self._context is None:
+            raise RuntimeError("canonical segment ingestion requires a prepared source sandbox")
+        try:
+            manifest = load_staged_canonical_segment_manifest(
+                Path(self._context.source_dir), documents
+            )
+        except CanonicalSegmentError as exc:
+            raise ValueError(f"canonical segment manifest validation failed: {exc}") from exc
+        if manifest is None:
+            raise ValueError("canonical segment inputs have no manifest")
+        for document in documents:
+            batch = manifest.batch_for_input(document.document_id)
+            if document.metadata.get("canonical_segment_batch_id") != batch.batch_id:
+                raise ValueError("canonical segment input batch ID does not match manifest")
+            source = manifest.source_for(batch.document_id)
+            if (
+                document.metadata.get("canonical_segment_source_document_id")
+                != source.document_id
+                or document.metadata.get("canonical_segment_source_sha256")
+                != source.source_sha256
+                or document.metadata.get("canonical_segment_sidecar_sha256")
+                != source.canonical_sidecar_sha256
+            ):
+                raise ValueError("canonical segment input source pins do not match manifest")
+        return manifest
+
+    def _load_benchmark_segment_contract(
+        self,
+        documents: list[DocumentInput],
+        config: LightRAGAdapterConfig,
+    ) -> BenchmarkSegmentInputs | None:
+        """Verify the vNext one-leaf-per-input ingestion contract.
+
+        This is intentionally independent of the legacy canonical/Word
+        provenance bridge.  The deterministic relationship is established by
+        a controlled input ID and then verified against LightRAG's persisted
+        native chunk store before the first query.
+        """
+
+        primary = [
+            document
+            for document in documents
+            if document.metadata.get("primary_evaluation_corpus")
+            == "benchmark_segments"
+        ]
+        if not primary:
+            if config.evaluation_corpus == "benchmark_segments":
+                raise ValueError(
+                    "LightRAG is configured for benchmark_segments but received no benchmark leaf inputs"
+                )
+            return None
+        if len(primary) != len(documents):
+            raise ValueError(
+                "benchmark segment ingestion cannot be mixed with another corpus"
+            )
+        if config.evaluation_corpus != "benchmark_segments":
+            raise ValueError(
+                "benchmark segment inputs require evaluation_corpus='benchmark_segments'"
+            )
+        contract_digests = {
+            value
+            for document in documents
+            if isinstance(
+                value := document.metadata.get("benchmark_contract_digest"), str
+            )
+        }
+        if len(contract_digests) != 1:
+            raise ValueError("benchmark segment inputs must share one contract digest")
+        contract_digest = next(iter(contract_digests))
+        if len(contract_digest) != 64 or any(
+            character not in "0123456789abcdef" for character in contract_digest
+        ):
+            raise ValueError("benchmark contract digest is malformed")
+        segment_by_input_document: dict[str, str] = {}
+        rendered_content_by_input_document: dict[str, str] = {}
+        rendered_sha256_by_input_document: dict[str, str] = {}
+        for document in documents:
+            metadata = document.metadata
+            if (
+                metadata.get("benchmark_contract_schema_version")
+                != BENCHMARK_CONTRACT_SCHEMA_VERSION
+            ):
+                raise ValueError("benchmark segment schema version is not supported")
+            if metadata.get("benchmark_contract_digest") != contract_digest:
+                raise ValueError("benchmark segment contract digest is inconsistent")
+            segment_id = metadata.get("benchmark_segment_id")
+            content_sha256 = metadata.get("benchmark_segment_content_sha256")
+            rendered_sha256 = metadata.get("benchmark_segment_rendered_sha256")
+            if (
+                not isinstance(segment_id, str)
+                or not segment_id
+                or document.document_id != segment_id
+                or not isinstance(document.content, str)
+                or not isinstance(content_sha256, str)
+                or not isinstance(rendered_sha256, str)
+            ):
+                raise ValueError("benchmark segment input identity is malformed")
+            expected_prefix = f"[[RAG_BENCHMARK_SEGMENT id={segment_id}]]\n"
+            if not document.content.startswith(expected_prefix):
+                raise ValueError("benchmark segment content does not match its controlled ID")
+            source_content = document.content[len(expected_prefix) :]
+            observed_content_sha = sha256_text(source_content)
+            observed_rendered_sha = sha256_text(document.content)
+            if observed_content_sha != content_sha256:
+                raise ValueError("benchmark segment source content digest is invalid")
+            if observed_rendered_sha != rendered_sha256:
+                raise ValueError("benchmark segment rendered content digest is invalid")
+            if document.sha256 is not None and document.sha256 != observed_rendered_sha:
+                raise ValueError("benchmark DocumentInput digest does not match rendered content")
+            if document.document_id in segment_by_input_document:
+                raise ValueError("benchmark segment input document IDs are not unique")
+            segment_by_input_document[document.document_id] = segment_id
+            rendered_content_by_input_document[document.document_id] = document.content
+            rendered_sha256_by_input_document[document.document_id] = observed_rendered_sha
+        return BenchmarkSegmentInputs(
+            contract_digest=contract_digest,
+            segment_by_input_document=segment_by_input_document,
+            rendered_content_by_input_document=rendered_content_by_input_document,
+            rendered_sha256_by_input_document=rendered_sha256_by_input_document,
+        )
+
+    def _build_benchmark_segment_mapping(
+        self,
+        inputs: BenchmarkSegmentInputs,
+    ) -> dict[str, Any]:
+        """Prove exact native chunk preservation for every benchmark leaf."""
+
+        candidates = sorted(
+            (self._require_work_dir() / "storage").rglob("kv_store_text_chunks.json")
+        )
+        if len(candidates) != 1:
+            raise RuntimeError(
+                "LightRAG benchmark segment mapping requires one authoritative "
+                f"text chunk store; observed {len(candidates)}"
+            )
+        payload = json.loads(candidates[0].read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or any(
+            not isinstance(value, dict) for value in payload.values()
+        ):
+            raise RuntimeError("LightRAG benchmark text chunk store is malformed")
+        chunks_by_input: dict[str, list[tuple[str, dict[str, Any]]]] = {
+            document_id: [] for document_id in inputs.segment_by_input_document
+        }
+        unknown_chunks: list[str] = []
+        for raw_native_id, raw_record in sorted(payload.items()):
+            native_id = str(raw_native_id)
+            file_name = Path(str(raw_record.get("file_path") or "")).name
+            input_document_id = self._source_by_file.get(file_name)
+            if input_document_id not in chunks_by_input:
+                unknown_chunks.append(native_id)
+                continue
+            chunks_by_input[input_document_id].append((native_id, raw_record))
+        if unknown_chunks:
+            preview = ", ".join(unknown_chunks[:8])
+            suffix = " …" if len(unknown_chunks) > 8 else ""
+            raise RuntimeError(
+                "LightRAG persisted chunks outside the benchmark input contract: "
+                f"{preview}{suffix}"
+            )
+        runtime_chunks: dict[str, dict[str, Any]] = {}
+        segment_to_runtime_chunks: dict[str, list[str]] = {
+            segment_id: []
+            for segment_id in inputs.segment_by_input_document.values()
+        }
+        for input_document_id, segment_id in sorted(inputs.segment_by_input_document.items()):
+            observed = chunks_by_input[input_document_id]
+            if len(observed) != 1:
+                raise RuntimeError(
+                    "LightRAG must persist exactly one native chunk per benchmark "
+                    f"leaf {segment_id!r}; observed {len(observed)}"
+                )
+            native_id, record = observed[0]
+            expected_content = inputs.rendered_content_by_input_document[input_document_id]
+            content = record.get("content")
+            if not isinstance(content, str) or content != expected_content:
+                raise RuntimeError(
+                    f"LightRAG native chunk {native_id!r} changed benchmark leaf {segment_id!r}"
+                )
+            source_span = normalize_source_span(record.get("source_span"))
+            if source_span != (0, len(expected_content)):
+                raise RuntimeError(
+                    f"LightRAG native chunk {native_id!r} lacks the complete benchmark leaf span"
+                )
+            runtime_chunks[native_id] = {
+                "native_chunk_id": native_id,
+                "input_document_id": input_document_id,
+                "source_segment_id": segment_id,
+                "file_name": Path(str(record.get("file_path") or "")).name,
+                "content_sha256": sha256_text(content),
+                "source_span": {"start": source_span[0], "end": source_span[1]},
+            }
+            segment_to_runtime_chunks[segment_id].append(native_id)
+        return {
+            "schema_version": "rag-benchmark-native-mapping/1",
+            "benchmark_contract_schema_version": BENCHMARK_CONTRACT_SCHEMA_VERSION,
+            "benchmark_contract_digest": inputs.contract_digest,
+            "acceptance": "one_exact_native_chunk_per_leaf_input",
+            "runtime_chunks": runtime_chunks,
+            "segment_to_runtime_chunks": segment_to_runtime_chunks,
+        }
+
+    def _benchmark_segment_traces(self, stages: Any) -> SegmentTraceSet:
+        """Translate LightRAG's native trace into strictly mapped vNext stages."""
+
+        contract = self._benchmark_segment_inputs
+        if contract is None:
+            raise RuntimeError("benchmark trace requested without benchmark ingestion")
+
+        def runtime_error(stage: str, reason: str) -> SegmentTraceStage:
+            return SegmentTraceStage(
+                stage=stage,
+                status=SegmentTraceStatus.RUNTIME_ERROR,
+                reason=reason,
+            )
+
+        def corrupted(stage: str, reason: str) -> SegmentTraceStage:
+            return SegmentTraceStage(
+                stage=stage,
+                status=SegmentTraceStatus.MAPPING_CORRUPTED,
+                reason=reason,
+            )
+
+        def observe(stage: str, native_stage: str) -> SegmentTraceStage:
+            if not isinstance(stages, dict):
+                return runtime_error(stage, "LightRAG evaluation trace lacks retrieval stages")
+            raw = stages.get(native_stage)
+            if not isinstance(raw, list):
+                return runtime_error(
+                    stage,
+                    f"LightRAG trace stage {native_stage!r} is not observable",
+                )
+            items: list[SegmentTraceItem] = []
+            native_ids: set[str] = set()
+            for rank, value in enumerate(raw, start=1):
+                if not isinstance(value, dict):
+                    return corrupted(stage, "LightRAG trace contains a malformed retrieval item")
+                native_id = value.get("native_id")
+                if not isinstance(native_id, str) or not native_id:
+                    return corrupted(stage, "LightRAG trace item has no native chunk ID")
+                if native_id in native_ids:
+                    return corrupted(stage, "LightRAG trace repeats a native chunk ID")
+                native_ids.add(native_id)
+                mapping = self._benchmark_runtime_by_chunk.get(native_id)
+                if mapping is None:
+                    return corrupted(
+                        stage,
+                        "LightRAG trace references a chunk outside the verified benchmark mapping",
+                    )
+                content = value.get("content")
+                if not isinstance(content, str) or sha256_text(content) != mapping.get(
+                    "content_sha256"
+                ):
+                    return corrupted(
+                        stage,
+                        "LightRAG trace content does not match the verified native chunk",
+                    )
+                file_path = value.get("file_path")
+                if isinstance(file_path, str) and file_path and Path(file_path).name != mapping.get(
+                    "file_name"
+                ):
+                    return corrupted(
+                        stage,
+                        "LightRAG trace file identity does not match the verified native chunk",
+                    )
+                segment_id = mapping.get("source_segment_id")
+                if not isinstance(segment_id, str) or not segment_id:
+                    return corrupted(stage, "verified native chunk has no source segment ID")
+                items.append(
+                    SegmentTraceItem(
+                        native_chunk_id=native_id,
+                        rank=rank,
+                        content=content,
+                        score=(
+                            float(value["score"])
+                            if isinstance(value.get("score"), (int, float))
+                            and not isinstance(value.get("score"), bool)
+                            else None
+                        ),
+                        source_segment_ids=(segment_id,),
+                        mapping_receipt_digest=segment_mapping_receipt(
+                            contract.contract_digest,
+                            native_id,
+                            (segment_id,),
+                        ),
+                    )
+                )
+            return SegmentTraceStage(
+                stage=stage,
+                status=SegmentTraceStatus.OBSERVED,
+                items=tuple(items),
+                mapping_manifest_digest=contract.contract_digest,
+            )
+
+        return SegmentTraceSet(
+            raw=observe("raw", "raw_retrieval"),
+            ranked=observe("ranked", "ranked_retrieval"),
+            context=observe("context", "final_context"),
+        )
+
+    def _load_native_docx_provenance(
+        self, document: DocumentInput
+    ) -> NativeDocxDocumentMap | None:
+        """Load a v2 table graph for a source-only native DOCX.
+
+        Unlike the v1 source-text bridge, this mapping does not claim that the
+        adapter knows LightRAG's parsed document stream. It permits only an
+        exact, unique table-grid equivalence later, when the runtime chunk is
+        available. All other native content remains deliberately unmapped.
+        """
+
+        if document.content is not None:
+            return None
+        if document.source_path is None or Path(document.source_path).suffix.lower() != ".docx":
+            return None
+        raw_path = document.metadata.get("canonical_provenance_path")
+        raw_digest = document.metadata.get("canonical_provenance_sha256")
+        if raw_path is None and raw_digest is None:
+            return None
+        if not isinstance(raw_path, str) or Path(raw_path).name != raw_path:
+            raise ValueError("canonical provenance path is not a safe staged filename")
+        if not raw_path.lower().endswith(".jsonl"):
+            return None
+        if (
+            not isinstance(raw_digest, str)
+            or len(raw_digest) != 64
+            or any(character not in "0123456789abcdef" for character in raw_digest)
+        ):
+            raise ValueError("canonical provenance digest is malformed")
+        if self._context is None:
+            raise RuntimeError("canonical provenance requires a prepared source sandbox")
+        sidecar_path = Path(self._context.source_dir) / raw_path
+        if not sidecar_path.is_file():
+            raise ValueError("canonical provenance sidecar is missing from source sandbox")
+        native = load_native_docx_document_map(
+            document_id=document.document_id,
+            sidecar_path=sidecar_path,
+            expected_sidecar_sha256=raw_digest,
+        )
+        return (
+            native
+            if native.canonicalizer in SUPPORTED_NATIVE_DOCX_CANONICALIZERS
+            else None
+        )
+
+    def _materialize_document(
+        self, index: int, document: DocumentInput
+    ) -> tuple[str | None, str, bytes]:
+        """Return a worker-sandbox document without widening source access.
+
+        ``DocumentInput`` intentionally supports both inline text and a safe
+        relative source path.  The previous adapter implementation accepted
+        only the former, which made a sealed Runtime Bundle 3.0 DOCX
+        impossible to ingest even though the Platform contract already
+        supported source-only documents.  Binary source is read exclusively
+        from the prepared worker source sandbox and is checksum-verified when
+        the caller supplied a digest.
+        """
+
+        if document.content is not None:
+            payload = document.content.encode("utf-8")
+            return document.content, safe_source_name(index, document.document_id), payload
+
+        if self._context is None or document.source_path is None:
+            raise RuntimeError("source-only document requires a prepared source sandbox")
+        source_root = Path(self._context.source_dir).resolve()
+        source_path = (source_root / document.source_path).resolve()
+        try:
+            source_path.relative_to(source_root)
+        except ValueError as exc:
+            raise ValueError("source_path escapes the prepared source sandbox") from exc
+        if not source_path.is_file():
+            raise ValueError("source-only document is missing from source sandbox")
+        payload = source_path.read_bytes()
+        observed_digest = hashlib.sha256(payload).hexdigest()
+        if document.sha256 is not None and observed_digest != document.sha256:
+            raise ValueError("source-only document checksum does not match DocumentInput")
+        return (
+            None,
+            safe_source_name(index, document.document_id, source_path.suffix),
+            payload,
+        )
+
     def _build_ingestion_provenance_manifest(self) -> dict[str, Any]:
-        if not self._canonical_provenance_by_document:
+        if self._canonical_segment_manifest is not None:
+            candidates = sorted(
+                (self._require_work_dir() / "storage").rglob("kv_store_text_chunks.json")
+            )
+            if len(candidates) != 1:
+                raise RuntimeError(
+                    "LightRAG canonical segment provenance requires one authoritative "
+                    f"text chunk store; observed {len(candidates)}"
+                )
+            payload = json.loads(candidates[0].read_text(encoding="utf-8"))
+            if not isinstance(payload, dict) or any(
+                not isinstance(value, dict) for value in payload.values()
+            ):
+                raise RuntimeError("LightRAG text chunk store is malformed")
+            try:
+                return build_canonical_segment_provenance_manifest(
+                    manifest=self._canonical_segment_manifest,
+                    document_by_file=self._source_by_file,
+                    stored_chunks=payload,
+                )
+            except ValueError as exc:
+                raise RuntimeError(
+                    "LightRAG canonical segment acceptance failed after ingestion: "
+                    f"{exc}"
+                ) from exc
+        if (
+            not self._canonical_provenance_by_document
+            and not self._native_docx_provenance_by_document
+        ):
             return build_provenance_manifest(
                 documents={},
                 sources={},
@@ -778,12 +1648,18 @@ class LightRAGAdapter:
             not isinstance(value, dict) for value in payload.values()
         ):
             raise RuntimeError("LightRAG text chunk store is malformed")
-        return build_provenance_manifest(
+        source_manifest = build_provenance_manifest(
             documents=self._canonical_provenance_by_document,
             sources=self._source_text_by_document,
             document_by_file=self._source_by_file,
             stored_chunks=payload,
         )
+        native_docx_manifest = build_native_docx_provenance_manifest(
+            documents=self._native_docx_provenance_by_document,
+            document_by_file=self._source_by_file,
+            stored_chunks=payload,
+        )
+        return merge_provenance_manifests(source_manifest, native_docx_manifest)
 
     def _require_prepared(self) -> LightRAGAdapterConfig:
         if self._closed:
@@ -876,8 +1752,22 @@ def build_server_environment(
             "RERANK_MODEL": config.rerank_model or "",
             "OLLAMA_LLM_NUM_CTX": str(config.model.llm_num_ctx),
             "QUERY_OLLAMA_LLM_NUM_CTX": str(config.model.llm_num_ctx),
+            # Do not use global LLM_TIMEOUT here: the evaluation contract is
+            # specifically about answer generation, and the query role is the
+            # only LLM role reached by a query request.
+            "QUERY_LLM_TIMEOUT": str(config.query_timeout_seconds),
         }
     )
+    # A local LightRAG checkout keeps its tokenizer assets in a project-owned
+    # offline cache.  Isolated Workers must not depend on a developer shell
+    # having exported this path, otherwise a harmless first ingest can try to
+    # fetch tokenizer data from the network and fail before any evaluation
+    # work begins.  An explicitly configured cache always remains sovereign.
+    if not environment.get("TIKTOKEN_CACHE_DIR"):
+        workspace = Path(__file__).resolve().parents[4]
+        local_cache = workspace / "LightRAG" / "var" / "tiktoken-cache"
+        if local_cache.is_dir():
+            environment["TIKTOKEN_CACHE_DIR"] = str(local_cache)
     apply_model_environment(environment, config.model)
     apply_generation_environment(environment, config)
     return environment
@@ -940,6 +1830,21 @@ def safe_runtime_identity(environment: dict[str, str]) -> dict[str, str | None]:
     }
 
 
+def is_loopback_endpoint(value: str) -> bool:
+    """Return whether an HTTP endpoint must bypass ambient proxy settings.
+
+    The adapter's managed LightRAG service always binds to loopback.  Ollama is
+    commonly local too, while an explicitly configured remote model host may
+    legitimately depend on a proxy.  Classify only unambiguous loopback hosts
+    here; do not perform DNS resolution or widen the bypass to private networks.
+    """
+
+    host = urlsplit(value).hostname
+    if host is None:
+        return False
+    return host.casefold().rstrip(".") in {"127.0.0.1", "localhost", "::1"}
+
+
 async def ollama_model_artifacts(
     identity: dict[str, str | None],
 ) -> dict[str, dict[str, Any]]:
@@ -967,7 +1872,13 @@ async def ollama_model_artifacts(
         digest = None
         if str(binding or "").lower() == "ollama":
             try:
-                async with httpx.AsyncClient(timeout=5.0) as client:
+                # A local Ollama server is another loopback-only dependency.
+                # Keep a configured proxy available for remote model hosts,
+                # but never send 127.0.0.1/localhost through it.
+                async with httpx.AsyncClient(
+                    timeout=5.0,
+                    trust_env=not is_loopback_endpoint(str(host)),
+                ) as client:
                     response = await client.get(f"{str(host).rstrip('/')}/api/tags")
                     response.raise_for_status()
                     digest = exact_ollama_model_digest(
@@ -1182,9 +2093,19 @@ def package_prompt_digest(package: str) -> str:
     return "sha256:" + digest.hexdigest()
 
 
-def safe_source_name(index: int, document_id: str) -> str:
-    suffix = hashlib.sha256(document_id.encode()).hexdigest()[:12]
-    return f"source-{index:05d}-{suffix}.txt"
+def safe_source_name(index: int, document_id: str, suffix: str = ".txt") -> str:
+    normalized_extension = suffix
+    # A content source uses a plain-text staged filename.  For source-only
+    # inputs retain only a conservative, basename-derived suffix so LightRAG
+    # can select its native parser (for example ``.docx``).
+    if suffix.startswith("."):
+        normalized_extension = suffix.lower()
+        if not normalized_extension[1:].isalnum() or len(normalized_extension) > 16:
+            normalized_extension = ".bin"
+    else:
+        normalized_extension = ".txt"
+    source_hash = hashlib.sha256(document_id.encode()).hexdigest()[:12]
+    return f"source-{index:05d}-{source_hash}{normalized_extension}"
 
 
 def bool_env(value: bool) -> str:

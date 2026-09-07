@@ -30,6 +30,9 @@ from rag_eval.contracts.adapter import (
     RAGQuery,
     RAGResult,
     ResetResult,
+    SegmentTraceSet,
+    SegmentTraceStage,
+    SegmentTraceStatus,
 )
 from rag_eval.contracts.wire import HandshakeResponse
 from rag_eval.worker.app import WorkerDefinition
@@ -48,6 +51,11 @@ CAPABILITIES = AdapterCapabilities(
     latency_breakdown=True,
     token_usage=False,
     reset=False,
+    # The adapter implements the typed trace envelope so a vNext benchmark can
+    # state its visibility honestly, but its public API does not yet expose
+    # any native retrieval boundary that could be scored strictly.
+    segment_traces=True,
+    strict_segment_ranking=False,
 )
 
 
@@ -93,6 +101,9 @@ class NativeLivenessConfig(BaseModel):
 class RAGAnythingAdapterConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    evaluation_corpus: Literal[
+        "source_document", "canonical_segments", "benchmark_segments"
+    ] = "source_document"
     parser: Literal["mineru", "docling", "paddleocr"] = "mineru"
     parse_method: Literal["auto", "ocr", "txt"] = "auto"
     query_mode: Literal["local", "global", "hybrid", "naive", "mix"] = "mix"
@@ -534,6 +545,31 @@ class RAGAnythingAdapter:
 
     async def ingest(self, documents: list[DocumentInput]) -> IngestionResult:
         runtime, config, context = self._require_prepared()
+        benchmark_documents = [
+            document
+            for document in documents
+            if document.metadata.get("primary_evaluation_corpus")
+            == "benchmark_segments"
+        ]
+        if benchmark_documents and len(benchmark_documents) != len(documents):
+            raise ValueError("benchmark segment ingestion cannot be mixed with another corpus")
+        if config.evaluation_corpus == "benchmark_segments" and not benchmark_documents:
+            raise ValueError(
+                "RAG-Anything is configured for benchmark_segments but received no benchmark leaf inputs"
+            )
+        if benchmark_documents and config.evaluation_corpus != "benchmark_segments":
+            raise ValueError(
+                "benchmark segment inputs require evaluation_corpus='benchmark_segments'"
+            )
+        benchmark_digest: str | None = None
+        if benchmark_documents:
+            values = [
+                document.metadata.get("benchmark_contract_digest")
+                for document in benchmark_documents
+            ]
+            if any(not isinstance(value, str) for value in values) or len(set(values)) != 1:
+                raise ValueError("benchmark segment inputs must share one contract digest")
+            benchmark_digest = values[0]
         digest = hashlib.sha256()
         digest.update(
             ingestion_identity(
@@ -608,15 +644,26 @@ class RAGAnythingAdapter:
             "completed", details={"ingested_documents": len(documents)}
         )
         self._index_fingerprint = digest.hexdigest()
+        details: dict[str, object] = {
+            "failed_documents": 0,
+            "index_artifact_digest": directory_digest(
+                self._require_work_dir() / "storage"
+            ),
+        }
+        if benchmark_digest is not None:
+            details.update(
+                {
+                    "benchmark_contract_schema_version": "rag-benchmark-contract/1",
+                    "benchmark_contract_digest": benchmark_digest,
+                    "benchmark_segment_mapping_status": "unsupported_stage",
+                    "benchmark_segment_inputs": len(benchmark_documents),
+                    "benchmark_segment_runtime_chunks": None,
+                }
+            )
         return IngestionResult(
             ingested_documents=len(documents),
             index_fingerprint=self._index_fingerprint,
-            details={
-                "failed_documents": 0,
-                "index_artifact_digest": directory_digest(
-                    self._require_work_dir() / "storage"
-                ),
-            },
+            details=details,
         )
 
     async def query(self, request: RAGQuery) -> RAGResult:
@@ -647,6 +694,23 @@ class RAGAnythingAdapter:
             raw_retrieval=None,
             ranked_retrieval=None,
             final_context=None,
+            segment_traces=SegmentTraceSet(
+                raw=SegmentTraceStage(
+                    stage="raw",
+                    status=SegmentTraceStatus.UNSUPPORTED_STAGE,
+                    reason="RAG-Anything public API does not expose raw retrieval trace items",
+                ),
+                ranked=SegmentTraceStage(
+                    stage="ranked",
+                    status=SegmentTraceStatus.UNSUPPORTED_STAGE,
+                    reason="RAG-Anything public API does not expose ranked retrieval trace items",
+                ),
+                context=SegmentTraceStage(
+                    stage="context",
+                    status=SegmentTraceStatus.UNSUPPORTED_STAGE,
+                    reason="RAG-Anything public API does not expose final context trace items",
+                ),
+            ),
             latency={"native_query_latency": monotonic() - started},
             native_metadata={
                 "query_mode": config.query_mode,

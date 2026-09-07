@@ -8,6 +8,7 @@ from rag_eval.contracts.adapter import PrepareContext
 from rag_eval_lightrag_adapter.adapter import (
     CAPABILITIES,
     LightRAGAdapter,
+    QUERY_RESPONSE_GRACE_SECONDS,
     build_server_environment,
     exact_ollama_model_digest,
     exception_diagnostic,
@@ -78,6 +79,29 @@ def test_legacy_profile_preserves_original_defaults(tmp_path) -> None:
     assert environment["RERANK_BINDING"] == "null"
     assert environment["OLLAMA_LLM_NUM_CTX"] == "32768"
     assert environment["QUERY_OLLAMA_LLM_NUM_CTX"] == "32768"
+
+
+def test_query_deadline_is_shared_with_lightrag_query_llm(tmp_path) -> None:
+    assert resolve_config({}).query_timeout_seconds == 300
+    config = resolve_config({"query_timeout_seconds": 360})
+    environment = build_server_environment(config, tmp_path)
+
+    assert config.query_timeout_seconds == 360
+    assert environment["QUERY_LLM_TIMEOUT"] == "360"
+
+
+@pytest.mark.asyncio
+async def test_query_transport_keeps_only_a_fixed_result_return_grace() -> None:
+    adapter = LightRAGAdapter()
+    adapter._config = resolve_config({"query_timeout_seconds": 360})
+    adapter._server = Mock()
+    adapter._server.poll.return_value = None
+    client = CapturingClient()
+    adapter._client = client  # type: ignore[assignment]
+
+    await adapter._post_json("/query", {"query": "fixture"})
+
+    assert client.requests[0]["timeout"] == 360 + QUERY_RESPONSE_GRACE_SECONDS
 
 
 def test_structured_profile_is_explicit_and_effective(tmp_path) -> None:
