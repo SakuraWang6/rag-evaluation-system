@@ -1,0 +1,40 @@
+{
+  "baseline_verification": {
+    "actual_file_count": 18,
+    "expected_file_count": 18,
+    "manifest_path": "immutable-baseline.json",
+    "manifest_sha256": "e050e7b23b8e22fca574916e142d4fbd43908a8204c8bfab0ef3198b2c1f25d4",
+    "mismatches": [],
+    "ok": true
+  },
+  "implementation_source_sha256": {
+    "evaluation.engine": "83fa0f36171bb90f7c7532da286c5e5def7a59980460fe34f2fd6828806661f9",
+    "evaluation.evidence": "8f434fc0ee39735d6f9e60f449ff66e0849fd8ca582a8ad1112fa9237f52c730",
+    "evaluation.metrics": "67870b1fa53e1505acf3f5e772f0dd153ac24bfaf35be0777c3d4e9d8cd42267",
+    "history_provenance.baseline": "1f669d6ac379fee9af791868a0f78c6b21bf9c52f378d3ec97b9e78cb50f0b60",
+    "history_provenance.reconstruction": "8b306b896cfd41f362dcf737c2df7f4e1235af498ea7b3dba1a13291113c0bee"
+  },
+  "input_proof": {
+    "lineage_integrity_ok": true,
+    "stream_exact": true
+  },
+  "map": {
+    "file_sha256": "f87b72d88d86e6d3a96e7cc343dec0bf791bbc2245e935436155e0a25cc9c31b",
+    "logical_map_sha256": "a7606ac051b8ecfb20f81f30868f84c6ec58098858119a6ee9db80ec2f0fb068",
+    "path": "derived/provenance-map.json"
+  },
+  "matrix": {
+    "decision_count": 57,
+    "file_sha256": "3d5fcf6d22d7bf30d392d5c59884844d6f28e94b38cd5c49a5ed18419ecd6a37",
+    "path": "derived/localization-matrix.json",
+    "status_counts": {
+      "matched": 43,
+      "partial": 0,
+      "provenance_missing": 0,
+      "retrieval_missed": 14
+    }
+  },
+  "run_id": "synthetic-history-run-v1",
+  "schema_version": "historical-recovery-acceptance/2",
+  "status": "UNVERIFIED"
+}

@@ -1,0 +1,57 @@
+schema_version: 1
+protocol_version: "1.0"
+workers:
+  lightrag:
+    adapter_factory: rag_eval_lightrag_adapter:create_worker_definition
+    expected_identity:
+      adapter_id: lightrag
+      system_id: lightrag
+      system_version: 1.5.7
+    source:
+      remote_name: fork
+      repository: https://github.com/SakuraWang6/LightRAG.git
+      tag: rag-eval-worker-runtime-6eff0064
+      revision: 6eff00641f2b4a1b6cfcecb85d7f35d6f79cb339
+      package_version: 1.5.7
+      expected_package: lightrag-hku==1.5.7
+    image:
+      repository: ghcr.io/sakurawang6/rag-eval-worker-lightrag
+      digest: sha256:c1b5391b0a113a54a9c9773b70fcab466ae295da97f3866a74b4e66de5c93a94
+      platform: linux/arm64
+      build_source: adapters/lightrag/Dockerfile
+      published_at: 2026-09-07T17:53:00+08:00
+    prepare:
+      timeout_seconds: 45
+      config:
+        profile: legacy
+        server_start_timeout_seconds: 20
+
+  rag-anything:
+    adapter_factory: rag_eval_rag_anything_adapter:create_worker_definition
+    expected_identity:
+      adapter_id: rag-anything
+      system_id: rag-anything
+      system_version: 1.3.1
+    source:
+      remote_name: origin
+      repository: https://github.com/HKUDS/RAG-Anything.git
+      tag: v1.3.1
+      revision: 698e4f178883e68baf6e566d0473e90f5e50daf5
+      package_version: 1.3.1
+      expected_package: raganything>=1.3.1,<1.4
+    image:
+      repository: ghcr.io/sakurawang6/rag-eval-worker-rag-anything
+      digest: sha256:dae4155f8bfcad005ec75375149896f67d8c90fd63b92731041240cece59208a
+      platform: linux/arm64
+      build_source: adapters/rag-anything/Dockerfile
+      published_at: 2026-09-07T18:04:00+08:00
+    prepare:
+      timeout_seconds: 45
+      config:
+        parser: mineru
+        model:
+          host: http://127.0.0.1:9
+          request_timeout_seconds: 1
+        enable_image_processing: false
+        enable_table_processing: false
+        enable_equation_processing: false

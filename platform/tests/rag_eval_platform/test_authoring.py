@@ -72,17 +72,25 @@ FOOTNOTES = """<?xml version="1.0" encoding="UTF-8"?>
  <w:footnote w:id="2"><w:p><w:r><w:t>未锚定脚注</w:t></w:r></w:p></w:footnote>
 </w:footnotes>"""
 
+DOCX_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+
 
 def mini_docx() -> bytes:
     value = io.BytesIO()
     with zipfile.ZipFile(value, "w") as archive:
-        archive.writestr("[Content_Types].xml", "<Types/>")
-        archive.writestr("word/document.xml", DOCX_MAIN)
-        archive.writestr("word/styles.xml", STYLES)
-        archive.writestr("word/_rels/document.xml.rels", RELATIONSHIPS)
-        archive.writestr("word/footnotes.xml", FOOTNOTES)
-        archive.writestr("word/media/image1.png", b"not-rendered-in-test")
-        archive.writestr("word/embeddings/object1.bin", b"ole")
+        members = (
+            ("[Content_Types].xml", "<Types/>"),
+            ("word/document.xml", DOCX_MAIN),
+            ("word/styles.xml", STYLES),
+            ("word/_rels/document.xml.rels", RELATIONSHIPS),
+            ("word/footnotes.xml", FOOTNOTES),
+            ("word/media/image1.png", b"not-rendered-in-test"),
+            ("word/embeddings/object1.bin", b"ole"),
+        )
+        for name, payload in members:
+            info = zipfile.ZipInfo(name, date_time=DOCX_ZIP_TIMESTAMP)
+            info.compress_type = zipfile.ZIP_STORED
+            archive.writestr(info, payload)
     return value.getvalue()
 
 

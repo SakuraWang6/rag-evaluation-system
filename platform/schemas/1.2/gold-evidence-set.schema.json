@@ -236,6 +236,27 @@
       },
       "title": "Required Groups",
       "type": "array"
+    },
+    "mses_paths": {
+      "anyOf": [
+        {
+          "items": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mses Paths"
     }
   },
   "required": [

@@ -1,0 +1,274 @@
+{
+  "chunk-corrupted-span": {
+    "_id": "chunk-corrupted-span",
+    "chunk_order_index": 23,
+    "content": "synthetic-corruption-witness",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 1,
+      "start": 0
+    }
+  },
+  "chunk-paragraph-01": {
+    "_id": "chunk-paragraph-01",
+    "chunk_order_index": 0,
+    "content": "Synthetic signal 01 establishes deterministic evidence 01.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 58,
+      "start": 0
+    }
+  },
+  "chunk-paragraph-01-partial": {
+    "_id": "chunk-paragraph-01-partial",
+    "chunk_order_index": 22,
+    "content": "Synthetic signal 01",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 19,
+      "start": 0
+    }
+  },
+  "chunk-paragraph-02": {
+    "_id": "chunk-paragraph-02",
+    "chunk_order_index": 1,
+    "content": "Synthetic signal 02 establishes deterministic evidence 02.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 117,
+      "start": 59
+    }
+  },
+  "chunk-paragraph-03": {
+    "_id": "chunk-paragraph-03",
+    "chunk_order_index": 2,
+    "content": "Synthetic signal 03 establishes deterministic evidence 03.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 176,
+      "start": 118
+    }
+  },
+  "chunk-paragraph-04": {
+    "_id": "chunk-paragraph-04",
+    "chunk_order_index": 3,
+    "content": "Synthetic signal 04 establishes deterministic evidence 04.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 235,
+      "start": 177
+    }
+  },
+  "chunk-paragraph-05": {
+    "_id": "chunk-paragraph-05",
+    "chunk_order_index": 4,
+    "content": "Synthetic signal 05 establishes deterministic evidence 05.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 294,
+      "start": 236
+    }
+  },
+  "chunk-paragraph-06": {
+    "_id": "chunk-paragraph-06",
+    "chunk_order_index": 5,
+    "content": "Synthetic signal 06 establishes deterministic evidence 06.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 353,
+      "start": 295
+    }
+  },
+  "chunk-paragraph-07": {
+    "_id": "chunk-paragraph-07",
+    "chunk_order_index": 6,
+    "content": "Synthetic signal 07 establishes deterministic evidence 07.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 412,
+      "start": 354
+    }
+  },
+  "chunk-paragraph-08": {
+    "_id": "chunk-paragraph-08",
+    "chunk_order_index": 7,
+    "content": "Synthetic signal 08 establishes deterministic evidence 08.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 471,
+      "start": 413
+    }
+  },
+  "chunk-paragraph-09": {
+    "_id": "chunk-paragraph-09",
+    "chunk_order_index": 8,
+    "content": "Synthetic signal 09 establishes deterministic evidence 09.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 530,
+      "start": 472
+    }
+  },
+  "chunk-paragraph-10": {
+    "_id": "chunk-paragraph-10",
+    "chunk_order_index": 9,
+    "content": "Synthetic signal 10 establishes deterministic evidence 10.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 589,
+      "start": 531
+    }
+  },
+  "chunk-paragraph-11": {
+    "_id": "chunk-paragraph-11",
+    "chunk_order_index": 10,
+    "content": "Synthetic signal 11 establishes deterministic evidence 11.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 734,
+      "start": 676
+    }
+  },
+  "chunk-paragraph-12": {
+    "_id": "chunk-paragraph-12",
+    "chunk_order_index": 11,
+    "content": "Synthetic signal 12 establishes deterministic evidence 12.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 793,
+      "start": 735
+    }
+  },
+  "chunk-paragraph-13": {
+    "_id": "chunk-paragraph-13",
+    "chunk_order_index": 12,
+    "content": "Synthetic signal 13 establishes deterministic evidence 13.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 852,
+      "start": 794
+    }
+  },
+  "chunk-paragraph-14": {
+    "_id": "chunk-paragraph-14",
+    "chunk_order_index": 13,
+    "content": "Synthetic signal 14 establishes deterministic evidence 14.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 911,
+      "start": 853
+    }
+  },
+  "chunk-paragraph-15": {
+    "_id": "chunk-paragraph-15",
+    "chunk_order_index": 14,
+    "content": "Synthetic signal 15 establishes deterministic evidence 15.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 970,
+      "start": 912
+    }
+  },
+  "chunk-paragraph-16": {
+    "_id": "chunk-paragraph-16",
+    "chunk_order_index": 15,
+    "content": "Synthetic signal 16 establishes deterministic evidence 16.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 1111,
+      "start": 1053
+    }
+  },
+  "chunk-paragraph-17": {
+    "_id": "chunk-paragraph-17",
+    "chunk_order_index": 16,
+    "content": "Synthetic signal 17 establishes deterministic evidence 17.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 1170,
+      "start": 1112
+    }
+  },
+  "chunk-paragraph-18": {
+    "_id": "chunk-paragraph-18",
+    "chunk_order_index": 17,
+    "content": "Synthetic signal 18 establishes deterministic evidence 18.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 1229,
+      "start": 1171
+    }
+  },
+  "chunk-paragraph-19": {
+    "_id": "chunk-paragraph-19",
+    "chunk_order_index": 18,
+    "content": "Synthetic signal 19 establishes deterministic evidence 19.",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "source_span": {
+      "end": 1288,
+      "start": 1230
+    }
+  },
+  "chunk-table-a-full": {
+    "_id": "chunk-table-a-full",
+    "chunk_order_index": 19,
+    "content": "<table id=\"native-table-a\">[[\"ALPHA-A1\",\"ALPHA-A2\"],[\"ALPHA-A3\",\"ALPHA-A4\"]]</table>",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "sidecar": {
+      "id": "native-table-a",
+      "type": "table"
+    },
+    "source_span": {
+      "end": 674,
+      "start": 590
+    }
+  },
+  "chunk-table-a-row-1": {
+    "_id": "chunk-table-a-row-1",
+    "chunk_order_index": 21,
+    "content": "<table id=\"native-table-a\">[[\"ALPHA-A1\",\"ALPHA-A2\"]]</table>",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "sidecar": {
+      "id": "native-table-a",
+      "type": "table"
+    }
+  },
+  "chunk-table-b-full": {
+    "_id": "chunk-table-b-full",
+    "chunk_order_index": 20,
+    "content": "<table id=\"native-table-b\">[[\"BETA-B1\",\"BETA-B2\"],[\"BETA-B3\",\"BETA-B4\"]]</table>",
+    "file_path": "synthetic.docx",
+    "full_doc_id": "full-doc-synthetic-history-v1",
+    "sidecar": {
+      "id": "native-table-b",
+      "type": "table"
+    },
+    "source_span": {
+      "end": 1051,
+      "start": 971
+    }
+  }
+}

@@ -52,6 +52,16 @@
           "default": false,
           "title": "Reset",
           "type": "boolean"
+        },
+        "segment_traces": {
+          "default": false,
+          "title": "Segment Traces",
+          "type": "boolean"
+        },
+        "strict_segment_ranking": {
+          "default": false,
+          "title": "Strict Segment Ranking",
+          "type": "boolean"
         }
       },
       "title": "AdapterCapabilities",

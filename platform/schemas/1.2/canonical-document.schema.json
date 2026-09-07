@@ -1,0 +1,431 @@
+{
+  "$defs": {
+    "CanonicalDocumentManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "default": "1.2",
+          "enum": [
+            "1.0",
+            "1.1",
+            "1.2"
+          ],
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "parser_identity": {
+          "minLength": 1,
+          "title": "Parser Identity",
+          "type": "string"
+        },
+        "canonicalizer_identity": {
+          "minLength": 1,
+          "title": "Canonicalizer Identity",
+          "type": "string"
+        },
+        "configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
+        },
+        "object_count": {
+          "minimum": 1,
+          "title": "Object Count",
+          "type": "integer"
+        },
+        "relation_count": {
+          "minimum": 0,
+          "title": "Relation Count",
+          "type": "integer"
+        },
+        "objects_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Objects Digest",
+          "type": "string"
+        },
+        "relations_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Relations Digest",
+          "type": "string"
+        },
+        "canonical_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "parser_identity",
+        "canonicalizer_identity",
+        "configuration_digest",
+        "object_count",
+        "relation_count",
+        "objects_digest",
+        "relations_digest",
+        "canonical_digest"
+      ],
+      "title": "CanonicalDocumentManifest",
+      "type": "object"
+    },
+    "CanonicalObject": {
+      "additionalProperties": false,
+      "properties": {
+        "object_id": {
+          "minLength": 1,
+          "title": "Object Id",
+          "type": "string"
+        },
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "object_type": {
+          "$ref": "#/$defs/CanonicalObjectType"
+        },
+        "representation_status": {
+          "$ref": "#/$defs/RepresentationStatus"
+        },
+        "document_order": {
+          "minimum": 0,
+          "title": "Document Order",
+          "type": "integer"
+        },
+        "canonical_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Value"
+        },
+        "provenance": {
+          "$ref": "#/$defs/CanonicalObjectProvenance"
+        },
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        }
+      },
+      "required": [
+        "object_id",
+        "document_id",
+        "object_type",
+        "representation_status",
+        "document_order",
+        "provenance"
+      ],
+      "title": "CanonicalObject",
+      "type": "object"
+    },
+    "CanonicalObjectProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "parser_identity": {
+          "minLength": 1,
+          "title": "Parser Identity",
+          "type": "string"
+        },
+        "canonicalizer_identity": {
+          "minLength": 1,
+          "title": "Canonicalizer Identity",
+          "type": "string"
+        },
+        "configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
+        },
+        "extraction_method": {
+          "minLength": 1,
+          "title": "Extraction Method",
+          "type": "string"
+        },
+        "source_spans": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          },
+          "title": "Source Spans",
+          "type": "array"
+        },
+        "derived_from_object_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Derived From Object Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_sha256",
+        "parser_identity",
+        "canonicalizer_identity",
+        "configuration_digest",
+        "extraction_method"
+      ],
+      "title": "CanonicalObjectProvenance",
+      "type": "object"
+    },
+    "CanonicalObjectType": {
+      "enum": [
+        "document",
+        "section",
+        "heading",
+        "paragraph",
+        "text_span",
+        "table",
+        "row",
+        "cell",
+        "logical_row",
+        "logical_column",
+        "logical_cell",
+        "figure",
+        "caption",
+        "equation",
+        "reference",
+        "footnote",
+        "endnote",
+        "embedded_object",
+        "media_resource"
+      ],
+      "title": "CanonicalObjectType",
+      "type": "string"
+    },
+    "CanonicalRelation": {
+      "additionalProperties": false,
+      "properties": {
+        "relation_id": {
+          "minLength": 1,
+          "title": "Relation Id",
+          "type": "string"
+        },
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "relation_type": {
+          "$ref": "#/$defs/CanonicalRelationType"
+        },
+        "source_object_id": {
+          "minLength": 1,
+          "title": "Source Object Id",
+          "type": "string"
+        },
+        "target_object_id": {
+          "minLength": 1,
+          "title": "Target Object Id",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/CanonicalRelationProvenance"
+        },
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        }
+      },
+      "required": [
+        "relation_id",
+        "document_id",
+        "relation_type",
+        "source_object_id",
+        "target_object_id",
+        "provenance"
+      ],
+      "title": "CanonicalRelation",
+      "type": "object"
+    },
+    "CanonicalRelationProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "extraction_method": {
+          "minLength": 1,
+          "title": "Extraction Method",
+          "type": "string"
+        },
+        "source_object_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Object Ids",
+          "type": "array"
+        },
+        "source_spans": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          },
+          "title": "Source Spans",
+          "type": "array"
+        }
+      },
+      "required": [
+        "extraction_method",
+        "source_object_ids"
+      ],
+      "title": "CanonicalRelationProvenance",
+      "type": "object"
+    },
+    "CanonicalRelationType": {
+      "enum": [
+        "parent_child",
+        "sibling",
+        "section_hierarchy",
+        "document_order",
+        "caption_of",
+        "reference_to",
+        "figure_has_resource",
+        "paragraph_references_figure",
+        "equation_in_paragraph",
+        "section_contains_figure",
+        "section_contains_equation",
+        "table_contains_row",
+        "row_contains_cell",
+        "table_contains_logical_row",
+        "table_contains_logical_column",
+        "logical_row_contains_cell",
+        "logical_column_contains_cell",
+        "physical_to_logical_cell",
+        "header_for",
+        "nested_table_in_cell"
+      ],
+      "title": "CanonicalRelationType",
+      "type": "string"
+    },
+    "RepresentationStatus": {
+      "enum": [
+        "complete",
+        "partial",
+        "unsupported",
+        "missing"
+      ],
+      "title": "RepresentationStatus",
+      "type": "string"
+    },
+    "SourceSpan": {
+      "additionalProperties": false,
+      "description": "One directly observed source location in ``ooxml-structural-v1``.",
+      "properties": {
+        "coordinate_system": {
+          "const": "ooxml-structural-v1",
+          "default": "ooxml-structural-v1",
+          "title": "Coordinate System",
+          "type": "string"
+        },
+        "part": {
+          "minLength": 1,
+          "title": "Part",
+          "type": "string"
+        },
+        "coordinates": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "minProperties": 1,
+          "title": "Coordinates",
+          "type": "object"
+        },
+        "text_start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text Start"
+        },
+        "text_end": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text End"
+        }
+      },
+      "required": [
+        "part",
+        "coordinates"
+      ],
+      "title": "SourceSpan",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "manifest": {
+      "$ref": "#/$defs/CanonicalDocumentManifest"
+    },
+    "objects": {
+      "items": {
+        "$ref": "#/$defs/CanonicalObject"
+      },
+      "minItems": 1,
+      "title": "Objects",
+      "type": "array"
+    },
+    "relations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CanonicalRelation"
+      },
+      "title": "Relations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "manifest",
+    "objects"
+  ],
+  "title": "CanonicalDocument",
+  "type": "object"
+}

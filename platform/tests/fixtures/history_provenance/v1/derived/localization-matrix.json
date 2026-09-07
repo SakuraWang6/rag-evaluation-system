@@ -1,0 +1,2833 @@
+{
+  "acceptance_status": "UNVERIFIED",
+  "decision_count": 57,
+  "decisions": [
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 58,
+          "start": 0
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-01",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-01",
+      "matched_chunk_ids": [
+        "chunk-paragraph-01"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 58,
+          "start": 0
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-01",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-01",
+      "matched_chunk_ids": [
+        "chunk-paragraph-01"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 58,
+          "start": 0
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-01",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-01",
+      "matched_chunk_ids": [
+        "chunk-paragraph-01"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 117,
+          "start": 59
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-01",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-02",
+      "matched_chunk_ids": [
+        "chunk-paragraph-02"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 117,
+          "start": 59
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-01",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-02",
+      "matched_chunk_ids": [
+        "chunk-paragraph-02"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 117,
+          "start": 59
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-01",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-02",
+      "matched_chunk_ids": [
+        "chunk-paragraph-02"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 176,
+          "start": 118
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-01",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-03",
+      "matched_chunk_ids": [
+        "chunk-paragraph-03"
+      ],
+      "rank": 3,
+      "ranks": [
+        3
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 176,
+          "start": 118
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-01",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-03",
+      "matched_chunk_ids": [
+        "chunk-paragraph-03"
+      ],
+      "rank": 3,
+      "ranks": [
+        3
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 176,
+          "start": 118
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-01",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-03",
+      "matched_chunk_ids": [
+        "chunk-paragraph-03"
+      ],
+      "rank": 3,
+      "ranks": [
+        3
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 235,
+          "start": 177
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-02",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-04",
+      "matched_chunk_ids": [
+        "chunk-paragraph-04"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 235,
+          "start": 177
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-02",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-04",
+      "matched_chunk_ids": [
+        "chunk-paragraph-04"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 235,
+          "start": 177
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-02",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-04",
+      "matched_chunk_ids": [
+        "chunk-paragraph-04"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 294,
+          "start": 236
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-02",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-05",
+      "matched_chunk_ids": [
+        "chunk-paragraph-05"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 294,
+          "start": 236
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-02",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-05",
+      "matched_chunk_ids": [
+        "chunk-paragraph-05"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 294,
+          "start": 236
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-02",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-05",
+      "matched_chunk_ids": [
+        "chunk-paragraph-05"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 353,
+          "start": 295
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-02",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-06",
+      "matched_chunk_ids": [
+        "chunk-paragraph-06"
+      ],
+      "rank": 3,
+      "ranks": [
+        3
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 353,
+          "start": 295
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-02",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-06",
+      "matched_chunk_ids": [
+        "chunk-paragraph-06"
+      ],
+      "rank": 3,
+      "ranks": [
+        3
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 353,
+          "start": 295
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-02",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-06",
+      "matched_chunk_ids": [
+        "chunk-paragraph-06"
+      ],
+      "rank": 3,
+      "ranks": [
+        3
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 412,
+          "start": 354
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-03",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-07",
+      "matched_chunk_ids": [
+        "chunk-paragraph-07"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 412,
+          "start": 354
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-03",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-07",
+      "matched_chunk_ids": [
+        "chunk-paragraph-07"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 412,
+          "start": 354
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-03",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-07",
+      "matched_chunk_ids": [
+        "chunk-paragraph-07"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 471,
+          "start": 413
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-03",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-08",
+      "matched_chunk_ids": [
+        "chunk-paragraph-08"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 471,
+          "start": 413
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-03",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-08",
+      "matched_chunk_ids": [
+        "chunk-paragraph-08"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 471,
+          "start": 413
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-03",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-08",
+      "matched_chunk_ids": [
+        "chunk-paragraph-08"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 530,
+          "start": 472
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-03",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-09",
+      "matched_chunk_ids": [
+        "chunk-paragraph-09"
+      ],
+      "rank": 3,
+      "ranks": [
+        3
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 530,
+          "start": 472
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-03",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-09",
+      "matched_chunk_ids": [
+        "chunk-paragraph-09"
+      ],
+      "rank": 3,
+      "ranks": [
+        3
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 530,
+          "start": 472
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-03",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-09",
+      "matched_chunk_ids": [
+        "chunk-paragraph-09"
+      ],
+      "rank": 3,
+      "ranks": [
+        3
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 589,
+          "start": 531
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-04",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-10",
+      "matched_chunk_ids": [
+        "chunk-paragraph-10"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 589,
+          "start": 531
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-04",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-10",
+      "matched_chunk_ids": [
+        "chunk-paragraph-10"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 589,
+          "start": 531
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-04",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-10",
+      "matched_chunk_ids": [
+        "chunk-paragraph-10"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 734,
+          "start": 676
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-04",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-11",
+      "matched_chunk_ids": [
+        "chunk-paragraph-11"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 734,
+          "start": 676
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-04",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-11",
+      "matched_chunk_ids": [
+        "chunk-paragraph-11"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 734,
+          "start": 676
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-04",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-11",
+      "matched_chunk_ids": [
+        "chunk-paragraph-11"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 793,
+          "start": 735
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-05",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-12",
+      "matched_chunk_ids": [
+        "chunk-paragraph-12"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 793,
+          "start": 735
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-05",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-12",
+      "matched_chunk_ids": [
+        "chunk-paragraph-12"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 793,
+          "start": 735
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-05",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-12",
+      "matched_chunk_ids": [
+        "chunk-paragraph-12"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 852,
+          "start": 794
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-05",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-13",
+      "matched_chunk_ids": [
+        "chunk-paragraph-13"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 852,
+          "start": 794
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-05",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-13",
+      "matched_chunk_ids": [
+        "chunk-paragraph-13"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 852,
+          "start": 794
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-05",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-13",
+      "matched_chunk_ids": [
+        "chunk-paragraph-13"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "final_context",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 911,
+          "start": 853
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-06",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-14",
+      "matched_chunk_ids": [
+        "chunk-paragraph-14"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 911,
+          "start": 853
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-06",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-14",
+      "matched_chunk_ids": [
+        "chunk-paragraph-14"
+      ],
+      "rank": 1,
+      "ranks": [
+        1
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "case_id": "fixture-case-06",
+      "evidence_id": "fixture-evidence-14",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "final_context",
+      "status": "retrieval_missed"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 970,
+          "start": 912
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-06",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-15",
+      "matched_chunk_ids": [
+        "chunk-paragraph-15"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "raw_retrieval",
+      "status": "matched"
+    },
+    {
+      "actual_covered_ranges": [
+        {
+          "end": 970,
+          "start": 912
+        }
+      ],
+      "alignment_methods": [
+        "historical_normalized_text_witness_in_paraid_scope"
+      ],
+      "case_id": "fixture-case-06",
+      "coverage": "full",
+      "evidence_id": "fixture-evidence-15",
+      "matched_chunk_ids": [
+        "chunk-paragraph-15"
+      ],
+      "rank": 2,
+      "ranks": [
+        2
+      ],
+      "reason": null,
+      "stage": "ranked_retrieval",
+      "status": "matched"
+    },
+    {
+      "case_id": "fixture-case-06",
+      "evidence_id": "fixture-evidence-15",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "final_context",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-06",
+      "evidence_id": "fixture-evidence-16",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "raw_retrieval",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-06",
+      "evidence_id": "fixture-evidence-16",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "ranked_retrieval",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-06",
+      "evidence_id": "fixture-evidence-16",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "final_context",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-07",
+      "evidence_id": "fixture-evidence-17",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "raw_retrieval",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-07",
+      "evidence_id": "fixture-evidence-17",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "ranked_retrieval",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-07",
+      "evidence_id": "fixture-evidence-17",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "final_context",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-07",
+      "evidence_id": "fixture-evidence-18",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "raw_retrieval",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-07",
+      "evidence_id": "fixture-evidence-18",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "ranked_retrieval",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-07",
+      "evidence_id": "fixture-evidence-18",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "final_context",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-08",
+      "evidence_id": "fixture-evidence-19",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "raw_retrieval",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-08",
+      "evidence_id": "fixture-evidence-19",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "ranked_retrieval",
+      "status": "retrieval_missed"
+    },
+    {
+      "case_id": "fixture-case-08",
+      "evidence_id": "fixture-evidence-19",
+      "matched_chunk_ids": [],
+      "ranks": [],
+      "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+      "stage": "final_context",
+      "status": "retrieval_missed"
+    }
+  ],
+  "evidence_item_count": 19,
+  "rows": [
+    {
+      "canonical_value_sha256": "f9e377c77eb9f98de3a18174213ea20f2873c50c4b8772eaa0a04f04b8d298d2",
+      "case_id": "fixture-case-01",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-01",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 58,
+            "start": 0
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "4144b58d4b546604ed57d14637a4eab2dc44a7c2116178e543bc9cec4012e026"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00001",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00001",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-01",
+        "body_ordinal": 0,
+        "para_id": "10000001"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 58,
+              "start": 0
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-01"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 58,
+              "start": 0
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-01"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 58,
+              "start": 0
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-01"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "8fcd7ac2c7a8f878528b160a5858d6d81bc985e404f48493ecd1c2112668ab40",
+      "case_id": "fixture-case-01",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-02",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 117,
+            "start": 59
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "6d63f0ff02277ed2bf89ca1a74796c6d0eae3ed453f5d516ba8a8831a5810307"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00002",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00002",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-01",
+        "body_ordinal": 1,
+        "para_id": "10000002"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 117,
+              "start": 59
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-02"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 117,
+              "start": 59
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-02"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 117,
+              "start": 59
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-02"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "47221353e887032ef32cff0f37b0a3a631b938c314837c8c7485f3e675ad538e",
+      "case_id": "fixture-case-01",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-03",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 176,
+            "start": 118
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "fdd88a030d93c101646a567b437fc72cae511e7d1636794434ec2663b6eed904"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00003",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00003",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-01",
+        "body_ordinal": 2,
+        "para_id": "10000003"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 176,
+              "start": 118
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-03"
+          ],
+          "rank": 3,
+          "ranks": [
+            3
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 176,
+              "start": 118
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-03"
+          ],
+          "rank": 3,
+          "ranks": [
+            3
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 176,
+              "start": 118
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-03"
+          ],
+          "rank": 3,
+          "ranks": [
+            3
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "bd3a6743f92dbca4fdc2494b2da66e1234a3bd8ca435eac6c8d38e876d41148c",
+      "case_id": "fixture-case-02",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-04",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 235,
+            "start": 177
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "6c74a2ee456462914e34b8c046750e67215b34dea11677c513808cd6feef560b"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00004",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00004",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-01",
+        "body_ordinal": 3,
+        "para_id": "10000004"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 235,
+              "start": 177
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-04"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 235,
+              "start": 177
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-04"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 235,
+              "start": 177
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-04"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "4420bbb5ffcbca4e35a4b1f122af28663f535cccb4ddd9107d6b59883bdab5ae",
+      "case_id": "fixture-case-02",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-05",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 294,
+            "start": 236
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "c15e951ec67b897d36027fa7a39a9b3f1d12f4e51a8782f6c9b4c21453f1ec89"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00005",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00005",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-01",
+        "body_ordinal": 4,
+        "para_id": "10000005"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 294,
+              "start": 236
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-05"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 294,
+              "start": 236
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-05"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 294,
+              "start": 236
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-05"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "f8735a256f73505e04d3827442aa9fb67d9f504f0afce168285d563b535b1d50",
+      "case_id": "fixture-case-02",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-06",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 353,
+            "start": 295
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "1bd7523d607358d33b4fb6190d38af796ddab2c34a0160c585aef6f81a167264"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00006",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00006",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-01",
+        "body_ordinal": 5,
+        "para_id": "10000006"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 353,
+              "start": 295
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-06"
+          ],
+          "rank": 3,
+          "ranks": [
+            3
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 353,
+              "start": 295
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-06"
+          ],
+          "rank": 3,
+          "ranks": [
+            3
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 353,
+              "start": 295
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-06"
+          ],
+          "rank": 3,
+          "ranks": [
+            3
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "c712c2cd54dbd27e389b3e8321ca805d7dd0fd72a9963118fdc22882e4595dee",
+      "case_id": "fixture-case-03",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-07",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 412,
+            "start": 354
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "f495a94d50b342225036e9a1bc89f143c960c5fb89a62b1966f5a1d32cb3de55"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00007",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00007",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-01",
+        "body_ordinal": 6,
+        "para_id": "10000007"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 412,
+              "start": 354
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-07"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 412,
+              "start": 354
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-07"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 412,
+              "start": 354
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-07"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "d0b591083226b3953c63689370e13ad5d96d552d77944463fdebf29f0f3ca3c2",
+      "case_id": "fixture-case-03",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-08",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 471,
+            "start": 413
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "934388c8e2805a901a3712952c06ee8dea143b2d24810f88f9ec3f893624eb54"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00008",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00008",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-01",
+        "body_ordinal": 7,
+        "para_id": "10000008"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 471,
+              "start": 413
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-08"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 471,
+              "start": 413
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-08"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 471,
+              "start": 413
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-08"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "d7d2533732818bce17d09313f190b1a1a9bfa53d1c889360cd6d37ad716ba5b8",
+      "case_id": "fixture-case-03",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-09",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 530,
+            "start": 472
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "1fb40123f28a641008ac645287fdc2844ec41d8703a9039c37325d5289a18624"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00009",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00009",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-01",
+        "body_ordinal": 8,
+        "para_id": "10000009"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 530,
+              "start": 472
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-09"
+          ],
+          "rank": 3,
+          "ranks": [
+            3
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 530,
+              "start": 472
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-09"
+          ],
+          "rank": 3,
+          "ranks": [
+            3
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 530,
+              "start": 472
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-09"
+          ],
+          "rank": 3,
+          "ranks": [
+            3
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "1fa7ed32815c489de04c657d3d810fa8222f3d506d8922ab2cab3406a7ee8bd7",
+      "case_id": "fixture-case-04",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-10",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 589,
+            "start": 531
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "d63306e2bc03f5f2557d47de558cfaf67d6a7d791fa4de7795f96c73facc518f"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00010",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00010",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-01",
+        "body_ordinal": 9,
+        "para_id": "1000000A"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 589,
+              "start": 531
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-10"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 589,
+              "start": 531
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-10"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 589,
+              "start": 531
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-10"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "f8576ce8b7e3d9eeb41105572a5b0ce4ace827924dc1a877b31349a084fa3b6c",
+      "case_id": "fixture-case-04",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-11",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 734,
+            "start": 676
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "0d94bd047ff2748c10471cd98b1337b0b1889e42cebf9c51cfa75ddd1e2f831e"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00011",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00011",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-02",
+        "body_ordinal": 11,
+        "para_id": "1000000B"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 734,
+              "start": 676
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-11"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 734,
+              "start": 676
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-11"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 734,
+              "start": 676
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-11"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "08bf0bc04d3d0b242717fbdfbedbfe1daf1bad3d63afee9b53d64cb81bd41440",
+      "case_id": "fixture-case-05",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-12",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 793,
+            "start": 735
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "308e8b9e87c0b180903a13a09c096cfcd258177830fa5c979ced11d8d080c91e"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00012",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00012",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-02",
+        "body_ordinal": 12,
+        "para_id": "1000000C"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 793,
+              "start": 735
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-12"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 793,
+              "start": 735
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-12"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 793,
+              "start": 735
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-12"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "33c1be8cea2a0141459ef0bfe3595edd4898e546f397dca35f2260069bf18c01",
+      "case_id": "fixture-case-05",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-13",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 852,
+            "start": 794
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "7cc699549b60a9a2b8534640683a8b56757b25cbf4eff28dd0e9c6681b08d7d1"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00013",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00013",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-02",
+        "body_ordinal": 13,
+        "para_id": "1000000D"
+      },
+      "stages": {
+        "final_context": {
+          "actual_covered_ranges": [
+            {
+              "end": 852,
+              "start": 794
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-13"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 852,
+              "start": 794
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-13"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 852,
+              "start": 794
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-13"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "787c5eff786ecd6e93e00b60cea9a577911a66117f37358874d3160aa453d4aa",
+      "case_id": "fixture-case-06",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-14",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 911,
+            "start": 853
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "d236b0722eb9b0b99b0178f540d82d3feb73f263830cb5bd0e617098757529e0"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00014",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00014",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-02",
+        "body_ordinal": 14,
+        "para_id": "1000000E"
+      },
+      "stages": {
+        "final_context": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 911,
+              "start": 853
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-14"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 911,
+              "start": 853
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-14"
+          ],
+          "rank": 1,
+          "ranks": [
+            1
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "18f2ff08fb747d4b087f97b579342d4a974f4f91f7151df3a90f52bde2ebadb0",
+      "case_id": "fixture-case-06",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-15",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 970,
+            "start": 912
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "dbf919ee4a5da4e94310f6fbe45cb7e91eee42f25d09b3d6269bcc9ad562dcd9"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00015",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00015",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-02",
+        "body_ordinal": 15,
+        "para_id": "1000000F"
+      },
+      "stages": {
+        "final_context": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        },
+        "ranked_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 970,
+              "start": 912
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-15"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        },
+        "raw_retrieval": {
+          "actual_covered_ranges": [
+            {
+              "end": 970,
+              "start": 912
+            }
+          ],
+          "alignment_methods": [
+            "historical_normalized_text_witness_in_paraid_scope"
+          ],
+          "coverage": "full",
+          "matched_chunk_ids": [
+            "chunk-paragraph-15"
+          ],
+          "rank": 2,
+          "ranks": [
+            2
+          ],
+          "reason": null,
+          "status": "matched"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "8800358a9ad2582e20d7b9d48c9a01856d974356639bf295b0340750115e209f",
+      "case_id": "fixture-case-06",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-16",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 1111,
+            "start": 1053
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "b59af8c046a8810b0993d3f81e1d7a1bf46dafc1da90177f166d96c7bba2660e"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00016",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00016",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-03",
+        "body_ordinal": 17,
+        "para_id": "10000010"
+      },
+      "stages": {
+        "final_context": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        },
+        "ranked_retrieval": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        },
+        "raw_retrieval": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "008ecde441a2afd3eb4914b74f010481d33939175d04d3ceba9d96c3f6e744c3",
+      "case_id": "fixture-case-07",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-17",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 1170,
+            "start": 1112
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "a57ca1472517fa61a6388dc773349679f2de4af58c01d58aa8edafbab9e88fcf"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00017",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00017",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-03",
+        "body_ordinal": 18,
+        "para_id": "10000011"
+      },
+      "stages": {
+        "final_context": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        },
+        "ranked_retrieval": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        },
+        "raw_retrieval": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "b04ad14e7cafa364051a85c3742ecc334e0a873ec815c99f31ea2bf8477aa263",
+      "case_id": "fixture-case-07",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-18",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 1229,
+            "start": 1171
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "f35a25049a9870ab8e739d2e2a66c14b0688777076b330547107ce8e2f26723b"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00018",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00018",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-03",
+        "body_ordinal": 19,
+        "para_id": "10000012"
+      },
+      "stages": {
+        "final_context": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        },
+        "ranked_retrieval": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        },
+        "raw_retrieval": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        }
+      }
+    },
+    {
+      "canonical_value_sha256": "d347290e1bc5a7718b690f0539e56e4d81a8f0f25f530bc20e5c0ee1df151704",
+      "case_id": "fixture-case-08",
+      "document_id": "doc-synthetic-history-v1",
+      "evidence_id": "fixture-evidence-19",
+      "expected_extent": {
+        "alignment_method": "historical_normalized_text_witness_in_paraid_scope",
+        "coordinate_system": "execution-stream-v1",
+        "document_id": "full-doc-synthetic-history-v1",
+        "ranges": [
+          {
+            "end": 1288,
+            "start": 1230
+          }
+        ],
+        "reason": null,
+        "status": "complete",
+        "witness_sha256": "11562be289dc9d6c48bf0c2cc43e131914651e983ad05891ce81eeef7e91d792"
+      },
+      "locator": {
+        "object_id": "doc-synthetic-history-v1:paragraph:00019",
+        "object_type": "paragraph",
+        "type": "object"
+      },
+      "object_id": "doc-synthetic-history-v1:paragraph:00019",
+      "object_mapping_status": "complete",
+      "object_type": "paragraph",
+      "source_coordinates": {
+        "block_id": "block-synthetic-03",
+        "body_ordinal": 20,
+        "para_id": "10000013"
+      },
+      "stages": {
+        "final_context": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        },
+        "ranked_retrieval": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        },
+        "raw_retrieval": {
+          "matched_chunk_ids": [],
+          "ranks": [],
+          "reason": "complete_global_catalog_proves_no_retrieved_chunk_edge",
+          "status": "retrieval_missed"
+        }
+      }
+    }
+  ],
+  "run_id": "run",
+  "schema_version": "historical-localization-matrix/1",
+  "source_map_sha256": "a7606ac051b8ecfb20f81f30868f84c6ec58098858119a6ee9db80ec2f0fb068",
+  "stage_count": 3,
+  "status_counts": {
+    "matched": 43,
+    "partial": 0,
+    "provenance_missing": 0,
+    "retrieval_missed": 14
+  },
+  "unverified_reasons": [
+    "formal worker/container rescore wiring remains outside this read-only mapper",
+    "independent acceptance review of the derived artifacts is still required"
+  ]
+}

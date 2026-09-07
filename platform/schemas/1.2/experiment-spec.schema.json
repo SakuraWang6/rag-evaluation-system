@@ -323,10 +323,61 @@
       "title": "Experiment Id",
       "type": "string"
     },
+    "display_name": {
+      "anyOf": [
+        {
+          "maxLength": 160,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Display Name"
+    },
     "bundle_id": {
       "minLength": 1,
       "title": "Bundle Id",
       "type": "string"
+    },
+    "dataset_release_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dataset Release Id"
+    },
+    "benchmark_contract_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Benchmark Contract Version"
+    },
+    "benchmark_contract_digest": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Benchmark Contract Digest"
     },
     "system_id": {
       "minLength": 1,
