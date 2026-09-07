@@ -179,7 +179,12 @@ def test_golden_smoke_adversarial_evaluation_semantics() -> None:
         corpus=corpus,
         metrics=wrong_answer_metrics,
     )
-    assert FailureLabel.GENERATION_FAILURE in wrong_answer.labels
+    # A lexical text mismatch may still be a paraphrase.  P1 keeps it out of
+    # a deterministic generation-failure count until the semantic/human
+    # answer-review stages decide equivalence.
+    assert metric(wrong_answer_metrics, "answer_accuracy").status.value == "needs_review"
+    assert FailureLabel.GENERATION_FAILURE not in wrong_answer.labels
+    assert FailureLabel.NEEDS_REVIEW in wrong_answer.labels
 
     accidental_correct_result = RAGResult(
         answer="amber", raw_retrieval=[], ranked_retrieval=[], final_context=[]
@@ -221,9 +226,10 @@ def test_golden_smoke_adversarial_evaluation_semantics() -> None:
         corpus=corpus,
         metrics=review_metrics,
     )
-    assert metric(review_metrics, "answer_accuracy").status.value == "needs_review"
-    assert review.review_required
-    assert FailureLabel.NEEDS_REVIEW in review.labels
+    assert metric(review_metrics, "answer_accuracy").status.value == "observed"
+    assert metric(review_metrics, "answer_accuracy").value == 1.0
+    assert not review.review_required
+    assert FailureLabel.NEEDS_REVIEW not in review.labels
 
     second = GoldEvidence(
         evidence_id="second",

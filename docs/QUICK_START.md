@@ -19,10 +19,9 @@ Python path in its canonical ExperimentSpec.
 1. On **Overview**, choose **Create from document** and upload the private
    DOCX. Inspect analysis and canonical evidence, discover targets, resolve
    candidates, and complete reviewer decisions before exporting/registering the
-   approved canonical-text Bundle. Uploading an existing Dataset Bundle ZIP is
-   an import path. The small UTF-8 TXT/Markdown editor remains a
-   manual/diagnostic fallback: select a TextSpan, enter the question and Gold
-   answer, validate, then seal.
+   approved canonical-text Bundle. The dataset page also accepts an existing
+   Bundle ZIP or lets you create a small TXT/Markdown dataset by selecting the
+   supporting source text and entering its question and answer.
 2. Choose **Add RAG system**. In Basic mode select LightRAG or RAG-Anything,
    give it a friendly name, keep **Local process** selected, save, then choose
    **Test connection**. The Overview runtime check becomes ready only after a
@@ -56,7 +55,7 @@ shown in Basic are fully expanded and frozen in the generated
 
 ## Advanced
 
-Local filesystem path registration, legacy/custom adapters, CLI/CI, Replay,
-and hand-authored `ExperimentSpec` are Advanced workflows. They do not change
-the Dataset Bundle, Wire Protocol 1.0, Artifact Contract 1.2, replay, metric,
-or comparison semantics.
+Local filesystem path registration is available through the CLI/CI workflow;
+legacy/custom adapters, Replay, and hand-authored `ExperimentSpec` are also
+Advanced workflows. They do not change the Dataset Bundle, Wire Protocol 1.0,
+Artifact Contract 1.2, replay, metric, or comparison semantics.

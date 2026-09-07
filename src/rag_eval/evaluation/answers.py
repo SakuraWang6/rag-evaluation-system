@@ -1,7 +1,10 @@
-"""Typed deterministic answer scorer v1.1.
+"""Typed deterministic answer scorer v1.3.
 
-The scorer intentionally prefers ``needs_review`` over a permissive false
-positive.  It does not claim formula equivalence without a versioned parser.
+The scorer owns only outcomes it can establish without interpretation.  Text
+answers which are neither an exact match nor a mechanical contradiction are
+deliberately handed to the configured semantic reviewer, then to a human when
+the reviewer remains uncertain.  It does not claim formula equivalence without
+a versioned parser.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from pathlib import Path
 from rag_eval.contracts.dataset import GoldAnswer, GoldAnswerKind
 
 ANSWER_SCORER_ID = "typed-answer"
-ANSWER_SCORER_VERSION = "1.1"
+ANSWER_SCORER_VERSION = "1.3"
 
 
 def scorer_source_digest() -> str:
@@ -90,15 +93,17 @@ def _contains_value(answer: str, expected: str) -> bool:
     start = normalized_answer.find(normalized_expected)
     while start >= 0:
         end = start + len(normalized_expected)
+        # Treat ASCII identifiers as tokens only next to another ASCII
+        # identifier character.  Chinese prose commonly attaches a term such
+        # as ``HTTP`` directly to ``协议``; rejecting that is a false boundary
+        # and unnecessarily sends an otherwise determinate answer to review.
         left_ok = start == 0 or not (
-            normalized_expected[0].isascii()
-            and normalized_expected[0].isalnum()
-            and normalized_answer[start - 1].isalnum()
+            _is_ascii_identifier_char(normalized_expected[0])
+            and _is_ascii_identifier_char(normalized_answer[start - 1])
         )
         right_ok = end == len(normalized_answer) or not (
-            normalized_expected[-1].isascii()
-            and normalized_expected[-1].isalnum()
-            and normalized_answer[end].isalnum()
+            _is_ascii_identifier_char(normalized_expected[-1])
+            and _is_ascii_identifier_char(normalized_answer[end])
         )
         if left_ok and right_ok:
             return True
@@ -106,17 +111,85 @@ def _contains_value(answer: str, expected: str) -> bool:
     return False
 
 
+def _is_ascii_identifier_char(value: str) -> bool:
+    return value.isascii() and value.isalnum()
+
+
 def _score_text(answer: str, accepted: list[str]) -> AnswerScore:
     normalized = normalize_text(answer)
     values = {normalize_text(value) for value in accepted if normalize_text(value)}
     if normalized in values:
         return AnswerScore(AnswerVerdict.PASS, "exact normalized text matched")
+    if _is_unambiguous_value_statement(answer, accepted):
+        return AnswerScore(
+            AnswerVerdict.PASS,
+            "unambiguous answer statement matched",
+        )
     if any(_contains_value(answer, value) for value in accepted):
         return AnswerScore(
             AnswerVerdict.NEEDS_REVIEW,
             "text contains a gold value but is not exact-normalized",
         )
-    return AnswerScore(AnswerVerdict.FAIL, "exact normalized text did not match")
+    # A text mismatch is often a legitimate paraphrase (or an equally real
+    # contradiction) that a lexical rule cannot safely distinguish.  Keep it
+    # out of the final score until the semantic LLM / human stages decide it.
+    return AnswerScore(
+        AnswerVerdict.NEEDS_REVIEW,
+        "text semantic equivalence requires LLM or human adjudication",
+    )
+
+
+_REFERENCE_SECTION = re.compile(
+    r"(?:^|\n)\s{0,3}#{1,6}\s*(?:references?|sources?|citations?|"
+    r"参考资料|参考文献|引用|来源)\b.*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_NEGATION_OR_ALTERNATIVE = re.compile(
+    r"(?:不是|并非|非\s*[^。；;，,]*$|而不是|或者|或是|还是|either|or|not)"
+    r"|(?:\bno\b|\bneither\b)",
+    re.IGNORECASE,
+)
+_TRAILING_PUNCTUATION = re.compile(r"^[\s。．.!！?？,，;；:：\)）\]】]*$")
+_LEADING_ANSWER_OPERATOR = re.compile(r"(?:是|为|:|：|=|\bis\b)\s*$", re.IGNORECASE)
+
+
+def _is_unambiguous_value_statement(answer: str, accepted: list[str]) -> bool:
+    """Accept a single value in a plain answer sentence, not arbitrary prose.
+
+    Models routinely wrap a short text Gold value in a sentence such as
+    ``型号是 S2910-48GT4XS-E。`` and then append a references section.  That is
+    a determinate answer, not an answer needing human review.  We deliberately
+    keep the rule narrow: it accepts exactly one Gold occurrence introduced by
+    an answer operator and permits only punctuation afterwards.  Negation and
+    alternatives still require review.
+    """
+
+    body = _REFERENCE_SECTION.split(answer, maxsplit=1)[0].strip()
+    if not body or _NEGATION_OR_ALTERNATIVE.search(body):
+        return False
+    matches: list[tuple[int, int]] = []
+    for value in accepted:
+        normalized_value = normalize_text(value)
+        if not normalized_value:
+            continue
+        normalized_body = normalize_text(body)
+        start = normalized_body.find(normalized_value)
+        while start >= 0:
+            end = start + len(normalized_value)
+            if _contains_value(normalized_body[start:end], normalized_value):
+                matches.append((start, end))
+            start = normalized_body.find(normalized_value, start + 1)
+    if len(matches) != 1:
+        return False
+
+    normalized_body = normalize_text(body)
+    start, end = matches[0]
+    prefix = normalized_body[:start]
+    suffix = normalized_body[end:]
+    return bool(
+        _LEADING_ANSWER_OPERATOR.search(prefix)
+        and _TRAILING_PUNCTUATION.fullmatch(suffix)
+    )
 
 
 _NUMBER_RE = re.compile(

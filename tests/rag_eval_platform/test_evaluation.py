@@ -10,13 +10,17 @@ from rag_eval.contracts.dataset import (
     GoldEvidence,
     GoldEvidenceSet,
     ObjectLocator,
+    TableCellLocator,
 )
 from rag_eval.contracts.run import CaseResult, MetricResult, MetricStatus
+from rag_eval.contracts.research import FailureLabel
 from rag_eval.evaluation.answers import AnswerVerdict, score_answer
 from rag_eval.evaluation.engine import evaluate_case
 from rag_eval.evaluation.evidence import CorpusEvidenceIndex, match_evidence
+from rag_eval.evaluation.failures import assess_failure
 from rag_eval.evaluation.metrics import evaluate_retrieval_stages
 from rag_eval.execution import aggregate_metrics
+from rag_eval.storage.runs import case_judgments
 
 
 def gold_fixture() -> tuple[GoldAnswer, GoldEvidenceSet, CorpusEvidenceIndex]:
@@ -74,12 +78,33 @@ def test_typed_numeric_scorer_rejects_substring_and_honours_tolerance() -> None:
     )
 
 
-def test_text_formula_and_set_scorers_fail_closed() -> None:
+def test_text_formula_and_set_scorers_handle_plain_answer_statements() -> None:
     text = GoldAnswer(
         gold_answer_id="text", kind=GoldAnswerKind.TEXT, canonical="北京"
     )
     assert score_answer("北京", text).verdict == AnswerVerdict.PASS
-    assert score_answer("答案是北京", text).verdict == AnswerVerdict.NEEDS_REVIEW
+    assert score_answer("答案是北京", text).verdict == AnswerVerdict.PASS
+    assert score_answer("答案不是北京，而是上海", text).verdict == AnswerVerdict.NEEDS_REVIEW
+    paraphrase = GoldAnswer(
+        gold_answer_id="text-paraphrase", kind=GoldAnswerKind.TEXT, canonical="中国首都是北京"
+    )
+    # A lexical mismatch may be a paraphrase, not a deterministic failure.
+    # It must advance to the configured semantic/human stages.
+    assert score_answer("北京是中国的首都。", paraphrase).verdict == AnswerVerdict.NEEDS_REVIEW
+    model = GoldAnswer(
+        gold_answer_id="model", kind=GoldAnswerKind.TEXT, canonical="S2910-48GT4XS-E"
+    )
+    assert score_answer(
+        "根据提供的文档，接入交换机对应的品牌及型号是 S2910-48GT4XS-E。\n\n### References\n- source",
+        model,
+    ).verdict == AnswerVerdict.PASS
+    assert case_judgments(
+        status="completed",
+        metrics=[{"metric_id": "answer_accuracy", "status": "needs_review", "value": None}],
+        failure_assessment=None,
+        gold_answer=model,
+        rag_result={"answer": "设备型号是 S2910-48GT4XS-E。"},
+    )["answer_judgment"] == "correct"
 
     formula = GoldAnswer(
         gold_answer_id="formula", kind=GoldAnswerKind.FORMULA, canonical="x = 1"
@@ -138,6 +163,64 @@ def test_unobservable_stage_is_unavailable_not_zero() -> None:
     assert metric(metrics, "raw_recall@1").value is None
     assert metric(metrics, "ranked_recall@1").status == MetricStatus.OBSERVED
     assert metric(metrics, "ranked_recall@1").value == 0.0
+
+
+def test_lost_locator_provenance_is_not_reported_as_retrieval_missing() -> None:
+    answer = GoldAnswer(
+        gold_answer_id="answer-table",
+        kind=GoldAnswerKind.TEXT,
+        canonical="S2910-48GT4XS-E",
+    )
+    evidence_set = GoldEvidenceSet(
+        gold_evidence_set_id="set-table",
+        evidence=[
+            GoldEvidence(
+                evidence_id="cell-model",
+                document_id="doc-table",
+                locator=TableCellLocator(
+                    table_id="doc-table:table:00010", row=2, column=5
+                ),
+                canonical_value="S2910-48GT4XS-E",
+            )
+        ],
+        required_groups=[["cell-model"]],
+    )
+    unlocated = RAGEvidenceItem(
+        item_id="native-table-chunk",
+        rank=1,
+        document_id="doc-table",
+        content="S2910-48GT4XS-E",
+        locator=None,
+        metadata={
+            "provenance_status": "missing",
+            "provenance_reason": "trace_ingestion_mapping_mismatch",
+        },
+    )
+    result = RAGResult(
+        answer="该交换机型号是 S2910-48GT4XS-E。",
+        raw_retrieval=[unlocated],
+        ranked_retrieval=[unlocated],
+        final_context=[unlocated],
+    )
+    metrics = evaluate_case(
+        result,
+        answer,
+        evidence_set,
+        CorpusEvidenceIndex({"doc-table": "S2910-48GT4XS-E"}),
+        k_values=(1,),
+    )
+
+    assert metric(metrics, "raw_recall@1").status == MetricStatus.UNAVAILABLE
+    assert metric(metrics, "answer_groundedness").status == MetricStatus.UNAVAILABLE
+    assessment = assess_failure(
+        status="completed",
+        result=result,
+        evidence_set=evidence_set,
+        corpus=CorpusEvidenceIndex({"doc-table": "S2910-48GT4XS-E"}),
+        metrics=metrics,
+    )
+    assert FailureLabel.PROVENANCE_UNAVAILABLE in assessment.labels
+    assert FailureLabel.RETRIEVAL_MISSING not in assessment.labels
 
 
 def test_groundedness_is_deterministic_and_not_named_hallucination() -> None:
@@ -228,4 +311,50 @@ def test_repetition_statistics_keep_execution_errors_out_of_metric_denominator()
     assert accuracy["denominator"] == 1
     assert summary["execution"]["execution_failure_rate"] == 0.5
     assert accuracy["coverage"] == 0.5
+    assert accuracy["scoreable_cases"] == 2
+    assert accuracy["scoreable_coverage"] == 0.5
     assert accuracy["status_counts"]["error"] == 1
+
+
+def test_metric_aggregate_excludes_not_applicable_cases_from_scoreable_coverage() -> None:
+    now = datetime.now(UTC)
+    observed = MetricResult(
+        metric_id="segment_raw_recall@10",
+        status=MetricStatus.OBSERVED,
+        value=1.0,
+        scorer_id="segment-native-retrieval",
+        scorer_version="1",
+        scorer_digest="sha256:test",
+    )
+    not_applicable = MetricResult(
+        metric_id="segment_raw_recall@10",
+        status=MetricStatus.NOT_APPLICABLE,
+        scorer_id="segment-native-retrieval",
+        scorer_version="1",
+        scorer_digest="sha256:test",
+        reason="abstain Gold has no positive retrieval evidence path",
+    )
+    results = [
+        CaseResult(
+            case_id="positive",
+            status="completed",
+            question="q",
+            metrics=[observed],
+            started_at=now,
+            completed_at=now,
+        ),
+        CaseResult(
+            case_id="negative",
+            status="completed",
+            question="q",
+            metrics=[not_applicable],
+            started_at=now,
+            completed_at=now,
+        ),
+    ]
+
+    summary = aggregate_metrics(results, expected=2)
+    metric_summary = summary["metrics"]["segment_raw_recall@10"]
+    assert metric_summary["coverage"] == 0.5
+    assert metric_summary["scoreable_cases"] == 1
+    assert metric_summary["scoreable_coverage"] == 1.0

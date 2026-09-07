@@ -23,9 +23,11 @@ class AuthoringState(StrEnum):
     APPROVED = "approved"
     EXPORTED = "exported"
     REGISTERED = "registered"
+    FORMAL_RELEASED = "formal_released"
     FAILED = "failed"
     BLOCKED = "blocked"
     DELETED = "deleted"
+    ARCHIVED = "archived"
     INTERRUPTED = "interrupted"
 
 
@@ -46,11 +48,16 @@ class AuthoringDataset(AuthoringModel):
     state: AuthoringState
     created_at: datetime
     updated_at: datetime
+    archived_at: datetime | None = None
     source: SourceManifest
     document_id: str | None = None
     canonical_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    canonical_contract_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     analysis: dict[str, Any] = Field(default_factory=dict)
     failure: str | None = None
+    # This remains an internal trace of the creation flow.  Product users work
+    # with the immutable formal release, not with this workspace record.
+    formal_release_ids: list[str] = Field(default_factory=list)
 
 
 class CanonicalView(AuthoringModel):
@@ -62,6 +69,11 @@ class CanonicalView(AuthoringModel):
     object_records_path: str
     summary_path: str
     diagnostics_path: str
+    canonical_contract_schema_version: str | None = None
+    canonical_contract_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    canonical_contract_manifest_path: str | None = None
+    canonical_contract_objects_path: str | None = None
+    canonical_contract_relations_path: str | None = None
 
 
 class CandidateState(StrEnum):
@@ -175,6 +187,90 @@ class QuestionCandidate(AuthoringModel):
     gates: list[QualityGateResult] = Field(default_factory=list)
 
 
+class GenerationJobItemState(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class GenerationJobStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class GenerationJobItem(AuthoringModel):
+    target_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    state: GenerationJobItemState = GenerationJobItemState.PENDING
+    attempts: int = Field(default=0, ge=0)
+    candidate_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
+    error_code: str | None = None
+    error_detail: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class AuthoringGenerationJob(AuthoringModel):
+    job_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    authoring_dataset_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    provider: DiscoveryMethod = DiscoveryMethod.OLLAMA
+    seed: int = 0
+    remote_consent: bool = False
+    state: GenerationJobStatus = GenerationJobStatus.QUEUED
+    items: list[GenerationJobItem] = Field(min_length=1)
+    requested_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    cancel_requested: bool = False
+
+
+class DiscoveryJobStatus(StrEnum):
+    """Lifecycle of a durable target-discovery request."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class DiscoveryJobPhase(StrEnum):
+    """Human-readable checkpoints persisted while target discovery runs."""
+
+    QUEUED = "queued"
+    BUILDING_RULE_TARGETS = "building_rule_targets"
+    AWAITING_MODEL = "awaiting_model"
+    SAVING_RESULTS = "saving_results"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class AuthoringDiscoveryJob(AuthoringModel):
+    """One background target-discovery operation that survives UI reconnects."""
+
+    job_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    authoring_dataset_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    provider: DiscoveryMethod = DiscoveryMethod.OLLAMA
+    seed: int = 0
+    remote_consent: bool = False
+    state: DiscoveryJobStatus = DiscoveryJobStatus.QUEUED
+    phase: DiscoveryJobPhase = DiscoveryJobPhase.QUEUED
+    phase_detail: str = "任务已排队"
+    requested_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    total_source_records: int = Field(default=0, ge=0)
+    model_source_records: int = Field(default=0, ge=0)
+    rule_target_count: int = Field(default=0, ge=0)
+    target_count: int = Field(default=0, ge=0)
+    error_code: str | None = None
+    error_detail: str | None = None
+
+
 class ReviewRecord(AuthoringModel):
     review_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
     candidate_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
@@ -205,3 +301,4 @@ class AuthoringExport(AuthoringModel):
     views: dict[str, str] = Field(default_factory=dict)
     blocked_cases: list[dict[str, Any]] = Field(default_factory=list)
     registered_bundle_ids: dict[str, str] = Field(default_factory=dict)
+    ledger_release_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")

@@ -126,6 +126,11 @@ class GoldEvidenceSet(ContractModel):
     gold_evidence_set_id: str = Field(min_length=1)
     evidence: list[GoldEvidence]
     required_groups: list[list[str]]
+    # Formal runtime projections retain the Ledger's exact OR(paths) of
+    # AND(clauses) semantics.  ``required_groups`` remains the legacy/default
+    # view for existing bundles; evidence IDs may legitimately repeat across
+    # alternative paths here.
+    mses_paths: list[list[list[str]]] | None = None
 
     @model_validator(mode="after")
     def validate_groups(self) -> GoldEvidenceSet:
@@ -149,6 +154,18 @@ class GoldEvidenceSet(ContractModel):
                 "an evidence ID may occur in only one required group; duplicate "
                 "groups distort the recall denominator"
             )
+        if self.mses_paths is not None:
+            if not self.mses_paths or any(not path or any(not group for group in path) for path in self.mses_paths):
+                raise ValueError("mses_paths must contain non-empty paths and clauses")
+            unknown_mses = {
+                evidence_id
+                for path in self.mses_paths
+                for group in path
+                for evidence_id in group
+                if evidence_id not in known
+            }
+            if unknown_mses:
+                raise ValueError(f"mses_paths reference unknown evidence: {sorted(unknown_mses)}")
         return self
 
 

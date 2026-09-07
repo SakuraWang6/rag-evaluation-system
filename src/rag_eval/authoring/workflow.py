@@ -13,26 +13,42 @@ import re
 import shutil
 import uuid
 from collections import Counter, defaultdict
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from rag_eval.authoring.models import (
     AnswerEvidenceCandidate,
     ApprovedCase,
     AuthoringDataset,
+    AuthoringDiscoveryJob,
     AuthoringExport,
     AuthoringState,
     BenchmarkTargetCandidate,
+    CandidateEvidence,
     CandidateState,
     DiscoveryMethod,
+    DiscoveryJobPhase,
+    DiscoveryJobStatus,
     EvidenceRepresentabilityProfile,
     EvidenceRepresentabilityStatus,
+    AuthoringGenerationJob,
+    GenerationJobItem,
+    GenerationJobItemState,
+    GenerationJobStatus,
     GateStatus,
     QualityGateResult,
     QuestionCandidate,
     ReviewRecord,
     RuntimeEvidenceCoverage,
+)
+from rag_eval.authoring.ledger import (
+    ActorRole,
+    AuthoringLedger,
+    LifecycleState,
+    ReviewDecision,
+    TargetKind,
 )
 from rag_eval.authoring.providers import (
     ConfiguredRemoteProvider,
@@ -42,6 +58,7 @@ from rag_eval.authoring.providers import (
 )
 from rag_eval.authoring.storage import AuthoringWorkspaceStore
 from rag_eval.storage.atomic import atomic_write_json
+from rag_eval.llm import LLMConfigurationService, LLMStage
 
 
 class AuthoringWorkflowError(ValueError):
@@ -78,8 +95,17 @@ def _tokens(value: str) -> set[str]:
 class AuthoringWorkflow:
     """Mutable authoring state machine.  Gold appears only after a review record."""
 
-    def __init__(self, store: AuthoringWorkspaceStore) -> None:
+    def __init__(
+        self,
+        store: AuthoringWorkspaceStore,
+        *,
+        llm_configuration: LLMConfigurationService | None = None,
+        secret_store: Any | None = None,
+    ) -> None:
         self.store = store
+        self.ledger = AuthoringLedger(store)
+        self.llm_configuration = llm_configuration
+        self.secret_store = secret_store
 
     def discover_targets(
         self,
@@ -89,15 +115,93 @@ class AuthoringWorkflow:
         seed: int = 0,
         remote_consent: bool = False,
     ) -> list[BenchmarkTargetCandidate]:
+        """Discover targets synchronously for the legacy API surface.
+
+        New product clients use a persisted discovery job instead.  Retaining
+        this method keeps existing integrations compatible and preserves the
+        normal provider timeout for a direct HTTP request.
+        """
+
+        return self._discover_targets(
+            dataset,
+            provider=provider,
+            seed=seed,
+            remote_consent=remote_consent,
+            ollama_timeout_seconds=60.0,
+        )
+
+    def _discover_targets(
+        self,
+        dataset: AuthoringDataset,
+        *,
+        provider: DiscoveryMethod,
+        seed: int,
+        remote_consent: bool,
+        ollama_timeout_seconds: float | None,
+        on_progress: Callable[[DiscoveryJobPhase, str, dict[str, int]], None] | None = None,
+    ) -> list[BenchmarkTargetCandidate]:
         self._require_analyzed(dataset)
         records = self._records(dataset.authoring_dataset_id)
+        if on_progress is not None:
+            on_progress(
+                DiscoveryJobPhase.BUILDING_RULE_TARGETS,
+                "正在根据文档结构识别可出题位置。",
+                {"total_source_records": len(records)},
+            )
         targets = self._rule_targets(dataset, records)
+        rule_target_count = len({target.target_id for target in targets})
         provider_flags: list[str] = []
         if provider == DiscoveryMethod.OLLAMA:
+            # Rules inspect the entire canonical document and do not depend on
+            # the optional model call. Commit that complete deterministic
+            # result before waiting for Ollama so authors can begin from it
+            # instead of being blocked by a slow advisory suggestion.
+            rule_unique = {target.target_id: target for target in targets}
+            rule_targets = sorted(rule_unique.values(), key=lambda item: item.target_id)
+            self._save_target_snapshot(dataset, rule_targets)
+            model_source_records = min(
+                28, sum(record.get("status") == "supported" for record in records)
+            )
+            if on_progress is not None:
+                on_progress(
+                    DiscoveryJobPhase.AWAITING_MODEL,
+                    "规则目标已生成，正在等待本地模型补充结构化建议；此步骤会持续运行，不设请求超时。",
+                    {
+                        "total_source_records": len(records),
+                        "model_source_records": model_source_records,
+                        "rule_target_count": rule_target_count,
+                    },
+                )
             try:
-                targets.extend(self._ollama_targets(dataset, records, seed=seed))
+                targets.extend(
+                    self._ollama_targets(
+                        dataset,
+                        records,
+                        seed=seed,
+                        timeout_seconds=ollama_timeout_seconds,
+                    )
+                )
             except ProposalProviderError:
                 provider_flags.append("local_model_unavailable_rule_fallback")
+            except AuthoringWorkflowError as exc:
+                # Target discovery is proposal-only. A malformed model target
+                # list must not make an otherwise usable DOCX workspace fail;
+                # preserve the deterministic targets and limit automatic
+                # generation to the safe direct-evidence subset instead.
+                if not str(exc).startswith("target proposal"):
+                    raise
+                provider_flags.append("invalid_local_model_target_contract")
+            except Exception as exc:
+                # Discovery is advisory.  A local model integration can also
+                # fail outside its provider wrapper (for example while
+                # normalizing a malformed streamed response).  The document
+                # already has deterministic, source-grounded rule targets, so
+                # never turn that recoverable proposal failure into a 500 or
+                # leave the authoring screen disconnected.  Keep an explicit
+                # flag on the resulting targets for operational diagnosis.
+                provider_flags.append(
+                    f"local_model_discovery_failed_rule_fallback:{exc.__class__.__name__}"
+                )
         elif provider == DiscoveryMethod.REMOTE:
             if not remote_consent:
                 raise AuthoringWorkflowError("remote generation requires explicit UI consent")
@@ -109,12 +213,33 @@ class AuthoringWorkflow:
             target.model_copy(update={"flags": sorted(set(target.flags + provider_flags))})
             for target in sorted(unique.values(), key=lambda item: item.target_id)
         ]
+        if on_progress is not None:
+            on_progress(
+                DiscoveryJobPhase.SAVING_RESULTS,
+                "模型响应已收到，正在保存全部题目目标。",
+                {
+                    "total_source_records": len(records),
+                    "rule_target_count": rule_target_count,
+                    "target_count": len(normalized),
+                },
+            )
+        self._save_target_snapshot(dataset, normalized)
+        return normalized
+
+    def _save_target_snapshot(
+        self, dataset: AuthoringDataset, targets: list[BenchmarkTargetCandidate]
+    ) -> None:
+        """Atomically expose a source-consistent target snapshot to the UI."""
+
         atomic_write_json(
             self.store.target_path(dataset.authoring_dataset_id),
-            {"source_sha256": dataset.source.sha256, "canonical_digest": dataset.canonical_digest, "targets": [item.model_dump(mode="json") for item in normalized]},
+            {
+                "source_sha256": dataset.source.sha256,
+                "canonical_digest": dataset.canonical_digest,
+                "targets": [item.model_dump(mode="json") for item in targets],
+            },
         )
         self._advance_state(dataset, AuthoringState.TARGETS_READY)
-        return normalized
 
     def list_targets(self, dataset: AuthoringDataset) -> list[BenchmarkTargetCandidate]:
         path = self.store.target_path(dataset.authoring_dataset_id)
@@ -124,6 +249,65 @@ class AuthoringWorkflow:
         if payload.get("source_sha256") != dataset.source.sha256 or payload.get("canonical_digest") != dataset.canonical_digest:
             raise AuthoringWorkflowError("target discovery was created against a different frozen source")
         return [BenchmarkTargetCandidate.model_validate(value) for value in payload.get("targets", [])]
+
+    def target_preview(self, dataset: AuthoringDataset, target_id: str) -> dict[str, Any]:
+        """Return a small, user-facing projection of a frozen authoring target.
+
+        Target artifacts intentionally contain canonical IDs and discovery metadata.
+        Those are useful to the workflow, but do not tell an author what source
+        material a proposed question would use.  This projection exposes only the
+        text and human-readable table context required for review; it never
+        modifies the target or canonical record.
+        """
+
+        self._require_analyzed(dataset)
+        target = self._target(dataset, target_id)
+        records = {
+            str(record["object_id"]): record
+            for record in self._records(dataset.authoring_dataset_id)
+        }
+
+        def preview(object_ids: list[str]) -> list[dict[str, Any]]:
+            values: list[dict[str, Any]] = []
+            for object_id in object_ids:
+                record = records.get(object_id)
+                if record is None:
+                    # A stale target must not be silently shown as a valid
+                    # proposal against a different canonical document.
+                    raise AuthoringWorkflowError("target cites an unknown canonical object")
+                logical_record = records.get(str(record.get("logical_cell_id") or "")) or {}
+                attributes = record.get("attributes") or {}
+                logical_attributes = logical_record.get("attributes") or {}
+                header_path = (
+                    record.get("effective_header_path")
+                    or attributes.get("effective_header_path")
+                    or logical_record.get("effective_header_path")
+                    or logical_attributes.get("effective_header_path")
+                    or []
+                )
+                table: dict[str, Any] | None = None
+                if record.get("object_type") in {"cell", "logical_cell"}:
+                    table = {
+                        "row": record.get("row"),
+                        "column": record.get("column"),
+                        "header_path": [str(item) for item in header_path if str(item).strip()],
+                    }
+                values.append(
+                    {
+                        "object_type": str(record.get("object_type", "source")),
+                        "text": str(record.get("canonical_value") or record.get("witness") or ""),
+                        "table": table,
+                    }
+                )
+            return values
+
+        context_ids = self._table_context_ids(records, target.source_object_ids)
+        return {
+            "target_id": target.target_id,
+            "source": preview(target.source_object_ids),
+            "context": preview(context_ids),
+            "distractors": preview(target.distractor_object_ids),
+        }
 
     def create_target(
         self,
@@ -201,6 +385,7 @@ class AuthoringWorkflow:
             provider_metadata=provider_metadata_value or {},
         )
         self._save_candidate(dataset, candidate)
+        self._create_ledger_case(dataset, candidate)
         self._advance_state(dataset, AuthoringState.CANDIDATES_READY)
         return candidate
 
@@ -215,34 +400,71 @@ class AuthoringWorkflow:
     ) -> QuestionCandidate:
         """Generate one structured question only after canonical source freeze.
 
-        This is deliberately independent from answer/evidence resolution.  A
-        failed local model leaves manual authoring available instead of falling
-        back to a hidden template question.
+        This is deliberately independent from answer/evidence resolution.  If
+        the local proposal model is unavailable, a limited source-grounded
+        rule fallback can still create a clearly reviewable draft for simple
+        direct-evidence targets.  It never approves or freezes the result.
         """
 
         target = self._target(dataset, target_id)
-        source = self._source_subset(dataset, target.source_object_ids)
+        records = {
+            str(record["object_id"]): record
+            for record in self._records(dataset.authoring_dataset_id)
+        }
+        source_ids = list(
+            dict.fromkeys(
+                target.source_object_ids
+                + self._table_context_ids(records, target.source_object_ids)
+            )
+        )
+        source = self._source_subset(dataset, source_ids)
         prompt = (
             "Create exactly one Chinese RAG benchmark question grounded only in the supplied source objects. "
             "Return JSON {question, source_object_ids}. Do not include object IDs, file names, titles as cues, "
-            "or an answer. The question must require retrieval; do not use a fixed template."
+            "or an answer. The question must require retrieval; do not use a fixed template. "
+            "For tables, SOURCE may include visible header context. Cite only one or more of these target "
+            f"source IDs: {json.dumps(target.source_object_ids, ensure_ascii=False)}."
         )
-        value, metadata, method = self._proposal(
-            task="question_generation",
-            source=source,
-            prompt=prompt,
-            seed=seed,
-            provider=provider,
-            remote_consent=remote_consent,
-        )
-        citations = value.get("source_object_ids")
-        question = value.get("question")
-        if not isinstance(question, str) or not question.strip():
-            raise AuthoringWorkflowError("question proposal is missing a question")
-        if not isinstance(citations, list) or not all(isinstance(item, str) for item in citations):
-            raise AuthoringWorkflowError("question proposal must cite canonical object IDs")
-        if not set(citations).issubset(set(target.source_object_ids)):
-            raise AuthoringWorkflowError("question proposal cites objects outside its frozen target")
+        try:
+            value, metadata, method = self._proposal(
+                task="question_generation",
+                source=source,
+                prompt=prompt,
+                seed=seed,
+                provider=provider,
+                remote_consent=remote_consent,
+            )
+            citations = value.get("source_object_ids")
+            question = value.get("question")
+            if not isinstance(question, str) or not question.strip():
+                raise AuthoringWorkflowError("question proposal is missing a question")
+            if not isinstance(citations, list) or not all(isinstance(item, str) for item in citations):
+                raise AuthoringWorkflowError("question proposal must cite canonical object IDs")
+            if not set(citations).issubset(set(target.source_object_ids)):
+                raise AuthoringWorkflowError("question proposal cites objects outside its frozen target")
+        except ProposalProviderError:
+            question, citations = self._rule_question_proposal(target, records)
+            metadata = {
+                "provider": "canonical-rule-fallback",
+                "reason": "local_model_unavailable",
+                "task": "question_generation",
+            }
+            method = DiscoveryMethod.RULE
+        except AuthoringWorkflowError as exc:
+            # A local model may answer but still violate the small proposal
+            # contract (for example omit citations).  For a direct, already
+            # eligible target we can safely discard that output and use the
+            # deterministic source-grounded draft instead.  Do not apply this
+            # recovery to other providers or to semantic/gate failures.
+            if provider != DiscoveryMethod.OLLAMA or not str(exc).startswith("question proposal"):
+                raise
+            question, citations = self._rule_question_proposal(target, records)
+            metadata = {
+                "provider": "canonical-rule-fallback",
+                "reason": "invalid_local_model_question_contract",
+                "task": "question_generation",
+            }
+            method = DiscoveryMethod.RULE
         candidate = self.create_question(
             dataset,
             target_id=target_id,
@@ -252,7 +474,43 @@ class AuthoringWorkflow:
         )
         candidate = candidate.model_copy(update={"source_object_ids": citations})
         self._save_candidate(dataset, candidate)
+        self._revise_ledger_case(dataset, candidate, reason="record generated question citations")
         return candidate
+
+    def generate_question_and_answer(
+        self,
+        dataset: AuthoringDataset,
+        *,
+        target_id: str,
+        seed: int = 0,
+        provider: DiscoveryMethod = DiscoveryMethod.OLLAMA,
+        remote_consent: bool = False,
+    ) -> QuestionCandidate:
+        """Create one reviewable question, answer, and evidence proposal.
+
+        The browser receives one complete proposal.  Internally the question
+        and answer are generated in two constrained passes: the question pass
+        cannot see an answer, and the answer pass sees only the frozen source
+        and that resulting question.  This preserves the no-answer-leakage
+        check while removing an unnecessary user-facing two-step workflow.
+        Neither pass approves Gold; ``resolve_answer_evidence`` still runs the
+        validation gates and leaves the candidate pending human review.
+        """
+
+        candidate = self.generate_question(
+            dataset,
+            target_id=target_id,
+            seed=seed,
+            provider=provider,
+            remote_consent=remote_consent,
+        )
+        return self.generate_answer_evidence(
+            dataset,
+            candidate_id=candidate.candidate_id,
+            seed=seed,
+            provider=provider,
+            remote_consent=remote_consent,
+        )
 
     def resolve_answer_evidence(
         self,
@@ -263,7 +521,9 @@ class AuthoringWorkflow:
     ) -> QuestionCandidate:
         """Attach a separately supplied/manual source-grounded answer/evidence pass."""
 
+        self._require_editable(dataset)
         candidate = self.get_candidate(dataset, candidate_id)
+        self._ensure_ledger_candidate(dataset, candidate)
         if candidate.state in {CandidateState.APPROVED, CandidateState.REJECTED}:
             raise AuthoringWorkflowError("reviewed candidates cannot be re-resolved")
         self._validate_resolution(dataset, resolution)
@@ -274,6 +534,7 @@ class AuthoringWorkflow:
         new_state = CandidateState.BLOCKED if any(gate.status == GateStatus.FAIL for gate in gates) else CandidateState.REVIEW_REQUIRED
         resolved = resolved.model_copy(update={"state": new_state, "gates": gates})
         self._save_candidate(dataset, resolved)
+        self._record_ledger_resolution(dataset, candidate, resolved)
         self._advance_state(dataset, AuthoringState.REVIEW_REQUIRED if new_state == CandidateState.REVIEW_REQUIRED else AuthoringState.BLOCKED)
         return resolved
 
@@ -293,6 +554,7 @@ class AuthoringWorkflow:
         from a question generator beyond the question itself.
         """
 
+        self._require_editable(dataset)
         candidate = self.get_candidate(dataset, candidate_id)
         target = self._target(dataset, candidate.target_id)
         source_ids = sorted(set(target.source_object_ids + target.distractor_object_ids))
@@ -304,21 +566,117 @@ class AuthoringWorkflow:
             "negative_scope_object_ids and negative_rationale. Do not invent facts.\nQUESTION:\n"
             + candidate.question
         )
-        value, metadata, method = self._proposal(
-            task="answer_evidence_resolution",
-            source=source,
-            prompt=prompt,
-            seed=seed,
-            provider=provider,
-            remote_consent=remote_consent,
-        )
         try:
-            resolution = AnswerEvidenceCandidate.model_validate(
-                value | {"resolution_method": method, "provider_metadata": metadata}
+            value, metadata, method = self._proposal(
+                task="answer_evidence_resolution",
+                source=source,
+                prompt=prompt,
+                seed=seed,
+                provider=provider,
+                remote_consent=remote_consent,
             )
-        except ValueError as exc:
-            raise AuthoringWorkflowError(f"answer/evidence proposal has invalid schema: {exc}") from exc
+            try:
+                value, normalizations = self._normalize_answer_evidence_proposal(value)
+                if normalizations:
+                    metadata = {
+                        **metadata,
+                        "contract_normalizations": normalizations,
+                    }
+                resolution = AnswerEvidenceCandidate.model_validate(
+                    value | {"resolution_method": method, "provider_metadata": metadata}
+                )
+            except ValueError as exc:
+                raise AuthoringWorkflowError(f"answer/evidence proposal has invalid schema: {exc}") from exc
+        except ProposalProviderError:
+            resolution = self._rule_answer_evidence_proposal(dataset, candidate, target)
+        except AuthoringWorkflowError as exc:
+            # Provider-shaped output is never treated as Gold merely because
+            # it was syntactically close.  For a simple direct target, discard
+            # the malformed local response and rebuild from the frozen
+            # Canonical value.  Complex target types still fail closed in the
+            # rule helper below.
+            if provider != DiscoveryMethod.OLLAMA or not str(exc).startswith(
+                "answer/evidence proposal has invalid schema"
+            ):
+                raise
+            resolution = self._rule_answer_evidence_proposal(
+                dataset,
+                candidate,
+                target,
+                fallback_reason="invalid_local_model_answer_contract",
+            )
         return self.resolve_answer_evidence(dataset, candidate_id=candidate_id, resolution=resolution)
+
+    @staticmethod
+    def _normalize_answer_evidence_proposal(
+        value: dict[str, Any],
+    ) -> tuple[dict[str, Any], list[str]]:
+        """Convert known provider spelling variants into the formal contract.
+
+        Providers are allowed to help propose content, but they do not define
+        the Authoring schema.  In particular, some models use ``canonical``
+        to mean a free-text answer and emit a dependency adjacency map rather
+        than the contract's ordered list.  These shape-only conversions retain
+        every model value; semantic checks (known evidence, negative scope,
+        Gold eligibility, and gates) still fail closed below.
+        """
+
+        normalized = dict(value)
+        changes: list[str] = []
+
+        raw_kind = normalized.get("answer_kind")
+        if isinstance(raw_kind, str):
+            key = raw_kind.strip().casefold().replace("-", "_").replace(" ", "_")
+            aliases = {
+                "canonical": "text",
+                "string": "text",
+                "free_text": "text",
+                "plain_text": "text",
+                "number": "numeric",
+                "decimal": "numeric",
+                "list": "set",
+                "array": "set",
+            }
+            answer_kind = aliases.get(key, key)
+            if answer_kind != raw_kind:
+                normalized["answer_kind"] = answer_kind
+                changes.append(f"answer_kind:{raw_kind}->{answer_kind}")
+
+        accepted_values = normalized.get("accepted_values")
+        if accepted_values is None:
+            normalized["accepted_values"] = []
+            changes.append("accepted_values:null->[]")
+        elif isinstance(accepted_values, str):
+            normalized["accepted_values"] = [accepted_values]
+            changes.append("accepted_values:string->list")
+
+        evidence = normalized.get("evidence")
+        if isinstance(evidence, dict):
+            normalized["evidence"] = [evidence]
+            changes.append("evidence:object->list")
+
+        graph = normalized.get("dependency_graph")
+        if graph is None:
+            normalized["dependency_graph"] = []
+            changes.append("dependency_graph:null->[]")
+        elif isinstance(graph, dict):
+            if isinstance(graph.get("edges"), list):
+                normalized["dependency_graph"] = graph["edges"]
+                changes.append("dependency_graph:edges-object->list")
+            elif {"from", "to"}.issubset(graph) or "depends_on" in graph:
+                normalized["dependency_graph"] = [graph]
+                changes.append("dependency_graph:edge-object->list")
+            else:
+                rows: list[dict[str, Any]] = []
+                for node_id, raw_node in sorted(graph.items(), key=lambda item: str(item[0])):
+                    if isinstance(raw_node, dict):
+                        rows.append({"node_id": str(node_id), **raw_node})
+                    else:
+                        rows.append({"node_id": str(node_id), "description": str(raw_node)})
+                normalized["dependency_graph"] = rows
+                changes.append("dependency_graph:adjacency-object->list")
+
+        return normalized, changes
 
     def get_candidate(self, dataset: AuthoringDataset, candidate_id: str) -> QuestionCandidate:
         candidate = self.store.load_model(self.store.candidate_path(dataset.authoring_dataset_id, candidate_id), QuestionCandidate)
@@ -343,16 +701,20 @@ class AuthoringWorkflow:
         edited_question: str | None = None,
         edited_resolution: AnswerEvidenceCandidate | None = None,
     ) -> QuestionCandidate:
+        self._require_editable(dataset)
         candidate = self.get_candidate(dataset, candidate_id)
+        self._ensure_ledger_candidate(dataset, candidate)
         if decision not in {"accept", "edit", "reject"}:
             raise AuthoringWorkflowError("review decision must be accept, edit, or reject")
         if not reviewer.strip():
             raise AuthoringWorkflowError("reviewer is required")
+        reviewer_identity = reviewer.strip()
         if candidate.state == CandidateState.APPROVED and decision != "accept":
             raise AuthoringWorkflowError("approved candidates are immutable; create a new candidate for a revision")
         if decision == "accept":
             if candidate.state != CandidateState.REVIEW_REQUIRED:
                 raise AuthoringWorkflowError("only a gate-reviewed candidate can be accepted")
+            self._formal_accept(dataset, candidate, reviewer=reviewer_identity, note=note)
             approved = candidate.model_copy(update={"state": CandidateState.APPROVED})
             self._save_candidate(dataset, approved)
             approved_case = ApprovedCase(
@@ -368,6 +730,7 @@ class AuthoringWorkflow:
             self._advance_state(dataset, AuthoringState.APPROVED)
             edited_fields: list[str] = []
         elif decision == "reject":
+            self._formal_reject(dataset, candidate, reviewer=reviewer_identity, note=note)
             updated = candidate.model_copy(update={"state": CandidateState.REJECTED})
             self._save_candidate(dataset, updated)
             edited_fields = []
@@ -396,13 +759,14 @@ class AuthoringWorkflow:
                 gates = self._run_gates(dataset, updated)
                 updated = updated.model_copy(update={"gates": gates, "state": CandidateState.BLOCKED if any(item.status == GateStatus.FAIL for item in gates) else CandidateState.REVIEW_REQUIRED})
             self._save_candidate(dataset, updated)
+            self._formal_edit(dataset, candidate, updated, reviewer=reviewer_identity, note=note)
             edited_fields = fields
         review = ReviewRecord(
             review_id=f"review-{uuid.uuid4().hex}",
             candidate_id=candidate.candidate_id,
             candidate_version=candidate.version,
             decision=decision,  # type: ignore[arg-type]
-            reviewer=reviewer.strip(),
+            reviewer=reviewer_identity,
             note=note,
             edited_fields=edited_fields,
             created_at=datetime.now(UTC),
@@ -417,6 +781,513 @@ class AuthoringWorkflow:
     def list_approved(self, dataset: AuthoringDataset) -> list[ApprovedCase]:
         root = self.store.workspace(dataset.authoring_dataset_id) / "approved"
         return [self.store.load_model(path, ApprovedCase) for path in sorted(root.glob("*.json"))]
+
+    def mark_formal_released(
+        self, dataset: AuthoringDataset, *, release_id: str
+    ) -> AuthoringDataset:
+        """Close an authoring flow after its immutable formal release exists.
+
+        The private workspace is retained for the provenance chain, but it is
+        no longer a resumable product-flow draft.  Retrying an idempotent
+        publish request simply retains the already linked release ID.
+        """
+
+        current = self.store.get(dataset.authoring_dataset_id)
+        linked = list(dict.fromkeys([*current.formal_release_ids, release_id]))
+        return self.store.save(
+            current.model_copy(
+                update={
+                    "state": AuthoringState.FORMAL_RELEASED,
+                    "formal_release_ids": linked,
+                }
+            )
+        )
+
+    def create_discovery_job(
+        self,
+        dataset: AuthoringDataset,
+        *,
+        provider: DiscoveryMethod = DiscoveryMethod.OLLAMA,
+        seed: int = 0,
+        remote_consent: bool = False,
+    ) -> AuthoringDiscoveryJob:
+        """Persist target discovery before any potentially long model request.
+
+        A document can be large enough for a local model to take minutes to
+        evaluate.  This job is deliberately written first, so closing the UI,
+        refreshing it, or restarting the API never loses the operation's
+        visible state.
+        """
+
+        self._require_analyzed(dataset)
+        active = [
+            item
+            for item in self.list_discovery_jobs(dataset)
+            if item.state in {DiscoveryJobStatus.QUEUED, DiscoveryJobStatus.RUNNING}
+        ]
+        if active:
+            raise AuthoringWorkflowError(
+                f"target discovery job {active[0].job_id} is already running; reopen it to view progress"
+            )
+        job = AuthoringDiscoveryJob(
+            job_id=f"discovery-{uuid.uuid4().hex}",
+            authoring_dataset_id=dataset.authoring_dataset_id,
+            provider=provider,
+            seed=seed,
+            remote_consent=remote_consent,
+            requested_at=datetime.now(UTC),
+        )
+        return self._save_discovery_job(job)
+
+    def get_discovery_job(
+        self, dataset: AuthoringDataset, job_id: str
+    ) -> AuthoringDiscoveryJob:
+        path = self.store.discovery_job_path(dataset.authoring_dataset_id, job_id)
+        if not path.is_file():
+            raise FileNotFoundError(job_id)
+        job = self.store.load_model(path, AuthoringDiscoveryJob)
+        if job.authoring_dataset_id != dataset.authoring_dataset_id:
+            raise AuthoringWorkflowError("target discovery job belongs to a different dataset")
+        return job
+
+    def list_discovery_jobs(self, dataset: AuthoringDataset) -> list[AuthoringDiscoveryJob]:
+        root = self.store.discovery_jobs_root(dataset.authoring_dataset_id)
+        if not root.is_dir():
+            return []
+        values = [
+            self.store.load_model(path, AuthoringDiscoveryJob)
+            for path in sorted(root.glob("discovery-*.json"))
+        ]
+        return sorted(values, key=lambda item: item.requested_at, reverse=True)
+
+    def retry_discovery_job(
+        self, dataset: AuthoringDataset, *, job_id: str
+    ) -> AuthoringDiscoveryJob:
+        job = self.get_discovery_job(dataset, job_id)
+        if job.state in {DiscoveryJobStatus.QUEUED, DiscoveryJobStatus.RUNNING}:
+            raise AuthoringWorkflowError("target discovery job is already running")
+        return self._save_discovery_job(
+            job.model_copy(
+                update={
+                    "state": DiscoveryJobStatus.QUEUED,
+                    "phase": DiscoveryJobPhase.QUEUED,
+                    "phase_detail": "任务已重新排队。",
+                    "started_at": None,
+                    "completed_at": None,
+                    "total_source_records": 0,
+                    "model_source_records": 0,
+                    "rule_target_count": 0,
+                    "target_count": 0,
+                    "error_code": None,
+                    "error_detail": None,
+                }
+            )
+        )
+
+    def run_discovery_job(
+        self, dataset: AuthoringDataset, *, job_id: str
+    ) -> AuthoringDiscoveryJob:
+        """Run a persisted target-discovery job for a background worker.
+
+        Only this job passes ``timeout=None`` to the local Ollama provider.
+        The HTTP API has already answered at this point, so a slow model no
+        longer blocks the browser request or turns into a misleading network
+        failure.
+        """
+
+        job = self.get_discovery_job(dataset, job_id)
+        if job.state in {DiscoveryJobStatus.COMPLETED, DiscoveryJobStatus.FAILED}:
+            return job
+        job = self._save_discovery_job(
+            job.model_copy(
+                update={
+                    "state": DiscoveryJobStatus.RUNNING,
+                    "phase": DiscoveryJobPhase.BUILDING_RULE_TARGETS,
+                    "phase_detail": "正在读取已分析的文档结构。",
+                    "started_at": job.started_at or datetime.now(UTC),
+                    "completed_at": None,
+                    "error_code": None,
+                    "error_detail": None,
+                }
+            )
+        )
+
+        def report(
+            phase: DiscoveryJobPhase, detail: str, counts: dict[str, int]
+        ) -> None:
+            current = self.get_discovery_job(dataset, job_id)
+            update: dict[str, Any] = {"phase": phase, "phase_detail": detail}
+            update.update(counts)
+            self._save_discovery_job(current.model_copy(update=update))
+
+        try:
+            targets = self._discover_targets(
+                self.store.get(dataset.authoring_dataset_id),
+                provider=job.provider,
+                seed=job.seed,
+                remote_consent=job.remote_consent,
+                # Unlike a synchronous browser request, a durable background
+                # job is allowed to wait for one slow local model response.
+                ollama_timeout_seconds=None,
+                on_progress=report,
+            )
+        except Exception as exc:
+            detail = str(exc).strip() or exc.__class__.__name__
+            code = (
+                "provider_unavailable"
+                if isinstance(exc, ProposalProviderError)
+                else "target_discovery_failed"
+            )
+            failed = self.get_discovery_job(dataset, job_id).model_copy(
+                update={
+                    "state": DiscoveryJobStatus.FAILED,
+                    "phase": DiscoveryJobPhase.FAILED,
+                    "phase_detail": "目标识别未完成；可在模型恢复后重试。",
+                    "completed_at": datetime.now(UTC),
+                    "error_code": code,
+                    "error_detail": detail,
+                }
+            )
+            return self._save_discovery_job(failed)
+
+        completed = self.get_discovery_job(dataset, job_id).model_copy(
+            update={
+                "state": DiscoveryJobStatus.COMPLETED,
+                "phase": DiscoveryJobPhase.COMPLETED,
+                "phase_detail": "全部题目目标已保存，可开始生成题目。",
+                "target_count": len(targets),
+                "completed_at": datetime.now(UTC),
+            }
+        )
+        return self._save_discovery_job(completed)
+
+    def _save_discovery_job(self, job: AuthoringDiscoveryJob) -> AuthoringDiscoveryJob:
+        self.store.save_model(
+            self.store.discovery_job_path(job.authoring_dataset_id, job.job_id), job
+        )
+        return job
+
+    def create_generation_job(
+        self,
+        dataset: AuthoringDataset,
+        *,
+        target_ids: list[str],
+        provider: DiscoveryMethod = DiscoveryMethod.OLLAMA,
+        seed: int = 0,
+        remote_consent: bool = False,
+    ) -> AuthoringGenerationJob:
+        """Persist a batch request before any model call begins.
+
+        Persisting the work unit makes closing the modal harmless: the client
+        can reconnect to the same job and inspect every target's outcome.
+        """
+
+        self._require_analyzed(dataset)
+        unique_target_ids = list(dict.fromkeys(target_ids))
+        if not unique_target_ids:
+            raise AuthoringWorkflowError("at least one generation target is required")
+        for target_id in unique_target_ids:
+            self._target(dataset, target_id)
+        active = [
+            item
+            for item in self.list_generation_jobs(dataset)
+            if item.state in {GenerationJobStatus.QUEUED, GenerationJobStatus.RUNNING}
+        ]
+        if active:
+            raise AuthoringWorkflowError(
+                f"generation job {active[-1].job_id} is already running; reopen it to view progress"
+            )
+        job = AuthoringGenerationJob(
+            job_id=f"generation-{uuid.uuid4().hex}",
+            authoring_dataset_id=dataset.authoring_dataset_id,
+            provider=provider,
+            seed=seed,
+            remote_consent=remote_consent,
+            requested_at=datetime.now(UTC),
+            items=[GenerationJobItem(target_id=target_id) for target_id in unique_target_ids],
+        )
+        return self._save_generation_job(job)
+
+    def get_generation_job(
+        self, dataset: AuthoringDataset, job_id: str
+    ) -> AuthoringGenerationJob:
+        path = self.store.generation_job_path(dataset.authoring_dataset_id, job_id)
+        if not path.is_file():
+            raise FileNotFoundError(job_id)
+        job = self.store.load_model(path, AuthoringGenerationJob)
+        if job.authoring_dataset_id != dataset.authoring_dataset_id:
+            raise AuthoringWorkflowError("generation job belongs to a different dataset")
+        return job
+
+    def list_generation_jobs(self, dataset: AuthoringDataset) -> list[AuthoringGenerationJob]:
+        root = self.store.generation_jobs_root(dataset.authoring_dataset_id)
+        if not root.is_dir():
+            return []
+        values = [
+            self.store.load_model(path, AuthoringGenerationJob)
+            for path in sorted(root.glob("generation-*.json"))
+        ]
+        return sorted(values, key=lambda item: item.requested_at, reverse=True)
+
+    def cancel_generation_job(
+        self, dataset: AuthoringDataset, *, job_id: str
+    ) -> AuthoringGenerationJob:
+        job = self.get_generation_job(dataset, job_id)
+        if job.state in {
+            GenerationJobStatus.COMPLETED,
+            GenerationJobStatus.PARTIAL,
+            GenerationJobStatus.FAILED,
+            GenerationJobStatus.CANCELLED,
+        }:
+            return job
+        if job.state == GenerationJobStatus.QUEUED:
+            now = datetime.now(UTC)
+            return self._save_generation_job(
+                job.model_copy(
+                    update={
+                        "cancel_requested": True,
+                        "state": GenerationJobStatus.CANCELLED,
+                        "completed_at": now,
+                        "items": [
+                            item.model_copy(
+                                update={
+                                    "state": GenerationJobItemState.CANCELLED,
+                                    "completed_at": now,
+                                }
+                            )
+                            if item.state == GenerationJobItemState.PENDING
+                            else item
+                            for item in job.items
+                        ],
+                    }
+                )
+            )
+        return self._save_generation_job(job.model_copy(update={"cancel_requested": True}))
+
+    def retry_generation_job(
+        self,
+        dataset: AuthoringDataset,
+        *,
+        job_id: str,
+        target_ids: list[str] | None = None,
+    ) -> AuthoringGenerationJob:
+        """Requeue failed/cancelled targets without regenerating successful work."""
+
+        job = self.get_generation_job(dataset, job_id)
+        if job.state in {GenerationJobStatus.QUEUED, GenerationJobStatus.RUNNING}:
+            raise AuthoringWorkflowError("generation job is already running")
+        selected = set(target_ids or [
+            item.target_id
+            for item in job.items
+            if item.state in {GenerationJobItemState.FAILED, GenerationJobItemState.CANCELLED}
+        ])
+        if not selected:
+            raise AuthoringWorkflowError("no failed or cancelled generation targets are available to retry")
+        known = {item.target_id for item in job.items}
+        unknown = sorted(selected.difference(known))
+        if unknown:
+            raise AuthoringWorkflowError(f"generation retry references unknown target(s): {', '.join(unknown)}")
+        retried = False
+        items: list[GenerationJobItem] = []
+        for item in job.items:
+            if item.target_id in selected:
+                if item.state not in {GenerationJobItemState.FAILED, GenerationJobItemState.CANCELLED}:
+                    raise AuthoringWorkflowError(
+                        f"target {item.target_id} is not available for retry"
+                    )
+                retried = True
+                items.append(
+                    item.model_copy(
+                        update={
+                            "state": GenerationJobItemState.PENDING,
+                            "candidate_id": None,
+                            "error_code": None,
+                            "error_detail": None,
+                            "started_at": None,
+                            "completed_at": None,
+                        }
+                    )
+                )
+            else:
+                items.append(item)
+        if not retried:
+            raise AuthoringWorkflowError("no generation target was retried")
+        return self._save_generation_job(
+            job.model_copy(
+                update={
+                    "state": GenerationJobStatus.QUEUED,
+                    "items": items,
+                    "cancel_requested": False,
+                    "started_at": None,
+                    "completed_at": None,
+                }
+            )
+        )
+
+    def run_generation_job(
+        self, dataset: AuthoringDataset, *, job_id: str
+    ) -> AuthoringGenerationJob:
+        """Run one persisted job synchronously for a background worker.
+
+        State is committed before and after every target, so a client can close
+        and reopen the modal at any time.  Cancellation takes effect between
+        model calls; an in-flight provider request is never force-killed.
+        """
+
+        job = self.get_generation_job(dataset, job_id)
+        if job.state in {
+            GenerationJobStatus.COMPLETED,
+            GenerationJobStatus.PARTIAL,
+            GenerationJobStatus.FAILED,
+            GenerationJobStatus.CANCELLED,
+        }:
+            return job
+        if job.cancel_requested:
+            return self._cancel_remaining_generation_items(job)
+        # A process restart can leave the active item recorded as running.
+        # No model request survives that restart, so make that one item
+        # eligible for a clean retry before continuing the durable job.
+        if any(item.state == GenerationJobItemState.RUNNING for item in job.items):
+            job = self._save_generation_job(
+                job.model_copy(
+                    update={
+                        "state": GenerationJobStatus.QUEUED,
+                        "items": [
+                            item.model_copy(
+                                update={
+                                    "state": GenerationJobItemState.PENDING,
+                                    "started_at": None,
+                                }
+                            )
+                            if item.state == GenerationJobItemState.RUNNING
+                            else item
+                            for item in job.items
+                        ],
+                    }
+                )
+            )
+        job = self._save_generation_job(
+            job.model_copy(
+                update={
+                    "state": GenerationJobStatus.RUNNING,
+                    "started_at": job.started_at or datetime.now(UTC),
+                }
+            )
+        )
+        for index, item in enumerate(job.items):
+            job = self.get_generation_job(dataset, job_id)
+            if job.cancel_requested:
+                return self._cancel_remaining_generation_items(job)
+            item = job.items[index]
+            if item.state != GenerationJobItemState.PENDING:
+                continue
+            started_at = datetime.now(UTC)
+            running = item.model_copy(
+                update={
+                    "state": GenerationJobItemState.RUNNING,
+                    "attempts": item.attempts + 1,
+                    "started_at": started_at,
+                    "completed_at": None,
+                }
+            )
+            job = self._replace_generation_job_item(job, index, running)
+            try:
+                candidate = self.generate_question_and_answer(
+                    self.store.get(dataset.authoring_dataset_id),
+                    target_id=running.target_id,
+                    provider=job.provider,
+                    seed=job.seed,
+                    remote_consent=job.remote_consent,
+                )
+                completed = running.model_copy(
+                    update={
+                        "state": GenerationJobItemState.SUCCEEDED,
+                        "candidate_id": candidate.candidate_id,
+                        "completed_at": datetime.now(UTC),
+                    }
+                )
+            except Exception as exc:  # persisted diagnostics are part of recovery
+                code, detail = self._generation_failure(exc)
+                completed = running.model_copy(
+                    update={
+                        "state": GenerationJobItemState.FAILED,
+                        "error_code": code,
+                        "error_detail": detail,
+                        "completed_at": datetime.now(UTC),
+                    }
+                )
+            self._replace_generation_job_item(job, index, completed)
+        job = self.get_generation_job(dataset, job_id)
+        return self._complete_generation_job(job)
+
+    def _save_generation_job(self, job: AuthoringGenerationJob) -> AuthoringGenerationJob:
+        self.store.save_model(
+            self.store.generation_job_path(job.authoring_dataset_id, job.job_id), job
+        )
+        return job
+
+    def _replace_generation_job_item(
+        self,
+        job: AuthoringGenerationJob,
+        index: int,
+        item: GenerationJobItem,
+    ) -> AuthoringGenerationJob:
+        values = list(job.items)
+        values[index] = item
+        return self._save_generation_job(job.model_copy(update={"items": values}))
+
+    def _cancel_remaining_generation_items(
+        self, job: AuthoringGenerationJob
+    ) -> AuthoringGenerationJob:
+        now = datetime.now(UTC)
+        return self._save_generation_job(
+            job.model_copy(
+                update={
+                    "state": GenerationJobStatus.CANCELLED,
+                    "completed_at": now,
+                    "items": [
+                        item.model_copy(
+                            update={
+                                "state": GenerationJobItemState.CANCELLED,
+                                "completed_at": now,
+                            }
+                        )
+                        if item.state == GenerationJobItemState.PENDING
+                        else item
+                        for item in job.items
+                    ],
+                }
+            )
+        )
+
+    def _complete_generation_job(self, job: AuthoringGenerationJob) -> AuthoringGenerationJob:
+        if job.cancel_requested:
+            return self._cancel_remaining_generation_items(job)
+        succeeded = sum(item.state == GenerationJobItemState.SUCCEEDED for item in job.items)
+        failed = sum(item.state == GenerationJobItemState.FAILED for item in job.items)
+        state = (
+            GenerationJobStatus.COMPLETED
+            if succeeded == len(job.items)
+            else GenerationJobStatus.PARTIAL
+            if succeeded and failed
+            else GenerationJobStatus.FAILED
+        )
+        return self._save_generation_job(
+            job.model_copy(update={"state": state, "completed_at": datetime.now(UTC)})
+        )
+
+    @staticmethod
+    def _generation_failure(exc: Exception) -> tuple[str, str]:
+        detail = str(exc).strip() or exc.__class__.__name__
+        if isinstance(exc, ProposalProviderError):
+            return "provider_unavailable", detail
+        if isinstance(exc, AuthoringWorkflowError):
+            if "formal validation" in detail or "gate" in detail:
+                return "proposal_validation_failed", detail
+            if "target" in detail:
+                return "target_unavailable", detail
+            return "proposal_contract_failed", detail
+        return "unexpected_generation_error", detail
 
     def register_representability_profile(
         self,
@@ -569,6 +1440,18 @@ class AuthoringWorkflow:
         }
         for view_name, root in views.items():
             self._write_bundle(dataset, approved, root=root, name=name.strip(), version=version.strip(), view=view_name)
+        for approved_case in approved:
+            self._ensure_ledger_candidate(dataset, approved_case.candidate)
+        try:
+            ledger_release = self.ledger.freeze_release(
+                dataset,
+                release_id=release_id,
+                case_ids=tuple(item.case_id for item in approved),
+                actor="authoring-exporter",
+                reason="pin approved Case and Gold revisions for a historical Bundle 2.0 export",
+            )
+        except ValueError as exc:
+            raise AuthoringWorkflowError(f"cannot freeze Authoring Ledger release: {exc}") from exc
         export = AuthoringExport(
             release_id=release_id,
             name=name.strip(),
@@ -578,6 +1461,7 @@ class AuthoringWorkflow:
             approved_case_ids=[item.case_id for item in approved],
             views={name: str(path.relative_to(self.store.workspace(dataset.authoring_dataset_id))) for name, path in views.items()},
             blocked_cases=blocked,
+            ledger_release_id=ledger_release.ledger_release_id,
         )
         self.store.save_model(release_root / "export.json", export)
         self._advance_state(dataset, AuthoringState.EXPORTED)
@@ -595,6 +1479,244 @@ class AuthoringWorkflow:
         self._advance_state(dataset, AuthoringState.REGISTERED)
         return updated
 
+    def _ensure_ledger_candidate(self, dataset: AuthoringDataset, candidate: QuestionCandidate) -> None:
+        """Lazily project pre-ledger candidate views without overwriting them."""
+
+        self.ledger.ensure_dataset(dataset)
+        case_id = self.ledger.case_id_for_candidate(candidate.candidate_id)
+        if not self.ledger.case_history(dataset.authoring_dataset_id, case_id):
+            self.ledger.project_existing_candidate(dataset, candidate)
+
+    def _create_ledger_case(self, dataset: AuthoringDataset, candidate: QuestionCandidate) -> None:
+        self.ledger.ensure_dataset(dataset)
+        case_id = self.ledger.case_id_for_candidate(candidate.candidate_id)
+        draft = self.ledger.case_draft_from_candidate(
+            dataset,
+            candidate,
+            case_id=case_id,
+            origin=self.ledger.origin_from_candidate(candidate),
+        )
+        self.ledger.create_case(
+            dataset,
+            draft=draft,
+            actor=self.ledger.actor_from_candidate(candidate),
+            reason="create Case draft from DOCX Authoring question",
+        )
+
+    def _revise_ledger_case(self, dataset: AuthoringDataset, candidate: QuestionCandidate, *, reason: str) -> None:
+        self._ensure_ledger_candidate(dataset, candidate)
+        case_id = self.ledger.case_id_for_candidate(candidate.candidate_id)
+        current = self.ledger.current_case(dataset.authoring_dataset_id, case_id)
+        draft = self.ledger.case_draft_from_candidate(
+            dataset,
+            candidate,
+            case_id=case_id,
+            origin=current.draft.origin,
+        )
+        self.ledger.revise_case(
+            dataset,
+            case_id=case_id,
+            draft=draft,
+            actor=self.ledger.actor_from_candidate(candidate),
+            reason=reason,
+        )
+
+    def _record_ledger_resolution(
+        self,
+        dataset: AuthoringDataset,
+        original: QuestionCandidate,
+        resolved: QuestionCandidate,
+    ) -> None:
+        """Create/revise independent Gold and propose it only after gates pass."""
+
+        if resolved.answer_evidence is None:
+            raise AuthoringWorkflowError("resolved candidate is missing answer/evidence")
+        self._ensure_ledger_candidate(dataset, original)
+        case_id = self.ledger.case_id_for_candidate(resolved.candidate_id)
+        case = self.ledger.current_case(dataset.authoring_dataset_id, case_id)
+        actor = self.ledger.actor_from_candidate(resolved)
+        if resolved.state == CandidateState.REVIEW_REQUIRED and case.lifecycle in {
+            LifecycleState.DRAFT,
+            LifecycleState.REJECTED,
+        }:
+            case = self.ledger.propose_case(
+                dataset,
+                case_id=case_id,
+                actor=actor,
+                reason="propose source-grounded Case after answer/evidence gates",
+            )
+        gold_id = self.ledger.gold_id_for_case(case_id)
+        payload = self.ledger.gold_payload_from_candidate(resolved.answer_evidence)
+        origin_candidate = resolved.model_copy(
+            update={
+                "generation_method": resolved.answer_evidence.resolution_method,
+                "provider_metadata": resolved.answer_evidence.provider_metadata,
+            }
+        )
+        origin = self.ledger.origin_from_candidate(origin_candidate)
+        origin = origin.model_copy(
+            update={"source_document_ids": (dataset.document_id,) if dataset.document_id else ()}
+        )
+        history = self.ledger.gold_history(dataset.authoring_dataset_id, gold_id)
+        if history:
+            gold = self.ledger.revise_gold(
+                dataset,
+                gold_id=gold_id,
+                payload=payload,
+                actor=actor,
+                reason="create a new Gold revision from answer/evidence resolution",
+                case_revision=case,
+            )
+        else:
+            gold = self.ledger.create_gold(
+                dataset,
+                gold_id=gold_id,
+                case_revision=case,
+                payload=payload,
+                origin=origin,
+                actor=actor,
+                reason="create independent Gold draft from answer/evidence resolution",
+            )
+        if resolved.state == CandidateState.REVIEW_REQUIRED and gold.lifecycle == LifecycleState.DRAFT:
+            self.ledger.propose_gold(
+                dataset,
+                gold_id=gold.gold_id,
+                actor=actor,
+                reason="propose Gold after answer/evidence gates",
+            )
+
+    def _formal_accept(self, dataset: AuthoringDataset, candidate: QuestionCandidate, *, reviewer: str, note: str) -> None:
+        self._ensure_ledger_candidate(dataset, candidate)
+        case_id = self.ledger.case_id_for_candidate(candidate.candidate_id)
+        gold_id = self.ledger.gold_id_for_case(case_id)
+        case = self.ledger.current_case(dataset.authoring_dataset_id, case_id)
+        gold = self.ledger.current_gold(dataset.authoring_dataset_id, gold_id)
+        if reviewer in {case.actor, gold.actor}:
+            raise AuthoringWorkflowError("author cannot approve their own Case or Gold")
+        try:
+            self.ledger.record_review(
+                dataset.authoring_dataset_id,
+                target_kind=TargetKind.CASE,
+                reviewed_revision_id=case.case_revision_id,
+                reviewer=reviewer,
+                decision=ReviewDecision.APPROVE,
+                checklist={"source_grounded": True, "case_ready": True},
+                comments=note,
+            )
+            self.ledger.record_review(
+                dataset.authoring_dataset_id,
+                target_kind=TargetKind.GOLD,
+                reviewed_revision_id=gold.gold_revision_id,
+                reviewer=reviewer,
+                decision=ReviewDecision.APPROVE,
+                checklist={"mses_checked": True, "answer_grounded": True},
+                comments=note,
+            )
+            reviewed_case = self.ledger.mark_reviewed(
+                dataset,
+                target_kind=TargetKind.CASE,
+                revision_id=case.case_revision_id,
+                actor=case.actor,
+                reason="reviewer accepted Case",
+            )
+            reviewed_gold = self.ledger.mark_reviewed(
+                dataset,
+                target_kind=TargetKind.GOLD,
+                revision_id=gold.gold_revision_id,
+                actor=gold.actor,
+                reason="reviewer accepted Gold",
+            )
+            self.ledger.approve(
+                dataset,
+                target_kind=TargetKind.CASE,
+                revision_id=reviewed_case.case_revision_id,  # type: ignore[union-attr]
+                approver=reviewer,
+                role=ActorRole.REVIEWER,
+                reason="reviewer approval after checklist review",
+            )
+            self.ledger.approve(
+                dataset,
+                target_kind=TargetKind.GOLD,
+                revision_id=reviewed_gold.gold_revision_id,  # type: ignore[union-attr]
+                approver=reviewer,
+                role=ActorRole.REVIEWER,
+                reason="reviewer approval after checklist review",
+            )
+        except ValueError as exc:
+            raise AuthoringWorkflowError(f"formal ledger approval failed: {exc}") from exc
+
+    def _formal_reject(self, dataset: AuthoringDataset, candidate: QuestionCandidate, *, reviewer: str, note: str) -> None:
+        self._ensure_ledger_candidate(dataset, candidate)
+        case_id = self.ledger.case_id_for_candidate(candidate.candidate_id)
+        case = self.ledger.current_case(dataset.authoring_dataset_id, case_id)
+        try:
+            if case.lifecycle == LifecycleState.DRAFT:
+                case = self.ledger.propose_case(dataset, case_id=case_id, actor=case.actor, reason="submit Case for rejection review")
+            self.ledger.reject(dataset, target_kind=TargetKind.CASE, revision_id=case.case_revision_id, reviewer=reviewer, reason=note or "reviewer rejected Case")
+            gold_id = self.ledger.gold_id_for_case(case_id)
+            history = self.ledger.gold_history(dataset.authoring_dataset_id, gold_id)
+            if history:
+                gold = history[-1]
+                if gold.lifecycle == LifecycleState.DRAFT:
+                    gold = self.ledger.propose_gold(dataset, gold_id=gold.gold_id, actor=gold.actor, reason="submit Gold for rejection review")
+                if gold.lifecycle in {LifecycleState.PROPOSED, LifecycleState.REVIEWED}:
+                    self.ledger.reject(dataset, target_kind=TargetKind.GOLD, revision_id=gold.gold_revision_id, reviewer=reviewer, reason=note or "reviewer rejected Gold")
+        except ValueError as exc:
+            raise AuthoringWorkflowError(f"formal ledger rejection failed: {exc}") from exc
+
+    def _formal_edit(self, dataset: AuthoringDataset, previous: QuestionCandidate, updated: QuestionCandidate, *, reviewer: str, note: str) -> None:
+        self._ensure_ledger_candidate(dataset, previous)
+        case_id = self.ledger.case_id_for_candidate(previous.candidate_id)
+        case = self.ledger.current_case(dataset.authoring_dataset_id, case_id)
+        try:
+            if case.lifecycle == LifecycleState.DRAFT:
+                case = self.ledger.propose_case(dataset, case_id=case_id, actor=case.actor, reason="submit Case for requested-change review")
+            self.ledger.record_review(
+                dataset.authoring_dataset_id,
+                target_kind=TargetKind.CASE,
+                reviewed_revision_id=case.case_revision_id,
+                reviewer=reviewer,
+                decision=ReviewDecision.REQUEST_CHANGES,
+                comments=note,
+            )
+            draft = self.ledger.case_draft_from_candidate(dataset, updated, case_id=case_id, origin=case.draft.origin)
+            new_case = self.ledger.revise_case(dataset, case_id=case_id, draft=draft, actor=self.ledger.actor_from_candidate(updated), reason="apply reviewer-requested Case changes")
+            gold_id = self.ledger.gold_id_for_case(case_id)
+            if updated.answer_evidence is not None:
+                gold_history = self.ledger.gold_history(dataset.authoring_dataset_id, gold_id)
+                if gold_history:
+                    gold = gold_history[-1]
+                    if gold.lifecycle == LifecycleState.DRAFT:
+                        gold = self.ledger.propose_gold(dataset, gold_id=gold_id, actor=gold.actor, reason="submit Gold for requested-change review")
+                    self.ledger.record_review(
+                        dataset.authoring_dataset_id,
+                        target_kind=TargetKind.GOLD,
+                        reviewed_revision_id=gold.gold_revision_id,
+                        reviewer=reviewer,
+                        decision=ReviewDecision.REQUEST_CHANGES,
+                        comments=note,
+                    )
+                    gold = self.ledger.revise_gold(
+                        dataset,
+                        gold_id=gold_id,
+                        payload=self.ledger.gold_payload_from_candidate(updated.answer_evidence),
+                        actor=self.ledger.actor_from_candidate(updated),
+                        reason="apply reviewer-requested Gold changes",
+                        case_revision=new_case,
+                    )
+                else:
+                    origin_candidate = updated.model_copy(update={"generation_method": updated.answer_evidence.resolution_method, "provider_metadata": updated.answer_evidence.provider_metadata})
+                    origin = self.ledger.origin_from_candidate(origin_candidate).model_copy(
+                        update={"source_document_ids": (dataset.document_id,) if dataset.document_id else ()}
+                    )
+                    gold = self.ledger.create_gold(dataset, gold_id=gold_id, case_revision=new_case, payload=self.ledger.gold_payload_from_candidate(updated.answer_evidence), origin=origin, actor=self.ledger.actor_from_candidate(updated), reason="create Gold revision after Case edit")
+                if updated.state == CandidateState.REVIEW_REQUIRED:
+                    self.ledger.propose_case(dataset, case_id=case_id, actor=self.ledger.actor_from_candidate(updated), reason="re-propose edited Case")
+                    if gold.lifecycle == LifecycleState.DRAFT:
+                        self.ledger.propose_gold(dataset, gold_id=gold_id, actor=self.ledger.actor_from_candidate(updated), reason="re-propose edited Gold")
+        except ValueError as exc:
+            raise AuthoringWorkflowError(f"formal ledger edit failed: {exc}") from exc
+
     def _rule_targets(self, dataset: AuthoringDataset, records: list[dict[str, Any]]) -> list[BenchmarkTargetCandidate]:
         digest = self._canonical_digest(dataset)
         by_id = {str(record["object_id"]): record for record in records}
@@ -611,9 +1733,34 @@ class AuthoringWorkflow:
         cells_by_table: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for cell in cells:
             cells_by_table[str(cell["table_id"])].append(cell)
-            flags = [] if cell.get("status") == "supported" else ["partial_source_representation"]
-            same_table = [str(other["object_id"]) for other in cells_by_table[str(cell["table_id"])] if other["object_id"] != cell["object_id"]]
-            values.append(self._target_value(dataset, digest=digest, capability="table_lookup", source_ids=[str(cell["object_id"])], route=["table", "row", "cell"], distractors=same_table[:6], flags=flags, confidence=0.85, rationale="deterministic resolved table-cell discovery"))
+        for table_cells in cells_by_table.values():
+            ordered_cells = sorted(table_cells, key=lambda item: (int(item.get("row", 0)), int(item.get("column", 0))))
+            min_row = min(int(item.get("row", 0)) for item in ordered_cells)
+            min_column = min(int(item.get("column", 0)) for item in ordered_cells)
+            # A raw header such as "value" does not make a useful authoring
+            # target by itself.  Prefer a data-row cell and carry its visible
+            # column/row context with it so question and answer proposals can
+            # be understood without relying on opaque canonical IDs.
+            data_cells = [item for item in ordered_cells if int(item.get("row", 0)) > min_row] or ordered_cells
+            for cell in data_cells:
+                row, column = int(cell.get("row", 0)), int(cell.get("column", 0))
+                column_headers = [
+                    item for item in ordered_cells
+                    if int(item.get("column", 0)) == column and int(item.get("row", 0)) < row
+                ]
+                row_headers = [
+                    item for item in ordered_cells
+                    if int(item.get("row", 0)) == row and min_column <= int(item.get("column", 0)) < column
+                ]
+                source_records = column_headers + row_headers + [cell]
+                source_ids = list(dict.fromkeys(str(item["object_id"]) for item in source_records))
+                flags = []
+                if any(item.get("status") != "supported" for item in source_records):
+                    flags.append("partial_source_representation")
+                elif any(item.get("gold_evidence_eligible") is False for item in source_records):
+                    flags.append("gold_evidence_prohibited")
+                same_table = [str(other["object_id"]) for other in ordered_cells if str(other["object_id"]) not in source_ids]
+                values.append(self._target_value(dataset, digest=digest, capability="table_lookup", source_ids=source_ids, route=["table", "row", "cell"], distractors=same_table[:6], flags=flags, confidence=0.85, rationale="deterministic table data-cell discovery with visible header context"))
         token_occurrences: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for block in blocks:
             for token in _tokens(str(block["canonical_value"])):
@@ -631,20 +1778,55 @@ class AuthoringWorkflow:
                 values.append(self._target_value(dataset, digest=digest, capability=f"{record['object_type']}_diagnostic", source_ids=[str(record["object_id"])], route=[str(record["object_type"])], flags=["partial_source_representation"] if record.get("status") != "supported" else [], confidence=0.3, rationale="rich-object diagnostic discovery"))
         return values
 
-    def _ollama_targets(self, dataset: AuthoringDataset, records: list[dict[str, Any]], *, seed: int) -> list[BenchmarkTargetCandidate]:
-        source = self._source_subset(dataset, [str(record["object_id"]) for record in records if record.get("status") == "supported"][:100])
+    def _ollama_targets(
+        self,
+        dataset: AuthoringDataset,
+        records: list[dict[str, Any]],
+        *,
+        seed: int,
+        timeout_seconds: float | None = 60.0,
+    ) -> list[BenchmarkTargetCandidate]:
+        # Some DOCX cells and paragraphs are very large. Sending the first
+        # 100 raw records can overflow a local model context window, which
+        # makes a healthy model look unavailable and leaves a rule-only
+        # discovery snapshot behind. Discovery needs source-cited excerpts,
+        # not every byte of the document.
+        source = self._source_subset(
+            dataset,
+            [str(record["object_id"]) for record in records if record.get("status") == "supported"],
+            max_items=28,
+            max_value_chars=600,
+            include_witness=False,
+        )
         prompt = (
             "Propose structure-grounded RAG benchmark targets. Return JSON {targets:[{capability,source_object_ids,retrieval_route,distractor_object_ids,confidence,rationale}]}. "
             "Every cited object ID must be from SOURCE JSON. Do not include questions or answers. Do not enforce quotas."
         )
-        provider = LocalOllamaProvider()
+        provider, _method = self._configured_proposal_provider(
+            LLMStage.TARGET_DISCOVERY,
+            requested="ollama",
+            remote_consent=False,
+        )
+        if provider is None:
+            provider = LocalOllamaProvider(timeout_seconds=timeout_seconds)
+        elif isinstance(provider, LocalOllamaProvider):
+            # Stage configuration supplies the endpoint/model.  Preserve that
+            # configuration while allowing the durable discovery worker to
+            # wait without an HTTP timeout.
+            provider = replace(provider, timeout_seconds=timeout_seconds)
         value = provider.propose(task="target_discovery", source=source, prompt=prompt, seed=seed)
         return self._proposal_targets(dataset, value, provider=DiscoveryMethod.OLLAMA, metadata=provider_metadata(provider, prompt=prompt, seed=seed))
 
     def _remote_targets(self, dataset: AuthoringDataset, records: list[dict[str, Any]], *, seed: int) -> list[BenchmarkTargetCandidate]:
         source = self._source_subset(dataset, [str(record["object_id"]) for record in records if record.get("status") == "supported"][:100])
         prompt = "Propose only source-cited RAG benchmark targets as JSON {targets:[...]}; do not generate answers."
-        provider = ConfiguredRemoteProvider.from_environment()
+        provider, _method = self._configured_proposal_provider(
+            LLMStage.TARGET_DISCOVERY,
+            requested="remote",
+            remote_consent=True,
+        )
+        if provider is None:
+            provider = ConfiguredRemoteProvider.from_environment()
         value = provider.propose(task="target_discovery", source=source, prompt=prompt, seed=seed)
         return self._proposal_targets(dataset, value, provider=DiscoveryMethod.REMOTE, metadata=provider_metadata(provider, prompt=prompt, seed=seed))
 
@@ -680,6 +1862,20 @@ class AuthoringWorkflow:
         provider: DiscoveryMethod,
         remote_consent: bool,
     ) -> tuple[dict[str, Any], dict[str, Any], DiscoveryMethod]:
+        stage = {
+            "target_discovery": LLMStage.TARGET_DISCOVERY,
+            "question_generation": LLMStage.QUESTION_GENERATION,
+            "answer_evidence_resolution": LLMStage.ANSWER_EVIDENCE,
+        }.get(task)
+        if stage is not None:
+            configured, configured_method = self._configured_proposal_provider(
+                stage,
+                requested=provider.value,
+                remote_consent=remote_consent,
+            )
+            if configured is not None:
+                value = configured.propose(task=task, source=source, prompt=prompt, seed=seed)
+                return value, provider_metadata(configured, prompt=prompt, seed=seed), DiscoveryMethod(configured_method)
         if provider == DiscoveryMethod.OLLAMA:
             selected = LocalOllamaProvider()
             method = DiscoveryMethod.OLLAMA
@@ -693,9 +1889,134 @@ class AuthoringWorkflow:
         value = selected.propose(task=task, source=source, prompt=prompt, seed=seed)
         return value, provider_metadata(selected, prompt=prompt, seed=seed), method
 
+    def _configured_proposal_provider(
+        self,
+        stage: LLMStage,
+        *,
+        requested: str,
+        remote_consent: bool,
+    ) -> tuple[Any | None, str]:
+        if self.llm_configuration is None:
+            return None, requested
+        try:
+            return self.llm_configuration.build_provider(
+                stage,
+                requested=requested,
+                remote_consent=remote_consent,
+                secret_store=self.secret_store,
+            )
+        except (KeyError, RuntimeError, ValueError):
+            # Provider construction failures remain proposal failures. The
+            # existing workflow catches ProposalProviderError for its safe
+            # deterministic fallback; do not turn a settings typo into a
+            # successful-looking proposal.
+            return None, requested
+
     def _target_value(self, dataset: AuthoringDataset, *, digest: str, capability: str, source_ids: list[str], route: list[str], distractors: list[str] | None = None, flags: list[str] | None = None, confidence: float, rationale: str, method: DiscoveryMethod = DiscoveryMethod.RULE) -> BenchmarkTargetCandidate:
         payload = {"capability": capability, "source": sorted(source_ids), "route": route, "method": method}
         return BenchmarkTargetCandidate(target_id=_stable_id("target", payload), source_sha256=dataset.source.sha256, canonical_digest=digest, capability=capability, source_object_ids=sorted(set(source_ids)), retrieval_route=route, distractor_object_ids=sorted(set(distractors or [])), confidence=max(0, min(1, confidence)), discovery_method=method, flags=sorted(set(flags or [])), rationale=rationale)
+
+    @staticmethod
+    def _header_path(record: dict[str, Any]) -> list[str]:
+        attributes = record.get("attributes") or {}
+        values = record.get("effective_header_path") or attributes.get("effective_header_path") or []
+        return [str(item).strip() for item in values if str(item).strip()]
+
+    def _rule_question_proposal(
+        self,
+        target: BenchmarkTargetCandidate,
+        records: dict[str, dict[str, Any]],
+    ) -> tuple[str, list[str]]:
+        """Return an explicit draft only when a direct source can be read safely.
+
+        This recovery path is deliberately narrow.  It is useful when local
+        Ollama is unavailable, but must not invent a multi-hop argument or a
+        bounded absence claim that still requires human judgment.
+        """
+
+        if target.capability in {"cross_section_relation", "negative_candidate"} or "multi_hop" in target.capability:
+            raise AuthoringWorkflowError("this target requires a model or human-authored question")
+        source = [records[item] for item in target.source_object_ids if item in records]
+        if not source:
+            raise AuthoringWorkflowError("rule fallback target has no canonical source")
+        table_cells = [item for item in source if item.get("object_type") in {"cell", "logical_cell"}]
+        if target.capability == "table_lookup" and table_cells:
+            value_cell = max(
+                table_cells,
+                key=lambda item: (int(item.get("row", 0)), int(item.get("column", 0))),
+            )
+            header_path = self._header_path(value_cell)
+            if header_path:
+                label = "”下“".join(header_path[-2:])
+                question = f"文档表格中“{label}”对应的内容是什么？"
+            else:
+                question = "文档表格中该项对应的内容是什么？"
+            return question, list(target.source_object_ids)
+
+        primary = next(
+            (item for item in source if item.get("object_type") in {"block", "text_span"}),
+            source[0],
+        )
+        text = str(primary.get("canonical_value") or primary.get("witness") or "").strip()
+        if not text:
+            raise AuthoringWorkflowError("rule fallback source has no visible text")
+        topic = re.split(r"[。；;：:，,（(]", text, maxsplit=1)[0].strip()
+        topic = re.sub(r"^(?:[一二三四五六七八九十0-9]+[、.．])\s*", "", topic)
+        topic = re.sub(r"(?:为|是|有|包括|达到|采用|使用).*$", "", topic).strip()
+        topic = topic[:28].strip(" ，,。；;") or "相关事项"
+        return f"关于“{topic}”，文档如何说明？", list(target.source_object_ids)
+
+    def _rule_answer_evidence_proposal(
+        self,
+        dataset: AuthoringDataset,
+        candidate: QuestionCandidate,
+        target: BenchmarkTargetCandidate,
+        *,
+        fallback_reason: str = "local_model_unavailable",
+    ) -> AnswerEvidenceCandidate:
+        """Resolve a direct canonical value as a review-required proposal.
+
+        No automatic fallback is permitted for negative, multi-hop, or
+        cross-section targets because their Gold semantics cannot be inferred
+        safely from one observable value.
+        """
+
+        if target.capability in {"cross_section_relation", "negative_candidate"} or "multi_hop" in target.capability:
+            raise AuthoringWorkflowError("this target requires a model or human-authored answer")
+        records = {
+            str(record["object_id"]): record
+            for record in self._records(dataset.authoring_dataset_id)
+        }
+        source = [records[item] for item in candidate.source_object_ids if item in records]
+        if not source:
+            raise AuthoringWorkflowError("rule fallback candidate has no canonical source")
+        table_cells = [item for item in source if item.get("object_type") in {"cell", "logical_cell"}]
+        if target.capability == "table_lookup" and table_cells:
+            evidence = max(
+                table_cells,
+                key=lambda item: (int(item.get("row", 0)), int(item.get("column", 0))),
+            )
+        elif len(source) == 1:
+            evidence = source[0]
+        else:
+            raise AuthoringWorkflowError("this target requires a model or human-authored answer")
+        if evidence.get("status") != "supported" or evidence.get("gold_evidence_eligible") is False:
+            raise AuthoringWorkflowError("rule fallback evidence is not eligible for Gold review")
+        answer = str(evidence.get("canonical_value") or evidence.get("witness") or "").strip()
+        if not answer:
+            raise AuthoringWorkflowError("rule fallback evidence has no visible answer")
+        return AnswerEvidenceCandidate(
+            answer_kind="text",
+            canonical_answer=answer,
+            evidence=[CandidateEvidence(source_object_id=str(evidence["object_id"]), required_group="direct-source")],
+            locale="zh-CN",
+            resolution_method=DiscoveryMethod.RULE,
+            provider_metadata={
+                "provider": "canonical-rule-fallback",
+                "reason": fallback_reason,
+                "task": "answer_evidence_resolution",
+            },
+        )
 
     def _run_gates(self, dataset: AuthoringDataset, candidate: QuestionCandidate) -> list[QualityGateResult]:
         assert candidate.answer_evidence is not None
@@ -715,13 +2036,30 @@ class AuthoringWorkflow:
             gates.append(self._gate("answer_leakage", GateStatus.FAIL if leaked_answers else GateStatus.PASS, "question contains its proposed answer" if leaked_answers else "question does not contain proposed answer", {"matches": leaked_answers}))
         else:
             gates.append(self._gate("answer_leakage", GateStatus.PASS, "abstention has no proposed answer string"))
-        known_questions = [item for item in self.list_candidates(dataset) if item.candidate_id != candidate.candidate_id]
+        # Rejected and blocked candidates are historical review evidence, not
+        # active proposals. Regenerating a source must not fail solely because
+        # an author rejected an earlier version or a prior attempt was blocked
+        # before it became reviewable.
+        known_questions = [
+            item
+            for item in self.list_candidates(dataset)
+            if item.candidate_id != candidate.candidate_id
+            and item.state not in {CandidateState.REJECTED, CandidateState.BLOCKED}
+        ]
         overlap = max((self._question_overlap(candidate.question, item.question) for item in known_questions), default=0.0)
         overlap_status = GateStatus.FAIL if overlap >= 0.98 else (GateStatus.FLAG if overlap >= 0.75 else GateStatus.PASS)
         gates.append(self._gate("duplicate_template_overlap", overlap_status, "question overlaps an existing candidate" if overlap_status != GateStatus.PASS else "no material candidate overlap", {"max_overlap": overlap}))
         evidence_records = [records.get(item.source_object_id) for item in answer.evidence]
         missing = [item.source_object_id for item, record in zip(answer.evidence, evidence_records) if record is None]
-        unsupported = [str(record["object_id"]) for record in evidence_records if record is not None and record.get("status") != "supported"]
+        unsupported = [
+            str(record["object_id"])
+            for record in evidence_records
+            if record is not None
+            and (
+                record.get("status") != "supported"
+                or record.get("gold_evidence_eligible") is False
+            )
+        ]
         locator_status = GateStatus.FAIL if missing or unsupported else GateStatus.PASS
         gates.append(self._gate("locator_witness_round_trip", locator_status, "evidence has missing or non-observable representations" if locator_status == GateStatus.FAIL else "every evidence item has a supported canonical witness", {"missing": missing, "unsupported_or_partial": unsupported}))
         cell_evidence = [record for record in evidence_records if record is not None and record.get("object_type") == "cell"]
@@ -907,7 +2245,7 @@ class AuthoringWorkflow:
             "version": version,
             "created_at": dataset.created_at.isoformat(),
             "documents": [{"document_id": document_id, "path": f"documents/{source_name}", "canonical_path": "canonical/evidence.jsonl", "sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(), "mime_type": mime_type, "metadata": {"execution_view": view, "source_sha256": dataset.source.sha256}}],
-            "metadata": {"validation_profile": "formal", "authoring": {"source_sha256": dataset.source.sha256, "canonical_digest": self._canonical_digest(dataset), "execution_view": view, "private_document": True, "native_diagnostic_only": view == "native-docx"}},
+            "metadata": {"validation_profile": "formal", "primary_evaluation_corpus": "canonical_segments", "authoring": {"source_sha256": dataset.source.sha256, "canonical_digest": self._canonical_digest(dataset), "execution_view": view, "private_document": True, "native_diagnostic_only": view == "native-docx"}},
         }
         questions: list[dict[str, Any]] = []
         answers: list[dict[str, Any]] = []
@@ -983,13 +2321,81 @@ class AuthoringWorkflow:
             raise AuthoringWorkflowError("canonical evidence view is unavailable")
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
-    def _source_subset(self, dataset: AuthoringDataset, object_ids: list[str]) -> list[dict[str, Any]]:
+    def _source_subset(
+        self,
+        dataset: AuthoringDataset,
+        object_ids: list[str],
+        *,
+        max_items: int | None = None,
+        max_value_chars: int | None = None,
+        include_witness: bool = True,
+    ) -> list[dict[str, Any]]:
         records = {str(record["object_id"]): record for record in self._records(dataset.authoring_dataset_id)}
-        return [
-            {"object_id": item, "object_type": records[item]["object_type"], "canonical_value": records[item]["canonical_value"], "witness": records[item]["witness"]}
-            for item in object_ids
-            if item in records
-        ]
+        result: list[dict[str, Any]] = []
+        for item in object_ids:
+            if item not in records:
+                continue
+            if max_items is not None and len(result) >= max_items:
+                break
+            record = records[item]
+            value = str(record["canonical_value"])
+            if max_value_chars is not None and len(value) > max_value_chars:
+                lead = max(1, max_value_chars * 3 // 4)
+                tail = max(1, max_value_chars - lead)
+                value = f"{value[:lead]}\n…[已截断]…\n{value[-tail:]}"
+            source = {
+                "object_id": item,
+                "object_type": record["object_type"],
+                "canonical_value": value,
+            }
+            if include_witness:
+                source["witness"] = record["witness"]
+            result.append(source)
+        return result
+
+    @staticmethod
+    def _table_context_ids(records: dict[str, dict[str, Any]], object_ids: list[str]) -> list[str]:
+        """Find visible table labels around cited cells without widening Gold truth.
+
+        Older target artifacts could cite only a data cell.  Its column header
+        and row label are presentation context, not extra candidate evidence,
+        but they are necessary for a person (and a question proposal) to read
+        that cell naturally.  Candidate citations remain fail-closed against
+        the original target source IDs.
+        """
+
+        context: list[str] = []
+        for object_id in object_ids:
+            cell = records.get(object_id)
+            if cell is None or cell.get("object_type") not in {"cell", "logical_cell"}:
+                continue
+            table_id = cell.get("table_id")
+            if not table_id:
+                continue
+            row, column = int(cell.get("row", 0)), int(cell.get("column", 0))
+            table_cells = sorted(
+                (
+                    item
+                    for item in records.values()
+                    if item.get("table_id") == table_id
+                    and item.get("object_type") in {"cell", "logical_cell"}
+                    and str(item.get("canonical_value") or "").strip()
+                ),
+                key=lambda item: (int(item.get("row", 0)), int(item.get("column", 0))),
+            )
+            min_row = min(int(item.get("row", 0)) for item in table_cells)
+            min_column = min(int(item.get("column", 0)) for item in table_cells)
+            seen_text: set[str] = set()
+            for item in table_cells:
+                item_id = str(item["object_id"])
+                item_row, item_column = int(item.get("row", 0)), int(item.get("column", 0))
+                is_column_context = item_column == column and item_row == min_row
+                is_row_context = item_row == row and item_column == min_column
+                text = str(item.get("canonical_value") or "").strip()
+                if (is_column_context or is_row_context) and item_id not in object_ids and item_id not in context and text not in seen_text:
+                    context.append(item_id)
+                    seen_text.add(text)
+        return context[:8]
 
     def _target(self, dataset: AuthoringDataset, target_id: str) -> BenchmarkTargetCandidate:
         for target in self.list_targets(dataset):
@@ -1015,6 +2421,13 @@ class AuthoringWorkflow:
     def _require_analyzed(dataset: AuthoringDataset) -> None:
         if dataset.state not in {AuthoringState.ANALYZED, AuthoringState.TARGETS_READY, AuthoringState.CANDIDATES_READY, AuthoringState.REVIEW_REQUIRED, AuthoringState.APPROVED, AuthoringState.EXPORTED, AuthoringState.REGISTERED, AuthoringState.BLOCKED}:
             raise AuthoringWorkflowError("dataset must be analyzed before authoring")
+
+    @staticmethod
+    def _require_editable(dataset: AuthoringDataset) -> None:
+        if dataset.state == AuthoringState.FORMAL_RELEASED:
+            raise AuthoringWorkflowError(
+                "formal dataset is already published; start a new authoring flow for changes"
+            )
 
     def _advance_state(self, dataset: AuthoringDataset, state: AuthoringState) -> None:
         allowed = {AuthoringState.ANALYZED, AuthoringState.TARGETS_READY, AuthoringState.CANDIDATES_READY, AuthoringState.REVIEW_REQUIRED, AuthoringState.APPROVED, AuthoringState.EXPORTED, AuthoringState.REGISTERED, AuthoringState.BLOCKED}

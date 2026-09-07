@@ -187,7 +187,7 @@ class DockerProvider:
         host_port = reserve_loopback_port()
         container_port = host_port
         token = secrets.token_urlsafe(32)
-        name = f"rag-eval-{request.run_id}".replace("_", "-")[:63]
+        name = managed_container_name(request.run_id)
         argv = [
             "run", "--detach", "--rm", "--name", name,
             "--label", "rag-eval.managed=true",
@@ -216,7 +216,21 @@ class DockerProvider:
                 "--port", str(container_port),
             ]
         )
-        container_id = _docker(argv).strip()
+        try:
+            container_id = _docker(argv).strip()
+        except RuntimeError as exc:
+            # A worker launch can fail after Docker has created the named
+            # container (for example, during an interrupted handshake).  The
+            # next attempt must not blindly delete an arbitrary user
+            # container that happens to share the generated name.  Inspect the
+            # managed labels first and remove only the exact stale Platform
+            # container before retrying once.
+            message = str(exc).lower()
+            if "already in use" not in message and "is already in use" not in message:
+                raise
+            if not _remove_managed_container(name, request.run_id):
+                raise
+            container_id = _docker(argv).strip()
         client = WorkerClient(
             f"http://127.0.0.1:{host_port}",
             token=token,
@@ -273,6 +287,51 @@ def _docker(arguments: list[str], *, check: bool = True) -> subprocess.Completed
     if check and result.returncode != 0:
         raise RuntimeError(f"docker {' '.join(arguments[:2])} failed: {result.stderr.strip() or result.stdout.strip()}")
     return result.stdout if check else result
+
+
+def _remove_managed_container(name: str, run_id: str) -> bool:
+    """Remove one stale container only when Platform ownership is proven.
+
+    Docker's ``--rm`` cannot clean up a container when the process exits
+    before the container lifecycle handle is returned.  The generated name is
+    useful for retries, but it is not an ownership proof by itself.  Require
+    both Platform's management label and the exact run ID before force-removal.
+    """
+
+    try:
+        inspected = _docker(
+            ["inspect", name, "--format", "{{json .Config.Labels}}"],
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if not isinstance(inspected, subprocess.CompletedProcess) or inspected.returncode != 0:
+        return False
+    try:
+        labels = json.loads(inspected.stdout or "{}")
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(labels, dict):
+        return False
+    if labels.get("rag-eval.managed") != "true" or labels.get("rag-eval.run_id") != run_id:
+        return False
+    try:
+        removed = _docker(["rm", "--force", name], check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return isinstance(removed, subprocess.CompletedProcess) and removed.returncode == 0
+
+
+def managed_container_name(run_id: str) -> str:
+    """Return the bounded name used for Platform-managed Docker workers."""
+
+    return f"rag-eval-{run_id}".replace("_", "-")[:63]
+
+
+def cleanup_managed_run(run_id: str) -> bool:
+    """Best-effort removal of one exact, label-verified stale worker."""
+
+    return _remove_managed_container(managed_container_name(run_id), run_id)
 
 
 def _redact_runtime_endpoint_logs(directory: Path, values: tuple[str, ...]) -> None:

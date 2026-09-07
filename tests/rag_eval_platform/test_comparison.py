@@ -134,6 +134,24 @@ def test_exploratory_never_declares_a_winner() -> None:
     assert decision.may_declare_winner is False
 
 
+def test_native_docx_diagnostic_is_never_winner_eligible() -> None:
+    first = manifest("run-1")
+    native = manifest(
+        "run-2",
+        experiment_id="experiment-enhanced",
+        execution_view="native-docx",
+        diagnostic_only=True,
+    )
+
+    task = validate_comparison([first, native], ComparisonTier.TASK_COMPARABLE)
+    exploratory = validate_comparison([first, native], ComparisonTier.EXPLORATORY)
+
+    assert task.compatible is False
+    assert any("native DOCX diagnostic" in reason for reason in task.reasons)
+    assert exploratory.compatible is True
+    assert exploratory.may_declare_winner is False
+
+
 def test_strict_same_system_rejects_dependency_or_model_drift() -> None:
     first = manifest("run-1")
     second = manifest("run-2", experiment_id="experiment-enhanced")

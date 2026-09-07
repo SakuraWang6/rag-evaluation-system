@@ -77,11 +77,12 @@ Workers are isolated and created by the Platform for each evaluation run.
 
 Open `http://127.0.0.1:4178`, then follow the three actions on **Overview**:
 
-1. **Author a dataset** — upload a private DOCX, inspect canonicalization and
-   target discovery, resolve question/answer/evidence candidates, and review
-   them. Export and register the approved canonical-text Dataset Bundle.
-   Uploading an already sealed Bundle is an Advanced/import path; the small
-   TXT/Markdown editor remains a diagnostic/manual fallback.
+1. **Create or import a dataset** — the WebUI offers three choices: create
+   from a private DOCX, import an already sealed Bundle ZIP, or make a small
+   TXT/Markdown dataset by selecting source text and entering one question and
+   answer. DOCX authoring is the main path: inspect canonicalization and target
+   discovery, resolve question/answer/evidence candidates, review them, then
+   export and register the approved canonical-text Bundle.
 2. **Add RAG system** — select LightRAG or RAG-Anything, save it, and use
    **Test connection** to confirm the local model runtime is reachable.
 3. **New evaluation** — select the sealed Dataset and tested RAG system,

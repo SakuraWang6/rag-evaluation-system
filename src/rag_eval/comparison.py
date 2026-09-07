@@ -79,6 +79,10 @@ def _base_reasons(runs: list[RunManifest]) -> list[str]:
             reasons.append(f"{run.run_id} is not a schema-v2 platform run")
         if run.status != RunStatus.COMPLETED:
             reasons.append(f"{run.run_id} is not a completed run")
+        if run.diagnostic_only or run.execution_view == "native-docx":
+            reasons.append(
+                f"{run.run_id} uses native DOCX diagnostic execution and cannot declare a comparison winner"
+            )
     for field_name in (
         "bundle_id",
         "case_selection_id",

@@ -77,12 +77,6 @@ class DatasetDraftStore:
             (self.root / f"{safe_id(draft_id)}.json").read_text(encoding="utf-8")
         )
 
-    def list(self) -> list[DatasetDraft]:
-        return [
-            DatasetDraft.model_validate_json(path.read_text(encoding="utf-8"))
-            for path in sorted(self.root.glob("*.json"))
-        ]
-
     def validate(self, draft: DatasetDraft) -> None:
         _validate_draft(draft)
         staging = self._materialize(draft)

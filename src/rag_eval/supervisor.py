@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Self
+from typing import Callable, Self
 
 from rag_eval.contracts.run import RunStatus
 from rag_eval.execution import RunExecutor
@@ -22,11 +22,13 @@ class JobSupervisor:
         systems: SystemResolver,
         executor: RunExecutor,
         providers: ExecutionProviderRegistry,
+        on_run_completed: Callable[[str], object] | None = None,
     ) -> None:
         self.jobs = jobs
         self.systems = systems
         self.executor = executor
         self.providers = providers
+        self.on_run_completed = on_run_completed
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
@@ -70,6 +72,10 @@ class JobSupervisor:
                 self.executor.dataset_store,
                 self.executor.run_store,
                 self.providers.get(resolved.provider),
+                # A queued run must retain the formal-release authority used
+                # by its preview; otherwise formal releases look unavailable
+                # only after the supervisor claims the job.
+                dataset_release_store=self.executor.dataset_release_store,
             )
             manifest = executor.execute(
                 job.experiment,
@@ -87,6 +93,18 @@ class JobSupervisor:
                 self.jobs.transition(
                     job.job_id, JobStatus.COMPLETED, run_id=manifest.run_id
                 )
+                if self.on_run_completed is not None:
+                    # Semantic review is scheduled only after the immutable
+                    # Run and its job are complete. The callback must return
+                    # quickly (it owns any background model work), so a slow
+                    # local LLM cannot block the single-writer supervisor.
+                    try:
+                        self.on_run_completed(manifest.run_id)
+                    except Exception:  # pragma: no cover - defensive callback boundary
+                        logger.exception(
+                            "could not schedule post-run review for %s",
+                            manifest.run_id,
+                        )
         except Exception as exc:
             current = self.jobs.get(job.job_id)
             target = (

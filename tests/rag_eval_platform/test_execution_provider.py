@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from rag_eval.execution_provider import (
@@ -63,6 +64,70 @@ def test_docker_provider_launches_the_resolved_immutable_image_id(
     assert "rag-eval-adapter-lightrag:0.1.0" not in run_arguments
     assert handle.launch_metadata["image"] == image_id
     assert handle.launch_metadata["image_reference"] == "rag-eval-adapter-lightrag:0.1.0"
+
+
+def test_docker_provider_retries_after_removing_matching_managed_conflict(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import rag_eval.execution_provider as module
+
+    image_id = "sha256:" + "b" * 64
+    calls: list[list[str]] = []
+    conflict = True
+
+    class Client:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def wait_for_handshake(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    def docker(arguments: list[str], *, check: bool = True):
+        nonlocal conflict
+        calls.append(arguments)
+        if arguments[:2] == ["image", "inspect"]:
+            return image_id
+        if arguments[:1] == ["run"]:
+            if conflict:
+                conflict = False
+                raise RuntimeError("docker run failed: name is already in use")
+            return "container-id\n"
+        if arguments[:1] == ["inspect"] and any("Config.Labels" in item for item in arguments):
+            return subprocess.CompletedProcess(
+                ["docker", *arguments],
+                0,
+                '{"rag-eval.managed":"true","rag-eval.run_id":"retry-conflict"}',
+                "",
+            )
+        if arguments[:1] == ["inspect"]:
+            return '{"Pid": 1234}'
+        if arguments[:2] == ["rm", "--force"]:
+            return subprocess.CompletedProcess(["docker", *arguments], 0, "", "")
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(module.shutil, "which", lambda _name: "/usr/bin/docker")
+    monkeypatch.setattr(module.os, "getuid", lambda: 501)
+    monkeypatch.setattr(module.os, "getgid", lambda: 20)
+    monkeypatch.setattr(module, "reserve_loopback_port", lambda: 32124)
+    monkeypatch.setattr(module, "WorkerClient", Client)
+    monkeypatch.setattr(module, "_docker", docker)
+
+    handle = DockerProvider().start(
+        ExecutionRequest(
+            command=WorkerCommand(adapter_id="lightrag", adapter_factory="example:create"),
+            run_id="retry-conflict",
+            log_path=tmp_path / "worker.log",
+            source_dir=tmp_path / "source",
+            work_dir=tmp_path / "work",
+        )
+    )
+
+    assert handle.container_id == "container-id"
+    assert any(arguments[:2] == ["rm", "--force"] for arguments in calls)
+    assert sum(arguments[:1] == ["run"] for arguments in calls) == 2
 
 
 def test_docker_handle_closes_adapter_and_redacts_runtime_logs(

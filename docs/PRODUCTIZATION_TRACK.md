@@ -11,10 +11,12 @@ Basic / Advanced → EvaluationDraft → canonical ExperimentSpec → RunExecuto
                  → ExecutionProvider → authenticated Adapter Worker → RAG
 ```
 
-`EvaluationDraft`, Dataset Drafts, System Connections, and development secret
-storage live under `RAG_EVAL_HOME/product/`. They are editable product state;
-they are not Run Artifacts. A generated `ExperimentSpec` expands every
-versioned profile default before a run is queued.
+`EvaluationDraft`, System Connections, temporary manual-text staging records,
+and development secret storage live under `RAG_EVAL_HOME/product/`. They are
+product state, not Run Artifacts. The WebUI uses the manual-text staging record
+only to create one sealed dataset; it does not expose a separate draft list or
+draft editor. A generated `ExperimentSpec` expands every versioned profile
+default before a run is queued.
 
 ## Basic and Advanced
 
@@ -23,10 +25,10 @@ Query Mode, and Local or Docker execution. The profile owns versioned defaults
 such as `candidate_k=20` and `context_k=5`; they are shown in the canonical
 Spec preview and never looked up again at run time.
 
-Advanced contains local-path Bundle registration, legacy/custom adapter
-registration through the existing CLI, runtime/factory/environment settings,
-formal artifacts, and direct ExperimentSpec authoring. Custom RAG is not a
-Basic option.
+Advanced contains legacy/custom adapter registration through the existing CLI,
+runtime/factory/environment settings, formal artifacts, and direct
+ExperimentSpec authoring. Local-path Bundle registration remains a CLI/CI
+operation rather than a browser action. Custom RAG is not a Basic option.
 
 ## Dataset lifecycle
 
@@ -39,15 +41,13 @@ invoked by the Platform.
 - **Upload Bundle** accepts one Bundle ZIP over the browser API. Platform
   rejects unsafe ZIP paths and validates it in a staging directory before
   copying it into the immutable Bundle Store.
-- **Register local path** is Advanced-only. The path is resolved by the
-  Platform host, not the browser, then copied into managed storage.
 - **Create from Document** accepts a private DOCX and runs the Authoring flow:
   deterministic canonicalization, structure-first targets, separate
   question/answer/evidence resolution, validation gates, reviewer decisions,
   and export/register of an immutable Bundle ID.
-- **Create Dataset** supports UTF-8 TXT/Markdown as a small manual/diagnostic
-  fallback: select a TextSpan, enter Question and Gold Answer, validate, then
-  seal. It is not the private-document Authoring mainline.
+- **Create Dataset** supports UTF-8 TXT/Markdown as a small manual flow:
+  select source text, enter one Question and Gold Answer, then create the
+  sealed dataset. It is not the private-document Authoring mainline.
 
 Gold generation, automatic amendment, PDF, OCR, and non-DOCX Office-document
 import are not part of this track. Native-DOCX execution is diagnostic only;

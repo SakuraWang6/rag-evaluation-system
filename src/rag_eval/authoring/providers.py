@@ -36,6 +36,10 @@ class LocalOllamaProvider:
     endpoint: str = os.environ.get("RAG_EVAL_AUTHORING_OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
     model: str = os.environ.get("RAG_EVAL_AUTHORING_OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
     provider_id: str = "ollama-local"
+    # Question and answer proposal calls retain the normal 60-second timeout.
+    # Durable target-discovery jobs explicitly use ``None``: they run outside
+    # the request lifecycle and may legitimately need longer on a local model.
+    timeout_seconds: float | None = 60.0
 
     def propose(self, *, task: str, source: list[dict[str, Any]], prompt: str, seed: int) -> dict[str, Any]:
         payload = {
@@ -46,7 +50,15 @@ class LocalOllamaProvider:
             "prompt": prompt + "\n\nSOURCE JSON:\n" + json.dumps(source, ensure_ascii=False, sort_keys=True),
         }
         try:
-            response = httpx.post(self.endpoint, json=payload, timeout=60)
+            # Do not inherit desktop-shell proxy settings for a loopback-only
+            # provider. They can make a local Ollama request hang even when
+            # the model service is healthy.
+            response = httpx.post(
+                self.endpoint,
+                json=payload,
+                timeout=self.timeout_seconds,
+                trust_env=False,
+            )
             response.raise_for_status()
             body = response.json()
             value = json.loads(str(body["response"]))

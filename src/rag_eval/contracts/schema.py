@@ -8,6 +8,8 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from rag_eval.contracts.adapter import RAGQuery, RAGResult
+from rag_eval.contracts.canonical import CanonicalDocument
+from rag_eval.contracts.benchmark import BenchmarkGold, BenchmarkManifest, BenchmarkQuestion, BenchmarkSegment
 from rag_eval.contracts.dataset import (
     DatasetBundleManifest,
     GoldAnswer,
@@ -26,6 +28,11 @@ from rag_eval.contracts.run import CaseResult, ExperimentSpec, RunManifest
 from rag_eval.contracts.wire import HandshakeResponse, WireRequest, WireResponse
 
 PUBLIC_MODELS: dict[str, type[BaseModel]] = {
+    "canonical-document": CanonicalDocument,
+    "benchmark-manifest": BenchmarkManifest,
+    "benchmark-segment": BenchmarkSegment,
+    "benchmark-question": BenchmarkQuestion,
+    "benchmark-gold": BenchmarkGold,
     "dataset-bundle-manifest": DatasetBundleManifest,
     "question": Question,
     "gold-answer": GoldAnswer,

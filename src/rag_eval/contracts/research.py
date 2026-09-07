@@ -63,6 +63,7 @@ class SourceIdentity(ContractModel):
 
 
 class FailureLabel(StrEnum):
+    PROVENANCE_UNAVAILABLE = "provenance_unavailable"
     RETRIEVAL_MISSING = "retrieval_missing"
     RANKING_FAILURE = "ranking_failure"
     CONTEXT_SELECTION_LOSS = "context_selection_loss"
@@ -71,6 +72,10 @@ class FailureLabel(StrEnum):
     TIMEOUT = "timeout"
     ADAPTER_ERROR = "adapter_error"
     DATASET_ISSUE = "dataset_issue"
+    PARTIAL_COVERAGE = "partial_coverage"
+    UNSUPPORTED_STAGE = "unsupported_stage"
+    RUNTIME_ERROR = "runtime_error"
+    MAPPING_CORRUPTED = "mapping_corrupted"
     NEEDS_REVIEW = "needs_review"
 
 

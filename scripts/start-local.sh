@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Start the standalone RAG Evaluation Platform API and its standalone WebUI.
+# Start the normal RAG Evaluation Platform API and its WebUI.
 #
-# This starts only the current evaluation system. Adapter Workers are created
-# per run by the Platform, so this script does not start LightRAG or any legacy
-# memory-evaluation service.
+# Adapter Workers remain run-scoped: the Platform starts them when an
+# evaluation is queued and persists the resulting run in the standard Runs
+# store. This launcher does not start a second, detached LightRAG service.
 
 set -Eeuo pipefail
 
@@ -12,10 +12,36 @@ PLATFORM_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACE_ROOT="$(cd "$PLATFORM_ROOT/.." && pwd)"
 
 WEBUI_ROOT="${RAG_EVAL_WEBUI_DIR:-$WORKSPACE_ROOT/rag-eval-webui}"
-PLATFORM_HOME="${RAG_EVAL_HOME:-${HOME}/.rag_eval_platform}"
+PLATFORM_HOME="${RAG_EVAL_HOME:-$WORKSPACE_ROOT/.rag-eval-real-benchmark-pilot}"
 API_PORT="${RAG_EVAL_API_PORT:-8765}"
 WEBUI_PORT="${RAG_EVAL_WEBUI_PORT:-4178}"
 API_URL="http://127.0.0.1:${API_PORT}/api/v1"
+
+# Completed E2E runs live in their immutable rehearsal homes.  The Platform
+# starts normally from the real benchmark home, while the standard Runs API
+# reads these existing schema-v2 manifests through a read-only compatibility
+# layer. Nothing is copied or mutated.
+if [[ -z "${RAG_EVAL_RUN_ARCHIVES:-}" ]]; then
+  shopt -s nullglob
+  RUN_ARCHIVES=()
+  for archive in "$WORKSPACE_ROOT"/.rag-eval-e2e-rehearsal-v*; do
+    [[ -d "$archive/runs" ]] && RUN_ARCHIVES+=("$archive")
+  done
+  shopt -u nullglob
+  if (( ${#RUN_ARCHIVES[@]} )); then
+    RAG_EVAL_RUN_ARCHIVES="$(IFS=:; echo "${RUN_ARCHIVES[*]}")"
+    export RAG_EVAL_RUN_ARCHIVES
+  fi
+fi
+
+# The bundled local launcher has one concrete LightRAG runtime on this
+# workstation.  Record it as a normal product connection so the Systems and
+# New Evaluation pages are immediately usable; startup still does not launch
+# a Worker or a LightRAG server.
+if [[ -z "${RAG_EVAL_LIGHTRAG_WORKER_PYTHON:-}" && -x "/Users/sakura/miniconda3/envs/lightrag-memory-eval/bin/python" ]]; then
+  export RAG_EVAL_LIGHTRAG_WORKER_PYTHON="/Users/sakura/miniconda3/envs/lightrag-memory-eval/bin/python"
+fi
+export RAG_EVAL_BOOTSTRAP_LOCAL_SYSTEM="${RAG_EVAL_BOOTSTRAP_LOCAL_SYSTEM:-1}"
 
 api_ready() {
   curl --noproxy '*' --fail --silent --max-time 1 "$API_URL/health" >/dev/null
@@ -23,6 +49,10 @@ api_ready() {
 
 valid_port() {
   [[ "$1" =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$1 <= 65535 ))
+}
+
+port_in_use() {
+  command -v nc >/dev/null 2>&1 && nc -z -w 1 127.0.0.1 "$1" >/dev/null 2>&1
 }
 
 if ! valid_port "$API_PORT" || ! valid_port "$WEBUI_PORT"; then
@@ -33,6 +63,20 @@ if [[ "$API_PORT" == "$WEBUI_PORT" ]]; then
   echo "RAG_EVAL_API_PORT and RAG_EVAL_WEBUI_PORT must be different." >&2
   exit 2
 fi
+
+# Keep one obvious Platform/WebUI pair per launcher invocation.  Silently
+# moving the defaults when an older instance is still running makes the user
+# open the wrong tab and then see misleading "Failed to fetch" errors.  Stop
+# the existing launcher (or explicitly choose a different pair) instead.
+occupied_ports=()
+port_in_use "$API_PORT" && occupied_ports+=("API $API_PORT")
+port_in_use "$WEBUI_PORT" && occupied_ports+=("WebUI $WEBUI_PORT")
+if (( ${#occupied_ports[@]} )); then
+  echo "Required Platform port(s) are already in use: ${occupied_ports[*]}." >&2
+  echo "Stop the existing start-local.sh process, or set both RAG_EVAL_API_PORT and RAG_EVAL_WEBUI_PORT to a free pair." >&2
+  exit 2
+fi
+API_URL="http://127.0.0.1:${API_PORT}/api/v1"
 if [[ ! -f "$WEBUI_ROOT/package.json" ]]; then
   echo "WebUI checkout not found: $WEBUI_ROOT" >&2
   echo "Set RAG_EVAL_WEBUI_DIR to the rag-eval-webui checkout." >&2
@@ -42,6 +86,23 @@ if [[ ! -x "$WEBUI_ROOT/node_modules/.bin/vite" ]]; then
   echo "WebUI dependencies are missing: $WEBUI_ROOT/node_modules/.bin/vite" >&2
   echo "Run 'npm ci' in $WEBUI_ROOT, then run this script again." >&2
   exit 2
+fi
+
+if command -v node >/dev/null 2>&1; then
+  NODE_COMMAND="$(command -v node)"
+else
+  # A desktop shell may not source nvm even though the checked-out WebUI has
+  # its dependencies installed.  Use an installed nvm Node as a narrow local
+  # fallback; do not download or install anything from this launcher.
+  shopt -s nullglob
+  NODE_CANDIDATES=("$HOME"/.nvm/versions/node/*/bin/node)
+  shopt -u nullglob
+  if (( ${#NODE_CANDIDATES[@]} )); then
+    NODE_COMMAND="${NODE_CANDIDATES[${#NODE_CANDIDATES[@]} - 1]}"
+  else
+    echo "Node.js is not available in PATH and no local nvm runtime was found." >&2
+    exit 2
+  fi
 fi
 
 if [[ -x "$PLATFORM_ROOT/.venv/bin/rag-eval" ]]; then
@@ -78,6 +139,9 @@ echo "Starting RAG Evaluation Platform"
 echo "  API:    $API_URL"
 echo "  WebUI:  http://127.0.0.1:${WEBUI_PORT}"
 echo "  Home:   $PLATFORM_HOME"
+if [[ -n "${RAG_EVAL_RUN_ARCHIVES:-}" ]]; then
+  echo "  Historical runs: enabled (read-only compatibility)"
+fi
 
 "${RAG_EVAL_COMMAND[@]}" --home "$PLATFORM_HOME" serve --host 127.0.0.1 --port "$API_PORT" &
 API_PID=$!
@@ -100,7 +164,10 @@ fi
 
 (
   cd "$WEBUI_ROOT"
-  VITE_RAG_EVAL_API="$API_URL" npm run dev -- --host 127.0.0.1 --port "$WEBUI_PORT"
+  # Replace this subshell with Vite.  The cleanup trap can then terminate the
+  # exact WebUI process it started, rather than leaving an orphaned Node
+  # process occupying the port after the API is stopped or restarted.
+  exec env VITE_RAG_EVAL_API="$API_URL" "$NODE_COMMAND" node_modules/vite/bin/vite.js --host 127.0.0.1 --port "$WEBUI_PORT" --strictPort
 ) &
 WEBUI_PID=$!
 

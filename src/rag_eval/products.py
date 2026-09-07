@@ -241,6 +241,9 @@ class EvaluationDraft(ProductModel):
     draft_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     mode: ProductMode = ProductMode.BASIC
     bundle_id: str | None = None
+    # A formal release is selected directly in the product UI.  Its immutable
+    # runtime projection is resolved only when previewing/finalising the draft.
+    dataset_release_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
     system_id: str | None = None
     profile_id: str | None = None
     profile_version: str | None = None
@@ -272,6 +275,7 @@ def canonical_experiment(
     profile: SystemProfile,
     *,
     case_ids: list[str],
+    bundle_id: str | None = None,
 ) -> ExperimentSpec:
     if draft.profile_id != connection.profile_id or draft.profile_version != connection.profile_version:
         raise ValueError("evaluation draft and system connection profile versions differ")
@@ -286,17 +290,30 @@ def canonical_experiment(
     metrics = deep_merge(profile.defaults["metric_config"], connection.metric_overrides)
     metrics = deep_merge(metrics, draft.metric_overrides)
     _require_explicit_model_identities(adapter)
-    selected = sorted(case_ids if draft.case_ids is None else draft.case_ids)
+    selected_case_ids = None if draft.case_ids is None else sorted(draft.case_ids)
+    selected = sorted(case_ids if selected_case_ids is None else selected_case_ids)
     policy = "all" if draft.case_ids is None else "explicit"
+    selection_id = case_selection_id(selected, policy=policy, seed=draft.seed)
+    # The experiment ID is also the durable idempotency key used by
+    # ExperimentStore.  It must represent *all* persisted experiment content,
+    # not merely the dataset and seed: changing a selected model or any
+    # effective override must create a distinct experiment rather than collide
+    # with a previous run that happened to use the same display name.
     fingerprint = hashlib.sha256(
         json.dumps(
             {
-                "profile_id": profile.profile_id,
-                "profile_version": profile.profile_version,
-                "bundle_id": draft.bundle_id,
+                "bundle_id": bundle_id or draft.bundle_id,
+                "dataset_release_id": draft.dataset_release_id,
                 "system_id": connection.system_id,
+                "adapter_id": profile.adapter_id,
+                "adapter_config": adapter,
+                "query_config": query,
+                "metric_config": metrics,
+                "case_ids": selected_case_ids,
+                "case_selection_id": selection_id,
                 "seed": draft.seed,
-                "selected": selected,
+                "repetitions": draft.repetitions,
+                "formal": draft.formal,
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -305,14 +322,16 @@ def canonical_experiment(
     name = re.sub(r"[^A-Za-z0-9_-]+", "-", draft.display_name.strip()).strip("-") or "evaluation"
     return ExperimentSpec(
         experiment_id=f"{name}-{fingerprint}",
-        bundle_id=draft.bundle_id or "",
+        display_name=draft.display_name.strip() or None,
+        bundle_id=bundle_id or draft.bundle_id or "",
+        dataset_release_id=draft.dataset_release_id,
         system_id=connection.system_id,
         adapter_id=profile.adapter_id,
         adapter_config=adapter,
         query_config=query,
         metric_config=metrics,
-        case_ids=draft.case_ids,
-        case_selection_id=case_selection_id(selected, policy=policy, seed=draft.seed),
+        case_ids=selected_case_ids,
+        case_selection_id=selection_id,
         seed=draft.seed,
         repetitions=draft.repetitions,
     )
@@ -345,6 +364,21 @@ class JsonProductStore:
     def get(self, identifier: str) -> ProductModel:
         return self.model.model_validate_json((self.root / f"{safe_id(identifier)}.json").read_text(encoding="utf-8"))
 
+    def delete(self, identifier: str) -> ProductModel:
+        """Delete one editable product record and return its last value.
+
+        Product connections are intentionally editable configuration, unlike
+        run/release artifacts.  The API uses the returned value to clean up
+        only the secret references owned by the deleted connection.
+        """
+
+        path = self.root / f"{safe_id(identifier)}.json"
+        if not path.is_file():
+            raise FileNotFoundError(identifier)
+        value = self.model.model_validate_json(path.read_text(encoding="utf-8"))
+        path.unlink()
+        return value
+
     def list(self) -> list[ProductModel]:
         return [self.model.model_validate_json(item.read_text(encoding="utf-8")) for item in sorted(self.root.glob("*.json"))]
 
@@ -366,3 +400,15 @@ class ProductResources:
 
     def get_connection(self, system_id: str) -> SystemConnection:
         return self.connections.get(system_id)  # type: ignore[return-value]
+
+    def delete_connection(self, system_id: str) -> SystemConnection:
+        """Remove exactly one configured product system.
+
+        A system ID is the product identity (not the execution provider), so
+        switching between Local and Docker replaces this one record rather
+        than creating a second provider-specific system.  Deletion is exposed
+        explicitly by the product API; immutable runs and datasets are not
+        touched.
+        """
+
+        return self.connections.delete(system_id)  # type: ignore[return-value]

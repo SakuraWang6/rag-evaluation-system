@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rag_eval.artifact_contract import artifact_digest
 from rag_eval.contracts.adapter import AdapterCapabilities, RAGResult
+from rag_eval.contracts.benchmark import SegmentEvaluationTrace
 from rag_eval.contracts.dataset import GoldAnswer, GoldEvidenceSet
 from rag_eval.contracts.research import (
     AnalysisContract,
@@ -75,7 +76,15 @@ class MetricResult(ContractModel):
 
 class ExperimentSpec(ContractModel):
     experiment_id: str = Field(min_length=1)
+    # A human-facing label is frozen with newly created experiments but never
+    # changes the evaluation semantics or research identifiers.
+    display_name: str | None = Field(default=None, max_length=160)
     bundle_id: str = Field(min_length=1)
+    dataset_release_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
+    benchmark_contract_version: str | None = None
+    benchmark_contract_digest: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     system_id: str = Field(min_length=1)
     adapter_id: str = Field(min_length=1)
     adapter_config: dict[str, Any] = Field(default_factory=dict)
@@ -107,6 +116,14 @@ class ExperimentSpec(ContractModel):
 
     @model_validator(mode="after")
     def validate_formal_model_lock(self) -> ExperimentSpec:
+        if (self.benchmark_contract_version is None) != (
+            self.benchmark_contract_digest is None
+        ):
+            raise ValueError(
+                "benchmark_contract_version and benchmark_contract_digest must be set together"
+            )
+        if self.benchmark_contract_digest is not None and self.dataset_release_id is None:
+            raise ValueError("benchmark contract experiments require dataset_release_id")
         if not self.formal:
             return self
         if not self.model_lock_digest:
@@ -158,6 +175,7 @@ class CaseResult(ContractModel):
     gold_evidence_set: GoldEvidenceSet | None = None
     rag_result: RAGResult | None = None
     metrics: list[MetricResult] = Field(default_factory=list)
+    segment_evaluation_trace: SegmentEvaluationTrace | None = None
     error: CaseError | None = None
     failure_assessment: FailureAssessment | None = None
     started_at: datetime
@@ -187,8 +205,20 @@ class RunManifest(ContractModel):
     artifact_contract_version: Literal["1.2"] = "1.2"
     run_id: str = Field(min_length=1)
     experiment_id: str = Field(min_length=1)
+    # Optional for schema-v2 backward compatibility.  Historical Run names
+    # are projected by the product layer without rewriting their manifest.
+    display_name: str | None = Field(default=None, max_length=160)
+    # Canonical benchmark-contract runs and native DOCX diagnostics must not
+    # be silently treated as the same evaluation view in comparison UX.
+    execution_view: str | None = Field(default=None, max_length=80)
+    diagnostic_only: bool = False
     status: RunStatus
     bundle_id: str = Field(min_length=1)
+    dataset_release_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
+    benchmark_contract_version: str | None = None
+    benchmark_contract_digest: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     case_selection_id: str = Field(min_length=1)
     platform_version: str = Field(min_length=1)
     adapter_id: str = Field(min_length=1)

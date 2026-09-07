@@ -39,6 +39,12 @@ class WorkerClient:
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {token}"},
             timeout=timeout,
+            # Worker endpoints are Platform-owned loopback/container ports.
+            # Do not inherit a developer's HTTP(S)/SOCKS proxy environment;
+            # doing so can prevent the client from even being constructed
+            # (for example when socksio is not installed) and turns a local
+            # handshake into a misleading network failure.
+            trust_env=False,
         )
         self._handshake: HandshakeResponse | None = None
 
@@ -88,11 +94,17 @@ class WorkerClient:
             raise WorkerProtocolError("declared and observed capabilities differ")
         return prepared
 
-    def ingest(self, documents: list[DocumentInput]) -> IngestionResult:
+    def ingest(
+        self,
+        documents: list[DocumentInput],
+        *,
+        timeout: float | None = None,
+    ) -> IngestionResult:
         return self._send(
             "/ingest",
             {"documents": [item.model_dump(mode="json") for item in documents]},
             IngestionResult,
+            timeout=timeout,
         )
 
     def query(self, query: RAGQuery) -> RAGResult:
@@ -112,12 +124,17 @@ class WorkerClient:
         path: str,
         payload: dict[str, Any],
         model: type[ModelT] | None,
+        *,
+        timeout: float | None = None,
     ) -> ModelT | None:
         request_id = uuid.uuid4().hex
         envelope = WireRequest(
             request_id=request_id, run_id=self.run_id, payload=payload
         )
-        response = self._client.post(path, json=envelope.model_dump(mode="json"))
+        request_kwargs: dict[str, Any] = {"json": envelope.model_dump(mode="json")}
+        if timeout is not None:
+            request_kwargs["timeout"] = timeout
+        response = self._client.post(path, **request_kwargs)
         return self._parse(response, request_id, model)
 
     def _parse(

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from enum import StrEnum
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -24,6 +25,11 @@ class AdapterCapabilities(ContractModel):
     latency_breakdown: bool = False
     token_usage: bool = False
     reset: bool = False
+    # Segment-native traces are additive. Legacy adapters may retain the
+    # pre-existing evidence-item fields while vNext benchmark adapters expose
+    # an auditable stage result for every retrieval boundary.
+    segment_traces: bool = False
+    strict_segment_ranking: bool = False
 
 
 class PrepareContext(ContractModel):
@@ -77,6 +83,79 @@ class IngestionResult(ContractModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class SegmentTraceStatus(StrEnum):
+    """Observation state for one retrieval boundary in a benchmark query."""
+
+    OBSERVED = "observed"
+    UNSUPPORTED_STAGE = "unsupported_stage"
+    RUNTIME_ERROR = "runtime_error"
+    MAPPING_CORRUPTED = "mapping_corrupted"
+
+
+class SegmentTraceItem(ContractModel):
+    """A native retrieval item with an adapter-auditable segment relation."""
+
+    native_chunk_id: str = Field(min_length=1)
+    rank: int = Field(ge=1)
+    content: str = ""
+    score: float | None = None
+    source_segment_ids: tuple[str, ...] = Field(min_length=1)
+    mapping_receipt_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def validate_segment_mapping(self) -> "SegmentTraceItem":
+        if len(set(self.source_segment_ids)) != len(self.source_segment_ids):
+            raise ValueError("segment trace item repeats source segment IDs")
+        return self
+
+    @property
+    def strictly_rankable(self) -> bool:
+        """Whether this item can participate in strict cross-system Recall@K."""
+
+        return len(self.source_segment_ids) == 1
+
+
+class SegmentTraceStage(ContractModel):
+    """One of raw, ranked, or final-context retrieval observations."""
+
+    stage: Literal["raw", "ranked", "context"]
+    status: SegmentTraceStatus
+    items: tuple[SegmentTraceItem, ...] = ()
+    mapping_manifest_digest: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    reason: str | None = None
+
+    @model_validator(mode="after")
+    def validate_stage(self) -> "SegmentTraceStage":
+        if self.status == SegmentTraceStatus.OBSERVED:
+            if self.mapping_manifest_digest is None:
+                raise ValueError("observed segment trace requires a mapping manifest digest")
+            ranks = [item.rank for item in self.items]
+            if len(ranks) != len(set(ranks)):
+                raise ValueError("observed segment trace repeats ranks")
+        elif self.items:
+            raise ValueError("non-observed segment trace cannot claim scoreable items")
+        if self.status != SegmentTraceStatus.OBSERVED and not (self.reason or "").strip():
+            raise ValueError("non-observed segment trace requires a reason")
+        return self
+
+
+class SegmentTraceSet(ContractModel):
+    """The full stage set returned for one query under the vNext contract."""
+
+    raw: SegmentTraceStage
+    ranked: SegmentTraceStage
+    context: SegmentTraceStage
+
+    @model_validator(mode="after")
+    def validate_stage_names(self) -> "SegmentTraceSet":
+        expected = {"raw": self.raw, "ranked": self.ranked, "context": self.context}
+        if any(stage.stage != name for name, stage in expected.items()):
+            raise ValueError("segment trace keys and stage names must agree")
+        return self
+
+
 class RAGEvidenceItem(ContractModel):
     item_id: str = Field(min_length=1)
     rank: int = Field(ge=1)
@@ -108,6 +187,7 @@ class RAGResult(ContractModel):
     token_usage: dict[str, int] | None = None
     trace: dict[str, Any] | None = None
     native_metadata: dict[str, Any] = Field(default_factory=dict)
+    segment_traces: SegmentTraceSet | None = None
 
 
 class ResetResult(ContractModel):

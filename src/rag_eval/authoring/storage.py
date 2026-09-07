@@ -14,6 +14,7 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
+from rag_eval.authoring.canonical import CANONICALIZER_VERSION
 from rag_eval.authoring.models import AuthoringDataset, AuthoringState, SourceManifest
 from rag_eval.storage.atomic import atomic_write_bytes, atomic_write_json
 from rag_eval.storage.runs import safe_id
@@ -24,7 +25,10 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 PARSER_IDENTITY = "rag-eval-authoring-ooxml/1"
-CANONICALIZER_IDENTITY = "rag-eval-authoring-canonicalizer/1"
+# Keep source-manifest provenance and the executable canonicalizer in lockstep.
+# This identity participates in the configuration digest and therefore must not
+# be copied as a second, independently versioned string.
+CANONICALIZER_IDENTITY = CANONICALIZER_VERSION
 MAX_DOCX_BYTES = 128 * 1024 * 1024
 MAX_DOCX_MEMBERS = 10_000
 MAX_DOCX_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
@@ -35,8 +39,11 @@ WORKSPACE_DIRECTORIES = (
     "candidates",
     "reviews",
     "approved",
+    "ledger",
     "exports",
     "diagnostics",
+    "generation-jobs",
+    "discovery-jobs",
 )
 
 
@@ -182,15 +189,61 @@ class AuthoringWorkspaceStore:
         atomic_write_json(workspace / "authoring.json", current.model_dump(mode="json"))
         return current
 
-    def delete(self, authoring_dataset_id: str) -> None:
+    def delete_archived(self, authoring_dataset_id: str) -> None:
+        """Permanently remove one explicitly archived local workspace.
+
+        This deliberately lives beside the filesystem operation so callers
+        cannot accidentally bypass the archive gate.  Formal Dataset Releases
+        and Bundles are stored elsewhere and are never touched here.
+        """
+
+        dataset = self.get(authoring_dataset_id)
+        if dataset.state is not AuthoringState.ARCHIVED:
+            raise AuthoringStorageError(
+                "only an archived authoring dataset can be permanently deleted"
+            )
         workspace = self.workspace(authoring_dataset_id)
-        if not workspace.is_dir():
-            raise FileNotFoundError(authoring_dataset_id)
         # `workspace()` has already resolved and constrained this target to one child.
         shutil.rmtree(workspace)
 
+    def archive(self, authoring_dataset_id: str) -> AuthoringDataset:
+        """Retain an authoring workspace while making it read-only in the UI.
+
+        Archiving is deliberately a soft state transition.  Source, canonical
+        records, candidates, and review history remain available for audit and
+        can never be confused with a deleted workspace.
+        """
+
+        dataset = self.get(authoring_dataset_id)
+        if dataset.state in {AuthoringState.ARCHIVED, AuthoringState.DELETED}:
+            return dataset
+        if dataset.state is AuthoringState.REGISTERED:
+            raise AuthoringStorageError(
+                "a registered authoring dataset cannot be archived; its formal release is immutable"
+            )
+        return self.save(
+            dataset.model_copy(
+                update={
+                    "state": AuthoringState.ARCHIVED,
+                    "archived_at": datetime.now(UTC),
+                }
+            )
+        )
+
     def source_path(self, authoring_dataset_id: str) -> Path:
         return self.workspace(authoring_dataset_id) / "source" / "original.docx"
+
+    def generation_jobs_root(self, authoring_dataset_id: str) -> Path:
+        return self.workspace(authoring_dataset_id) / "generation-jobs"
+
+    def generation_job_path(self, authoring_dataset_id: str, job_id: str) -> Path:
+        return self.generation_jobs_root(authoring_dataset_id) / f"{safe_id(job_id)}.json"
+
+    def discovery_jobs_root(self, authoring_dataset_id: str) -> Path:
+        return self.workspace(authoring_dataset_id) / "discovery-jobs"
+
+    def discovery_job_path(self, authoring_dataset_id: str, job_id: str) -> Path:
+        return self.discovery_jobs_root(authoring_dataset_id) / f"{safe_id(job_id)}.json"
 
     def canonical_path(self, authoring_dataset_id: str, name: str) -> Path:
         return self.workspace(authoring_dataset_id) / "canonical" / safe_id(name)
