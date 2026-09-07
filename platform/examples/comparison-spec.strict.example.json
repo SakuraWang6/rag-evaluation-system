@@ -1,0 +1,27 @@
+{
+  "comparison_id": "lightrag-legacy-vs-enhanced-example",
+  "experiment_ids": ["legacy-example", "enhanced-example"],
+  "tier": "strict_controlled",
+  "controlled_factors": [
+    "query.query_mode",
+    "adapter.chunking.chunk_token_size",
+    "adapter.chunking.chunk_overlap_token_size",
+    "adapter.retrieval_candidate_k",
+    "adapter.final_context_k",
+    "adapter.max_context_tokens",
+    "adapter.generation.temperature",
+    "adapter.generation.seed"
+  ],
+  "treatment_factors": [
+    "adapter.profile",
+    "adapter.exact_id_types",
+    "adapter.ranking_strategy",
+    "adapter.table_preceding_context"
+  ],
+  "primary_metrics": ["context_recall@5"],
+  "secondary_metrics": ["answer_accuracy", "answer_groundedness"],
+  "minimum_metric_coverage": 1.0,
+  "model_lock_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "latency_protocol_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "analysis_contract_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+}

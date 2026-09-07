@@ -1,0 +1,19 @@
+{
+  "protocol_version": "1.0",
+  "adapter_id": "fake",
+  "adapter_version": "0.1.0",
+  "system_id": "fake-rag",
+  "system_version": "fake-rag-1",
+  "capabilities": {
+    "answer": true,
+    "raw_retrieval": true,
+    "ranked_retrieval": true,
+    "final_context": true,
+    "object_provenance": true,
+    "prompt_trace": false,
+    "rerank_trace": false,
+    "latency_breakdown": true,
+    "token_usage": true,
+    "reset": true
+  }
+}

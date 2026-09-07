@@ -1,0 +1,80 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "bundle_id": {
+      "minLength": 1,
+      "title": "Bundle Id",
+      "type": "string"
+    },
+    "system_id": {
+      "minLength": 1,
+      "title": "System Id",
+      "type": "string"
+    },
+    "adapter_id": {
+      "minLength": 1,
+      "title": "Adapter Id",
+      "type": "string"
+    },
+    "adapter_config": {
+      "additionalProperties": true,
+      "title": "Adapter Config",
+      "type": "object"
+    },
+    "query_config": {
+      "additionalProperties": true,
+      "title": "Query Config",
+      "type": "object"
+    },
+    "metric_config": {
+      "additionalProperties": true,
+      "title": "Metric Config",
+      "type": "object"
+    },
+    "case_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Case Ids"
+    },
+    "case_selection_id": {
+      "minLength": 1,
+      "title": "Case Selection Id",
+      "type": "string"
+    },
+    "seed": {
+      "default": 0,
+      "title": "Seed",
+      "type": "integer"
+    },
+    "repetitions": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Repetitions",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "experiment_id",
+    "bundle_id",
+    "system_id",
+    "adapter_id",
+    "case_selection_id"
+  ],
+  "title": "ExperimentSpec",
+  "type": "object"
+}

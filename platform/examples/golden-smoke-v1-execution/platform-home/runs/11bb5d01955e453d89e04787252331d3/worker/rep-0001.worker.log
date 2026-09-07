@@ -1,0 +1,707 @@
+INFO: RAGAnything initialized with config:
+INFO:   Working directory: /Users/sakura/RAG/rag-eval-platform/examples/golden-smoke-v1-execution/platform-home/runs/11bb5d01955e453d89e04787252331d3/work/rep-0001/storage
+INFO:   Parser: mineru
+INFO:   Parse method: txt
+INFO:   Multimodal processing - Image: False, Table: False, Equation: False
+INFO:   Max concurrent files: 1
+INFO: Parser 'mineru' installation verified
+INFO: Initializing LightRAG with parameters: {'working_dir': '/Users/sakura/RAG/rag-eval-platform/examples/golden-smoke-v1-execution/platform-home/runs/11bb5d01955e453d89e04787252331d3/work/rep-0001/storage', 'workspace': 'eval_11bb5d01955e453d89e04787252331d3-rep-0001', 'kv_storage': 'JsonKVStorage', 'doc_status_storage': 'JsonDocStatusStorage', 'graph_storage': 'NetworkXStorage', 'vector_storage': 'NanoVectorDBStorage', 'chunk_token_size': 1200, 'chunk_overlap_token_size': 100, 'llm_model_name': 'qwen3:4b-instruct', 'enable_llm_cache': False}
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] Created new empty graph file: /Users/sakura/RAG/rag-eval-platform/examples/golden-smoke-v1-execution/platform-home/runs/11bb5d01955e453d89e04787252331d3/work/rep-0001/storage/eval_11bb5d01955e453d89e04787252331d3-rep-0001/graph_chunk_entity_relation.graphml
+INFO:nano-vectordb:Init {'embedding_dim': 1024, 'metric': 'cosine', 'storage_file': '/Users/sakura/RAG/rag-eval-platform/examples/golden-smoke-v1-execution/platform-home/runs/11bb5d01955e453d89e04787252331d3/work/rep-0001/storage/eval_11bb5d01955e453d89e04787252331d3-rep-0001/vdb_entities.json'} 0 data
+INFO:nano-vectordb:Init {'embedding_dim': 1024, 'metric': 'cosine', 'storage_file': '/Users/sakura/RAG/rag-eval-platform/examples/golden-smoke-v1-execution/platform-home/runs/11bb5d01955e453d89e04787252331d3/work/rep-0001/storage/eval_11bb5d01955e453d89e04787252331d3-rep-0001/vdb_relationships.json'} 0 data
+INFO:nano-vectordb:Init {'embedding_dim': 1024, 'metric': 'cosine', 'storage_file': '/Users/sakura/RAG/rag-eval-platform/examples/golden-smoke-v1-execution/platform-home/runs/11bb5d01955e453d89e04787252331d3/work/rep-0001/storage/eval_11bb5d01955e453d89e04787252331d3-rep-0001/vdb_chunks.json'} 0 data
+INFO: Role LLM Configuration (initialized):
+INFO:  - extract: None/None, host=None, max_async=4, timeout=240
+INFO:  - keyword: None/None, host=None, max_async=4, timeout=240
+INFO:  - query: None/None, host=None, max_async=4, timeout=240
+INFO:  - vlm: None/None, host=None, max_async=4, timeout=240
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] Process 16494 KV load full_docs with 0 records
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] Process 16494 KV load text_chunks with 0 records
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] Process 16494 KV load full_entities with 0 records
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] Process 16494 KV load full_relations with 0 records
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] Process 16494 KV load entity_chunks with 0 records
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] Process 16494 KV load relation_chunks with 0 records
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] Process 16494 KV load llm_response_cache with 0 records
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] Process 16494 doc status load doc_status with 0 records
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] Process 16494 KV load parse_cache with 0 records
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] Process 16494 KV load multimodal_status with 0 records
+INFO: Multimodal processors initialized with context support
+INFO: Available processors: ['generic']
+INFO: Context configuration: ContextConfig(context_window=1, context_mode='page', max_context_tokens=2000, include_headers=True, include_captions=True, filter_content_types=['text'])
+INFO: LightRAG, parse cache, multimodal status cache, and multimodal processors initialized
+INFO: Starting direct content list insertion for: plain-text.md (1 items)
+INFO: Content separation complete:
+INFO:   - Text content length: 228 characters
+INFO:   - Multimodal items count: 0
+INFO: Starting text content insertion into LightRAG...
+INFO: Processing 1 document(s)
+INFO: Parsing (native): plain-text
+INFO: Extracting stage 1/1: plain-text.md
+INFO: Processing d-id: plain-text
+INFO: Chunking F(legacy): size=1200, split_only=False, overlap=100, doc_id: plain-text
+INFO: extract LLM func: 4 new workers initialized (Timeouts: Func: 240s, Worker: 480s, Health Check: 495s)
+ERROR: extract LLM func: Error in decorated function for task 6401071744_1067832.045786583: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+INFO: [extract-telemetry] chunk=plain-text-chunk-000 file=plain-text.md input_chars=227 input_tokens=48 start=2026-08-24T21:04:59 end=2026-08-24T21:04:59 latency_s=0.0 output_chars=0 output_tokens=0 truncated=None attempts=1 error=TypeError
+ERROR: Failed to extract entities and relationships: C[1/1]: plain-text-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+ERROR: Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4359, in _process_with_semaphore
+    result = await _process_single_content(chunk)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4020, in _process_single_content
+    final_result, timestamp = await use_llm_func_with_cache(
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 4886, in use_llm_func_with_cache
+    res: str = await use_llm_func(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 2351, in wait_func
+    result = await future
+             ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 1422, in worker
+    result = await asyncio.wait_for(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/asyncio/tasks.py", line 489, in wait_for
+    return fut.result()
+           ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 323, in ollama_model_complete
+    return await _ollama_model_if_cache(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 193, in async_wrapped
+    return await copy(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 112, in __call__
+    do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 157, in iter
+    result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/_utils.py", line 111, in inner
+    return call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/__init__.py", line 393, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 116, in __call__
+    result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 293, in _ollama_model_if_cache
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 212, in _ollama_model_if_cache
+    response = await ollama_client.chat(model=model, messages=messages, **kwargs)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4367, in _process_with_semaphore
+    raise prefixed_exception from e
+TypeError: plain-text-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/pipeline.py", line 5355, in process_single_document
+    chunk_results = await entity_relation_task
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3244, in _process_extract_entities
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3223, in _process_extract_entities
+    chunk_results = await extract_entities(
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4433, in extract_entities
+    raise prefixed_exception from first_exception
+TypeError: C[1/1]: plain-text-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+ERROR: Failed to extract document 1/1: plain-text.md
+INFO: Enqueued document processing pipeline stopped
+INFO: Text content insertion complete
+INFO: Content list insertion complete for: plain-text.md
+INFO: Starting direct content list insertion for: numeric-units.md (1 items)
+INFO: Content separation complete:
+INFO:   - Text content length: 173 characters
+INFO:   - Multimodal items count: 0
+INFO: Starting text content insertion into LightRAG...
+INFO: Processing 1 document(s)
+INFO: Parsing (native): numeric-units
+INFO: Extracting stage 1/1: numeric-units.md
+INFO: Processing d-id: numeric-units
+INFO: Chunking F(legacy): size=1200, split_only=False, overlap=100, doc_id: numeric-units
+ERROR: extract LLM func: Error in decorated function for task 6401068288_1067832.069121208: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+INFO: [extract-telemetry] chunk=numeric-units-chunk-000 file=numeric-units.md input_chars=172 input_tokens=42 start=2026-08-24T21:04:59 end=2026-08-24T21:04:59 latency_s=0.0 output_chars=0 output_tokens=0 truncated=None attempts=1 error=TypeError
+ERROR: Failed to extract entities and relationships: C[1/1]: numeric-units-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+ERROR: Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4359, in _process_with_semaphore
+    result = await _process_single_content(chunk)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4020, in _process_single_content
+    final_result, timestamp = await use_llm_func_with_cache(
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 4886, in use_llm_func_with_cache
+    res: str = await use_llm_func(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 2351, in wait_func
+    result = await future
+             ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 1422, in worker
+    result = await asyncio.wait_for(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/asyncio/tasks.py", line 489, in wait_for
+    return fut.result()
+           ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 323, in ollama_model_complete
+    return await _ollama_model_if_cache(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 193, in async_wrapped
+    return await copy(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 112, in __call__
+    do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 157, in iter
+    result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/_utils.py", line 111, in inner
+    return call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/__init__.py", line 393, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 116, in __call__
+    result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 293, in _ollama_model_if_cache
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 212, in _ollama_model_if_cache
+    response = await ollama_client.chat(model=model, messages=messages, **kwargs)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4367, in _process_with_semaphore
+    raise prefixed_exception from e
+TypeError: numeric-units-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/pipeline.py", line 5355, in process_single_document
+    chunk_results = await entity_relation_task
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3244, in _process_extract_entities
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3223, in _process_extract_entities
+    chunk_results = await extract_entities(
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4433, in extract_entities
+    raise prefixed_exception from first_exception
+TypeError: C[1/1]: numeric-units-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+ERROR: Failed to extract document 1/1: numeric-units.md
+INFO: Enqueued document processing pipeline stopped
+INFO: Text content insertion complete
+INFO: Content list insertion complete for: numeric-units.md
+INFO: Starting direct content list insertion for: table-cells.json (1 items)
+INFO: Content separation complete:
+INFO:   - Text content length: 351 characters
+INFO:   - Multimodal items count: 0
+INFO: Starting text content insertion into LightRAG...
+INFO: Processing 1 document(s)
+INFO: Parsing (native): table-cells
+INFO: Extracting stage 1/1: table-cells.json
+INFO: Processing d-id: table-cells
+INFO: Chunking F(legacy): size=1200, split_only=False, overlap=100, doc_id: table-cells
+ERROR: extract LLM func: Error in decorated function for task 6401068288_1067832.086047583: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+INFO: [extract-telemetry] chunk=table-cells-chunk-000 file=table-cells.json input_chars=350 input_tokens=118 start=2026-08-24T21:04:59 end=2026-08-24T21:04:59 latency_s=0.0 output_chars=0 output_tokens=0 truncated=None attempts=1 error=TypeError
+ERROR: Failed to extract entities and relationships: C[1/1]: table-cells-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+ERROR: Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4359, in _process_with_semaphore
+    result = await _process_single_content(chunk)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4020, in _process_single_content
+    final_result, timestamp = await use_llm_func_with_cache(
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 4886, in use_llm_func_with_cache
+    res: str = await use_llm_func(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 2351, in wait_func
+    result = await future
+             ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 1422, in worker
+    result = await asyncio.wait_for(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/asyncio/tasks.py", line 489, in wait_for
+    return fut.result()
+           ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 323, in ollama_model_complete
+    return await _ollama_model_if_cache(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 193, in async_wrapped
+    return await copy(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 112, in __call__
+    do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 157, in iter
+    result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/_utils.py", line 111, in inner
+    return call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/__init__.py", line 393, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 116, in __call__
+    result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 293, in _ollama_model_if_cache
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 212, in _ollama_model_if_cache
+    response = await ollama_client.chat(model=model, messages=messages, **kwargs)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4367, in _process_with_semaphore
+    raise prefixed_exception from e
+TypeError: table-cells-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/pipeline.py", line 5355, in process_single_document
+    chunk_results = await entity_relation_task
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3244, in _process_extract_entities
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3223, in _process_extract_entities
+    chunk_results = await extract_entities(
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4433, in extract_entities
+    raise prefixed_exception from first_exception
+TypeError: C[1/1]: table-cells-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+ERROR: Failed to extract document 1/1: table-cells.json
+INFO: Enqueued document processing pipeline stopped
+INFO: Text content insertion complete
+INFO: Content list insertion complete for: table-cells.json
+INFO: Starting direct content list insertion for: explicit-id.json (1 items)
+INFO: Content separation complete:
+INFO:   - Text content length: 428 characters
+INFO:   - Multimodal items count: 0
+INFO: Starting text content insertion into LightRAG...
+INFO: Processing 1 document(s)
+INFO: Parsing (native): explicit-id
+INFO: Extracting stage 1/1: explicit-id.json
+INFO: Processing d-id: explicit-id
+INFO: Chunking F(legacy): size=1200, split_only=False, overlap=100, doc_id: explicit-id
+ERROR: extract LLM func: Error in decorated function for task 6404802496_1067832.102923916: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+INFO: [extract-telemetry] chunk=explicit-id-chunk-000 file=explicit-id.json input_chars=427 input_tokens=138 start=2026-08-24T21:04:59 end=2026-08-24T21:04:59 latency_s=0.0 output_chars=0 output_tokens=0 truncated=None attempts=1 error=TypeError
+ERROR: Failed to extract entities and relationships: C[1/1]: explicit-id-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+ERROR: Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4359, in _process_with_semaphore
+    result = await _process_single_content(chunk)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4020, in _process_single_content
+    final_result, timestamp = await use_llm_func_with_cache(
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 4886, in use_llm_func_with_cache
+    res: str = await use_llm_func(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 2351, in wait_func
+    result = await future
+             ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 1422, in worker
+    result = await asyncio.wait_for(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/asyncio/tasks.py", line 489, in wait_for
+    return fut.result()
+           ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 323, in ollama_model_complete
+    return await _ollama_model_if_cache(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 193, in async_wrapped
+    return await copy(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 112, in __call__
+    do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 157, in iter
+    result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/_utils.py", line 111, in inner
+    return call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/__init__.py", line 393, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 116, in __call__
+    result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 293, in _ollama_model_if_cache
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 212, in _ollama_model_if_cache
+    response = await ollama_client.chat(model=model, messages=messages, **kwargs)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4367, in _process_with_semaphore
+    raise prefixed_exception from e
+TypeError: explicit-id-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/pipeline.py", line 5355, in process_single_document
+    chunk_results = await entity_relation_task
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3244, in _process_extract_entities
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3223, in _process_extract_entities
+    chunk_results = await extract_entities(
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4433, in extract_entities
+    raise prefixed_exception from first_exception
+TypeError: C[1/1]: explicit-id-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+ERROR: Failed to extract document 1/1: explicit-id.json
+INFO: Enqueued document processing pipeline stopped
+INFO: Text content insertion complete
+INFO: Content list insertion complete for: explicit-id.json
+INFO: Starting direct content list insertion for: multi-evidence.md (1 items)
+INFO: Content separation complete:
+INFO:   - Text content length: 336 characters
+INFO:   - Multimodal items count: 0
+INFO: Starting text content insertion into LightRAG...
+INFO: Processing 1 document(s)
+INFO: Parsing (native): multi-evidence
+INFO: Extracting stage 1/1: multi-evidence.md
+INFO: Processing d-id: multi-evidence
+INFO: Chunking F(legacy): size=1200, split_only=False, overlap=100, doc_id: multi-evidence
+ERROR: extract LLM func: Error in decorated function for task 6404803456_1067832.120334333: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+INFO: [extract-telemetry] chunk=multi-evidence-chunk-000 file=multi-evidence.md input_chars=335 input_tokens=77 start=2026-08-24T21:04:59 end=2026-08-24T21:04:59 latency_s=0.0 output_chars=0 output_tokens=0 truncated=None attempts=1 error=TypeError
+ERROR: Failed to extract entities and relationships: C[1/1]: multi-evidence-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+ERROR: Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4359, in _process_with_semaphore
+    result = await _process_single_content(chunk)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4020, in _process_single_content
+    final_result, timestamp = await use_llm_func_with_cache(
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 4886, in use_llm_func_with_cache
+    res: str = await use_llm_func(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 2351, in wait_func
+    result = await future
+             ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 1422, in worker
+    result = await asyncio.wait_for(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/asyncio/tasks.py", line 489, in wait_for
+    return fut.result()
+           ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 323, in ollama_model_complete
+    return await _ollama_model_if_cache(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 193, in async_wrapped
+    return await copy(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 112, in __call__
+    do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 157, in iter
+    result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/_utils.py", line 111, in inner
+    return call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/__init__.py", line 393, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 116, in __call__
+    result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 293, in _ollama_model_if_cache
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 212, in _ollama_model_if_cache
+    response = await ollama_client.chat(model=model, messages=messages, **kwargs)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4367, in _process_with_semaphore
+    raise prefixed_exception from e
+TypeError: multi-evidence-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/pipeline.py", line 5355, in process_single_document
+    chunk_results = await entity_relation_task
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3244, in _process_extract_entities
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3223, in _process_extract_entities
+    chunk_results = await extract_entities(
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4433, in extract_entities
+    raise prefixed_exception from first_exception
+TypeError: C[1/1]: multi-evidence-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+ERROR: Failed to extract document 1/1: multi-evidence.md
+INFO: Enqueued document processing pipeline stopped
+INFO: Text content insertion complete
+INFO: Content list insertion complete for: multi-evidence.md
+INFO: Starting direct content list insertion for: abstain-negative.md (1 items)
+INFO: Content separation complete:
+INFO:   - Text content length: 331 characters
+INFO:   - Multimodal items count: 0
+INFO: Starting text content insertion into LightRAG...
+INFO: Processing 1 document(s)
+INFO: Parsing (native): abstain-negative
+INFO: Extracting stage 1/1: abstain-negative.md
+INFO: Processing d-id: abstain-negative
+INFO: Chunking F(legacy): size=1200, split_only=False, overlap=100, doc_id: abstain-negative
+ERROR: extract LLM func: Error in decorated function for task 6401068672_1067832.13730325: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+INFO: [extract-telemetry] chunk=abstain-negative-chunk-000 file=abstain-negative.md input_chars=330 input_tokens=59 start=2026-08-24T21:04:59 end=2026-08-24T21:04:59 latency_s=0.0 output_chars=0 output_tokens=0 truncated=None attempts=1 error=TypeError
+ERROR: Failed to extract entities and relationships: C[1/1]: abstain-negative-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+ERROR: Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4359, in _process_with_semaphore
+    result = await _process_single_content(chunk)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4020, in _process_single_content
+    final_result, timestamp = await use_llm_func_with_cache(
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 4886, in use_llm_func_with_cache
+    res: str = await use_llm_func(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 2351, in wait_func
+    result = await future
+             ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/utils.py", line 1422, in worker
+    result = await asyncio.wait_for(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/asyncio/tasks.py", line 489, in wait_for
+    return fut.result()
+           ^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 323, in ollama_model_complete
+    return await _ollama_model_if_cache(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 193, in async_wrapped
+    return await copy(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 112, in __call__
+    do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 157, in iter
+    result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/_utils.py", line 111, in inner
+    return call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/__init__.py", line 393, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sakura/miniconda3/envs/lightrag-memory-eval/lib/python3.11/site-packages/tenacity/asyncio/__init__.py", line 116, in __call__
+    result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 293, in _ollama_model_if_cache
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/llm/ollama.py", line 212, in _ollama_model_if_cache
+    response = await ollama_client.chat(model=model, messages=messages, **kwargs)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4367, in _process_with_semaphore
+    raise prefixed_exception from e
+TypeError: abstain-negative-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sakura/RAG/LightRAG/lightrag/pipeline.py", line 5355, in process_single_document
+    chunk_results = await entity_relation_task
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3244, in _process_extract_entities
+    raise e
+  File "/Users/sakura/RAG/LightRAG/lightrag/lightrag.py", line 3223, in _process_extract_entities
+    chunk_results = await extract_entities(
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sakura/RAG/LightRAG/lightrag/operate.py", line 4433, in extract_entities
+    raise prefixed_exception from first_exception
+TypeError: C[1/1]: abstain-negative-chunk-000: AsyncClient.chat() got an unexpected keyword argument 'temperature'
+
+ERROR: Failed to extract document 1/1: abstain-negative.md
+INFO: Enqueued document processing pipeline stopped
+INFO: Text content insertion complete
+INFO: Content list insertion complete for: abstain-negative.md
+INFO: Executing text query: RAG evaluation warmup....
+INFO: Query mode: naive
+INFO: Embedding func: 8 new workers initialized (Timeouts: Func: 30s, Worker: 60s, Health Check: 75s)
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: Who owns policy POL-AR-12?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: Who accepts volunteer registrations at Cedar Lane Library?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: What is the west row restock day in inventory-q2?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: How many units are recorded for the south row of inventory-q2?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: What are the field cart's sample-jar limit and backup-battery duration?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: At what time does Cedar Lane Library open its reading room on weekdays?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: How much fluid does the cooling loop hold?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: At what frequency does the beacon emit?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: What torque is required for workshop calibration?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: Which parking permit is assigned in the visitor guide?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: What staff phone number appears in the maintenance note?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: What is the garden pavilion capacity and when does it close?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: Who owns policy POL-CM-08?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: What is the east row restock day in inventory-q2?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: Which intake form does River Lab use and how long does it remain valid?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: Who owns record REC-HB-03?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: How many units are recorded for the north row of inventory-q2?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: What is the label of the archive locker?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: Which allergy certifications are stated in the cafe notice?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: Who owns record REC-GL-44?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: Which level contains the quiet-study floor at Cedar Lane Library?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: What are the opening and closing times of the Coastline Exchange evening desk?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: What is the weight of the packing crate?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: Executing text query: What is the delivery driver's name in the shipping memo?...
+INFO: Query mode: naive
+INFO: Naive query: 0 chunks (chunk_top_k:5 cosine:0.2)
+INFO: [naive_query] No relevant document chunks found; returning no-result.
+INFO: Text query completed
+INFO: [eval_11bb5d01955e453d89e04787252331d3-rep-0001] chunks flush: embedding 6 vectors in 1 batch(es) (batch_num=10)
+INFO: Successfully finalized 12 storages
+INFO: Successfully finalized all RAGAnything storages

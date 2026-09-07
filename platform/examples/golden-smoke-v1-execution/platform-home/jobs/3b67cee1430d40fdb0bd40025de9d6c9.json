@@ -1,0 +1,146 @@
+{
+  "job_id": "3b67cee1430d40fdb0bd40025de9d6c9",
+  "status": "completed",
+  "experiment": {
+    "experiment_id": "golden-smoke-v1-lightrag-enhanced-real",
+    "bundle_id": "bbfbb1d2761b714a595ae072f786bd527fdff5c85ba7c57c40b6d8087072ba1e",
+    "system_id": "lightrag",
+    "adapter_id": "lightrag",
+    "adapter_config": {
+      "profile": "structured",
+      "query_mode": "naive",
+      "retrieval_candidate_k": 20,
+      "final_context_k": 5,
+      "max_context_tokens": 12000,
+      "model": {
+        "llm_binding": "ollama",
+        "llm_model": "qwen3:4b-instruct",
+        "llm_host": "http://127.0.0.1:11434",
+        "query_llm_binding": "ollama",
+        "query_llm_model": "qwen3:4b-instruct",
+        "query_llm_host": "http://127.0.0.1:11434",
+        "embedding_binding": "ollama",
+        "embedding_model": "bge-m3:latest",
+        "embedding_host": "http://127.0.0.1:11434"
+      },
+      "generation": {
+        "temperature": 0.0,
+        "seed": 20260824
+      },
+      "server_start_timeout_seconds": 120.0,
+      "ingestion_timeout_seconds": 900.0,
+      "query_timeout_seconds": 180.0
+    },
+    "query_config": {
+      "generate_answer": true,
+      "retrieval_candidate_k": 20,
+      "final_context_k": 5,
+      "max_context_tokens": 12000,
+      "generation_options": {}
+    },
+    "metric_config": {
+      "k_values": [
+        1,
+        3,
+        5
+      ]
+    },
+    "case_ids": null,
+    "case_selection_id": "13f6f5189d871197cf4ecf0d43c739010bdc633820200ce9013425c80ff7c9fa",
+    "seed": 20260824,
+    "repetitions": 1,
+    "formal": true,
+    "model_lock_digest": "sha256:b586b442f79bc0f22e8353bda35afd06f2cc6921aa0931fdc713705b4a67f96c",
+    "model_artifacts": {
+      "llm": {
+        "display_name": "Qwen3 4B Instruct",
+        "requested_ref": "qwen3:4b-instruct",
+        "resolved_digest": "sha256:0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0",
+        "revision": null,
+        "resolver": "ollama:/api/tags",
+        "resolved_at": "2026-08-24T12:40:34Z",
+        "verified": true
+      },
+      "embedding": {
+        "display_name": "BGE-M3",
+        "requested_ref": "bge-m3:latest",
+        "resolved_digest": "sha256:7907646426070047a77226ac3e684fbbe8410524f7b4a74d02837e43f2146bab",
+        "revision": null,
+        "resolver": "ollama:/api/tags",
+        "resolved_at": "2026-08-24T12:40:34Z",
+        "verified": true
+      }
+    },
+    "comparison_spec_digest": "sha256:b095a488cff9d5a813f12ab50f1a0b193231066ab7ee30de0e10f5b097fb4a87",
+    "analysis_contract_digest": "sha256:c303c1cdebaf3f41fe898cbb66cd247dd58a9ec6e73ea307b6d8d4616dc4812b",
+    "latency_protocol_digest": "sha256:675414e724cea65022395c1af7758649cf926f3fa787229748c78f6c0f16782c",
+    "analysis_contract": {
+      "schema_version": 1,
+      "independent_unit": "case",
+      "seed_role": "within_case_repeated_measurement",
+      "paired_seed_policy": "mean_matched_seeds",
+      "bootstrap_method": "stratified_case_clustered_paired",
+      "bootstrap_iterations": 10000,
+      "confidence_level": 0.95,
+      "analysis_seed": 20260824
+    },
+    "latency_protocol": {
+      "schema_version": 1,
+      "fresh_worker_per_repetition": true,
+      "fresh_run_scoped_index": true,
+      "warmup_queries": 1,
+      "warmup_question": "RAG evaluation warmup.",
+      "answer_cache_enabled": false,
+      "query_cache_enabled": false,
+      "llm_cache_enabled": false,
+      "worker_ready_before_measurement": true,
+      "ingestion_before_measurement": true,
+      "concurrency": 1,
+      "preserve_model_and_index_warmth_between_cases": true,
+      "identical_case_order_across_treatments": true,
+      "measurement_scope": "query_dispatch_to_validated_response"
+    },
+    "comparison_spec": {
+      "comparison_id": "golden-smoke-v1-real-model-family",
+      "experiment_ids": [
+        "golden-smoke-v1-lightrag-legacy-real",
+        "golden-smoke-v1-lightrag-enhanced-real",
+        "golden-smoke-v1-rag-anything-real"
+      ],
+      "tier": "task_comparable",
+      "controlled_factors": [
+        "golden-smoke-v1 bundle",
+        "all-24 explicit case selection",
+        "Qwen3 4B Instruct and BGE-M3 immutable model lock",
+        "seed 20260824",
+        "one repetition",
+        "frozen cache and latency lifecycle"
+      ],
+      "treatment_factors": [
+        "adapter implementation",
+        "LightRAG legacy versus structured profile",
+        "RAG-Anything public API observability"
+      ],
+      "primary_metrics": [
+        "answer_accuracy",
+        "answer_groundedness",
+        "unsupported_answer_rate"
+      ],
+      "secondary_metrics": [
+        "raw_recall@1",
+        "ranked_recall@1",
+        "context_recall@1",
+        "end_to_end_query_latency"
+      ],
+      "minimum_metric_coverage": 0.0,
+      "model_lock_digest": "sha256:b586b442f79bc0f22e8353bda35afd06f2cc6921aa0931fdc713705b4a67f96c",
+      "latency_protocol_digest": "sha256:675414e724cea65022395c1af7758649cf926f3fa787229748c78f6c0f16782c",
+      "analysis_contract_digest": "sha256:c303c1cdebaf3f41fe898cbb66cd247dd58a9ec6e73ea307b6d8d4616dc4812b"
+    }
+  },
+  "created_at": "2026-08-24T12:56:01.847366Z",
+  "updated_at": "2026-08-24T13:00:42.714740Z",
+  "run_id": "b49509a9fd5e454faaac9813cc2162ec",
+  "worker_pid": 16174,
+  "error": null
+}

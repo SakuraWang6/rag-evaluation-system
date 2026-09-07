@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rag-eval-platform"
+version = "0.1.0"
+description = "System-neutral, reproducible RAG evaluation platform"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "cryptography>=44",
+  "fastapi>=0.115",
+  "httpx>=0.28",
+  "keyring>=25",
+  "lxml>=5.3",
+  "pydantic>=2.10",
+  "uvicorn>=0.34",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.4",
+  "pytest-asyncio>=1.2",
+]
+
+[project.scripts]
+rag-eval = "rag_eval.cli:main"
+rag-eval-worker = "rag_eval.worker.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rag_eval"]

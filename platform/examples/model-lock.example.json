@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "models": {
+    "llm": {
+      "display_name": "example-generation-model",
+      "requested_ref": "example-generation-model:latest",
+      "resolved_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "revision": null,
+      "resolver": "example-resolver",
+      "resolved_at": "2026-08-24T00:00:00Z",
+      "verified": true
+    }
+  }
+}

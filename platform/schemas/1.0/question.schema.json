@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "case_id": {
+      "minLength": 1,
+      "title": "Case Id",
+      "type": "string"
+    },
+    "question": {
+      "minLength": 1,
+      "title": "Question",
+      "type": "string"
+    },
+    "gold_answer_id": {
+      "minLength": 1,
+      "title": "Gold Answer Id",
+      "type": "string"
+    },
+    "gold_evidence_set_id": {
+      "minLength": 1,
+      "title": "Gold Evidence Set Id",
+      "type": "string"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    }
+  },
+  "required": [
+    "case_id",
+    "question",
+    "gold_answer_id",
+    "gold_evidence_set_id"
+  ],
+  "title": "Question",
+  "type": "object"
+}

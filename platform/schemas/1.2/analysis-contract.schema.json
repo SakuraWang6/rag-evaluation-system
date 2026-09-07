@@ -1,0 +1,58 @@
+{
+  "additionalProperties": false,
+  "description": "Pre-registered case-clustered analysis policy for formal benchmarks.",
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "independent_unit": {
+      "const": "case",
+      "default": "case",
+      "title": "Independent Unit",
+      "type": "string"
+    },
+    "seed_role": {
+      "const": "within_case_repeated_measurement",
+      "default": "within_case_repeated_measurement",
+      "title": "Seed Role",
+      "type": "string"
+    },
+    "paired_seed_policy": {
+      "const": "mean_matched_seeds",
+      "default": "mean_matched_seeds",
+      "title": "Paired Seed Policy",
+      "type": "string"
+    },
+    "bootstrap_method": {
+      "const": "stratified_case_clustered_paired",
+      "default": "stratified_case_clustered_paired",
+      "title": "Bootstrap Method",
+      "type": "string"
+    },
+    "bootstrap_iterations": {
+      "default": 10000,
+      "minimum": 1000,
+      "title": "Bootstrap Iterations",
+      "type": "integer"
+    },
+    "confidence_level": {
+      "default": 0.95,
+      "exclusiveMaximum": 1,
+      "exclusiveMinimum": 0,
+      "title": "Confidence Level",
+      "type": "number"
+    },
+    "analysis_seed": {
+      "title": "Analysis Seed",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "analysis_seed"
+  ],
+  "title": "AnalysisContract",
+  "type": "object"
+}
