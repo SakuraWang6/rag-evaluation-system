@@ -25,7 +25,7 @@ adapter_pytest:
 
 adapter_dirty_tests:
   command: >-
-    pytest -q
+    PYTHONPATH=platform/src:adapters/lightrag/src pytest -q
     adapters/lightrag/tests/test_benchmark_segment_trace.py
     adapters/lightrag/tests/test_canonical_segment_provenance.py
     adapters/lightrag/tests/test_runtime_docx_and_trace.py
@@ -34,7 +34,7 @@ adapter_dirty_tests:
 platform_ruff:
   tool: "ruff 0.16.1"
   command_before: "ruff check . --output-format=json"
-  command_after: "ruff check platform --output-format=json"
+  command_after: "cd platform && ruff check . --output-format=json"
   expected_before_diagnostics: 291
   expected_before_fixable: 182
   raw_baseline: ci/baselines/platform-ruff-before.json
@@ -76,4 +76,3 @@ lightrag_collection:
   raw_baseline_sha256: 18670799edc18a995ee389a197d1ec6b57fe424283aeae072a05870796e51c24
   classification: ENV_BLOCKED
   policy: no_new_collection_error_file
-

@@ -672,8 +672,9 @@ class BenchmarkPortfolioService:
 
     @classmethod
     def default_source_root(cls) -> Path:
-        # ``.../rag-eval-platform/src/rag_eval/datasets/portfolio.py`` -> workspace root.
-        return Path(__file__).resolve().parents[4]
+        # Frozen Blueprint inputs belong to the Platform package so the same
+        # immutable artifacts are available from a checkout and an installed wheel.
+        return Path(__file__).resolve().parents[1] / "resources" / "benchmark-v0"
 
     def bootstrap_v0_dry_run(self) -> BenchmarkPortfolio:
         paths = self._artifact_paths()
