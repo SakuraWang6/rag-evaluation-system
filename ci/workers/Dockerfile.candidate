@@ -1,0 +1,9 @@
+ARG BASE_IMAGE=scratch
+FROM ${BASE_IMAGE}
+
+USER root
+COPY wheels/ /tmp/rag-eval-wheels/
+RUN python -m pip install --no-cache-dir --no-deps --force-reinstall /tmp/rag-eval-wheels/*.whl \
+    && rm -rf /tmp/rag-eval-wheels
+
+USER 10001:10001
