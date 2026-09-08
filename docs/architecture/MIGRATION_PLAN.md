@@ -72,7 +72,7 @@ No phase may opportunistically implement work assigned to a later phase.
 | 6 | Run / Artifact 2.0 | Complete in this phase | Immutable case artifacts, persisted views, metric-driven eligibility, and checksum graph |
 | 7 | Platform API / WebUI | Complete in this phase | Persisted-only views, descriptor-driven rendering, and fail-closed legacy access |
 | 8 | Native formal cutover | Complete in this phase | Release-only creation, native-DOCX admission, and legacy oracle compatibility |
-| 9 | RAG-Anything full observation | Not started | Independent after shared v2 boundaries |
+| 9 | RAG-Anything full observation | Complete in this phase | Same-execution native hooks, exact fail-closed crosswalk, and shared Adapter TCK |
 
 ## Phase 0 — Isolate the P0 provenance fix
 
@@ -461,6 +461,43 @@ refactor(runtime): make native docx the formal route
   runtime makes those facts observable.
 - Pass the same Adapter TCK against the same Benchmark and scorer.
 - Add no RAG-Anything Dataset, scoring, Run, API, or UI branch.
+
+### Implemented boundary
+
+- Wire 1.0 remains answer-only, preserving the frozen Phase 1 behavior and
+  preventing legacy scoring from treating an unobserved stage as empty.
+- For the pinned `naive`, non-VLM, no-rerank runtime profile, an Adapter-owned
+  callback wrapper observes the actual chunk-vector query and the structured
+  `aquery_llm` result while the normal `RAGAnything.aquery` call executes once.
+  It does not replay retrieval or generation and returns the public answer
+  unchanged.
+- The observer snapshots the complete run-scoped JsonKV chunk catalog after
+  ingestion. Every query item must round-trip to that catalog with the same ID
+  and content hash.
+- Candidate-to-ranked and ranked-to-context are declared and verified as
+  `identity_subset` only for that proven profile. Other query modes, VLM,
+  reranking, unavailable hooks, and invalid receipts keep answer observation
+  but make stage metrics unavailable.
+- The canonical bridge is an exact-unique parser-stream fallback for textual
+  paragraph/heading/span evidence. It supports one chunk covering several
+  objects and range union across several chunks. Repeated text fails closed;
+  table/cell evidence remains unsupported until native structural lineage is
+  available.
+- LightRAG and RAG-Anything run through the same reusable Wire 2.0 Adapter TCK
+  and the RAG-neutral Unified Scorer. No Dataset, scorer, Run, API, or WebUI
+  branch was added.
+
+Detailed invariants and profile limits are recorded in
+`docs/architecture/RAG_ANYTHING_NATIVE_OBSERVATION.md`.
+
+### Exit Gate
+
+- Single-execution shadow tests prove one vector query, one structured query,
+  and an unchanged answer.
+- Runtime catalog, rank, content, lineage, reverse-map, split-union, duplicate,
+  and unsupported-profile tests pass.
+- Both native Adapters pass the same Wire 2.0 observation TCK.
+- Existing Adapter, Platform, CI, schema, and WebUI gates remain green.
 
 ### Commit
 

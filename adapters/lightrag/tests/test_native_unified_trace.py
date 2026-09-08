@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 
+from rag_eval.adapters.observation_tck import assert_unified_observation_tck
 from rag_eval.contracts.adapter import RAGQuery
 from rag_eval.contracts.observation import (
     AdapterRunResultV2,
@@ -637,6 +638,12 @@ def test_run_result_v2_observes_same_native_stage_items_without_second_execution
 
     assert stages == frozen_stages
     trace = result.trace
+    assert_unified_observation_tck(
+        result,
+        adapter_id="lightrag",
+        system_id="lightrag",
+        case_id="case-1",
+    )
     assert trace.raw_retrieval.observation_status == ObservationStatus.OBSERVED
     assert trace.raw_retrieval.completeness == ObservationCompleteness.COMPLETE
     assert trace.ranked_retrieval.items[0].native_chunk_id == "chunk-1"

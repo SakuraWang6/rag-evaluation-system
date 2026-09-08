@@ -2,8 +2,9 @@
 
 > Historical baseline note (Phase 1): this file records the gaps that drove
 > the migration. Native observation, unified scoring, Artifact 2.0, and the
-> public native-DOCX cutover are now implemented through Phase 8. See
-> `MIGRATION_PLAN.md` and `NATIVE_FORMAL_CUTOVER.md` for current status; keep
+> public native-DOCX cutover, and bounded RAG-Anything native observation are
+> now implemented through Phase 9. See `MIGRATION_PLAN.md`,
+> `NATIVE_FORMAL_CUTOVER.md`, and `RAG_ANYTHING_NATIVE_OBSERVATION.md`; keep
 > the analysis below as the retirement checklist for legacy branches.
 
 - Target: `Original DOCX → RAG-native parse/chunk/index/retrieve → Unified Trace → Unified Scoring`
@@ -22,7 +23,9 @@ Current LightRAG code has repaired much of that boundary with structural lineage
 - the canonical crosswalk is still LightRAG/storage-specific rather than a typed Adapter contract;
 - some rich/merged/split structures legitimately remain partial;
 - formal policy and comparison still classify native DOCX as diagnostic;
-- RAG-Anything does not expose retrieval stages or lineage;
+- RAG-Anything's bounded native `naive` profile is now observable, while
+  non-naive/VLM/reranked transformations and structural table lineage remain
+  unavailable;
 - at audited revision `db7af4e`, one localizer fallback could label an unproved absence as `retrieval_missed`; the follow-up fix now returns `provenance_missing` for formal provenance envelopes unless the complete reverse-map proof succeeds.
 
 Native readiness does **not** require every runtime chunk or every DOCX object to map completely. It requires every scoring decision to distinguish, with proof, among `complete`, `partial`, `missing`, and a true retrieval miss.
@@ -81,13 +84,13 @@ Evidence:
 | Native paragraph/table/cell lineage | Implemented | First-class lineage kinds are paragraph, table, and physical cell; other canonical object types are not demonstrated end to end | Versioned native locator vocabulary with explicit unsupported/partial categories |
 | Chunk lineage preservation | Partial | Default/known chunking paths can preserve spans/atoms; a transformative or custom chunker may discard or rewrite them | RAG-owned chunker must emit or retain a lineage relation; otherwise the affected item is missing, not guessed |
 | Runtime chunk catalog | LightRAG-specific | Adapter scans one `kv_store_text_chunks.json`; another backend/runtime has no common read API | Adapter-neutral read-only ingestion observation surface |
-| Query-stage observation | Strong for current LightRAG naive path | Other LightRAG modes and RAG-Anything are not equivalently characterized | Per-profile trace-on/off equivalence and explicit capabilities |
+| Query-stage observation | Strong for current LightRAG naive path; bounded RAG-Anything naive/no-rerank path implemented | Transformative/VLM profiles are not equivalently observable | Per-profile trace-on/off equivalence and explicit capabilities |
 | Canonical crosswalk | Strong for supported structures | Uses free-form maps/metadata and only canonicalizer versions explicitly understood by the adapter | Typed provenance map/edge schema, versioned independent of LightRAG |
 | Partial and multi-chunk union | Implemented in generic scorer | Relies on complete expected extents and trustworthy per-edge ranges; not every native object supplies them | Require explicit extents/coverage units for scoreable Gold |
 | Tables | Substantial but partial | Whole-table, merged-cell, split-table and duplicate-table identity require physical topology, not rendered text; some table summaries are downgraded | Canonical physical footprint + native structural edges + union semantics |
 | Mapping failure semantics | Initial P0 fallback fixed after audited revision | A catalogued but unmapped Gold previously fell through to `retrieval_missed` without an absence proof | Preserve the regression: formal provenance is `missing/partial` unless `prove_true_miss` succeeds |
 | Formal comparison policy | Not ready | `native-docx` is `diagnostic_only` and comparison rejects it | Switch only after native admission gates pass |
-| Cross-RAG support | Not ready | RAG-Anything has no observable retrieval stages | New Adapter/runtime observation hook; no new scorer or Dataset |
+| Cross-RAG support | Shared contract/scorer demonstrated with LightRAG and RAG-Anything | Each additional RAG still needs native hooks and TCK admission | New Adapter/runtime observation hook only; no new scorer or Dataset |
 
 ## Required provenance precedence
 

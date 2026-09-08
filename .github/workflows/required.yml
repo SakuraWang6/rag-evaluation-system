@@ -118,6 +118,12 @@ jobs:
           --python "${PYTHON_BASELINE}"
           --with pytest==9.1.1 --with pytest-asyncio==1.4.0 --with pyyaml==6.0.3
           python ci/pytest_signal_gate.py --section adapter_dirty_tests
+      - name: Validate RAG-Anything native observation contract
+        run: >-
+          uv run --project adapters/rag-anything --frozen
+          --python "${PYTHON_BASELINE}"
+          --with pytest==9.1.1 --with pytest-asyncio==1.4.0 --with pyyaml==6.0.3
+          python ci/pytest_signal_gate.py --section rag_anything_observation_pytest
 
   ruff-differential:
     name: platform / Ruff differential

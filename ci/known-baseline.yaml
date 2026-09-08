@@ -50,6 +50,29 @@ adapter_dirty_tests:
     - adapters/lightrag/tests/test_runtime_docx_and_trace.py::test_query_retains_native_trace_and_exposes_rendered_prompt
     - adapters/lightrag/tests/test_runtime_docx_and_trace.py::test_adapter_keeps_one_item_for_many_native_edges
 
+rag_anything_observation_pytest:
+  gate_kind: adapter_pytest
+  python: "3.12.12"
+  pytest: "9.1.1"
+  pytest_asyncio: "1.4.0"
+  command: >-
+    pytest -q --tb=short
+    tests/rag_eval_adapters/test_rag_anything_native_observation.py
+  test_paths:
+    - tests/rag_eval_adapters/test_rag_anything_native_observation.py
+  expected_passed: 7
+  exact_failed_node_ids: []
+  required_passed_node_ids:
+    - tests/rag_eval_adapters/test_rag_anything_native_observation.py::test_native_query_hook_captures_one_execution_without_changing_answer
+    - tests/rag_eval_adapters/test_rag_anything_native_observation.py::test_native_query_observation_failure_does_not_change_answer
+    - tests/rag_eval_adapters/test_rag_anything_native_observation.py::test_adapter_emits_typed_native_trace_and_unions_split_evidence
+    - tests/rag_eval_adapters/test_rag_anything_native_observation.py::test_duplicate_parser_text_fails_closed_instead_of_guessing
+  policy:
+    xfail: forbidden
+    skip: forbidden
+    missing_node: forbidden
+    additional_failure: forbidden
+
 platform_pytest:
   python: "3.12.12"
   pytest: "9.1.1"

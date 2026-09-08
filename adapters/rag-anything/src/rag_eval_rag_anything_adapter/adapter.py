@@ -1,15 +1,18 @@
-"""Run-scoped RAG-Anything adapter behind Wire Protocol 1.0."""
+"""Run-scoped RAG-Anything adapter with Wire 1.0 and additive Wire 2.0."""
 
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import importlib.metadata
 import importlib.util
 import json
 import os
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -34,8 +37,17 @@ from rag_eval.contracts.adapter import (
     SegmentTraceStage,
     SegmentTraceStatus,
 )
+from rag_eval.contracts.observation import ObservationStatus
 from rag_eval.contracts.wire import HandshakeResponse
 from rag_eval.worker.app import WorkerDefinition
+
+from rag_eval_rag_anything_adapter.native_observation import (
+    NativeObservationSnapshot,
+    RuntimeIngestionCapture,
+    RuntimeQueryCapture,
+    build_native_observation_snapshot,
+    build_native_run_result_v2,
+)
 
 ADAPTER_VERSION = "0.1.0"
 SUPPORTED_RAG_ANYTHING_MAJOR_MINOR = "1.3"
@@ -51,12 +63,22 @@ CAPABILITIES = AdapterCapabilities(
     latency_breakdown=True,
     token_usage=False,
     reset=False,
-    # The adapter implements the typed trace envelope so a vNext benchmark can
-    # state its visibility honestly, but its public API does not yet expose
-    # any native retrieval boundary that could be scored strictly.
+    # Wire 1.0 stays answer-only. Native retrieval facts are additive inside
+    # the Wire 2.0 envelope so an unsupported profile cannot turn into a
+    # legacy observed-empty result.
     segment_traces=True,
     strict_segment_ranking=False,
 )
+
+
+@dataclass(slots=True)
+class _ActiveQueryCapture:
+    query_results: list[Mapping[str, Any]] = field(default_factory=list)
+    query_parameters: list[dict[str, Any]] = field(default_factory=list)
+    candidate_calls: list[tuple[int, list[Mapping[str, Any]]]] = field(
+        default_factory=list
+    )
+    errors: list[str] = field(default_factory=list)
 
 
 class OllamaModelConfig(BaseModel):
@@ -177,6 +199,16 @@ class OfficialRAGAnythingRuntime:
         self.prompt_digests = prompt_digests
         self.output_dir = output_dir
         self.parse_timeout_seconds = parse_timeout_seconds
+        self._active_query_capture: ContextVar[_ActiveQueryCapture | None] = (
+            ContextVar(
+                f"rag_anything_query_capture_{id(self)}",
+                default=None,
+            )
+        )
+        self._hooked_core: Any | None = None
+        self._hooked_vector_store: Any | None = None
+        self._original_aquery_llm: Any | None = None
+        self._original_vector_query: Any | None = None
 
     @classmethod
     async def create(
@@ -296,8 +328,13 @@ class OfficialRAGAnythingRuntime:
             if callback is not None:
                 self.rag.callback_manager.unregister(callback)
 
-    async def query(
-        self, question: str, *, mode: str, generate_answer: bool, options: dict[str, Any]
+    async def _query_native(
+        self,
+        question: str,
+        *,
+        mode: str,
+        generate_answer: bool,
+        options: dict[str, Any],
     ) -> str | None:
         query_options = dict(options)
         query_options["vlm_enhanced"] = bool(query_options.pop("vlm_enhanced", False))
@@ -310,7 +347,271 @@ class OfficialRAGAnythingRuntime:
             return result
         return None
 
+    async def query(
+        self, question: str, *, mode: str, generate_answer: bool, options: dict[str, Any]
+    ) -> str | None:
+        """Retain the documented answer-only API for Wire 1.0 callers."""
+
+        return await self._query_native(
+            question,
+            mode=mode,
+            generate_answer=generate_answer,
+            options=options,
+        )
+
+    async def query_with_observation(
+        self,
+        question: str,
+        *,
+        mode: str,
+        generate_answer: bool,
+        options: dict[str, Any],
+    ) -> RuntimeQueryCapture:
+        """Observe one native query without replaying retrieval or generation."""
+
+        declared = {
+            "mode": mode,
+            "vlm_enhanced": bool(options.get("vlm_enhanced", False)),
+            "top_k": options.get("top_k"),
+            "chunk_top_k": options.get("chunk_top_k"),
+            "max_total_tokens": options.get("max_total_tokens"),
+        }
+        if mode != "naive":
+            answer = await self._query_native(
+                question,
+                mode=mode,
+                generate_answer=generate_answer,
+                options=options,
+            )
+            return RuntimeQueryCapture.unavailable(
+                answer=answer,
+                reason="rag_anything_non_naive_stage_derivation_is_not_observable",
+                query_parameters=declared,
+            )
+        if bool(options.get("vlm_enhanced", False)):
+            answer = await self._query_native(
+                question,
+                mode=mode,
+                generate_answer=generate_answer,
+                options=options,
+            )
+            return RuntimeQueryCapture.unavailable(
+                answer=answer,
+                reason="rag_anything_vlm_stage_derivation_is_not_observable",
+                query_parameters=declared,
+            )
+        hook_error = self._ensure_query_capture_hooks()
+        if hook_error is not None:
+            answer = await self._query_native(
+                question,
+                mode=mode,
+                generate_answer=generate_answer,
+                options=options,
+            )
+            return RuntimeQueryCapture.unavailable(
+                answer=answer,
+                reason=hook_error,
+                query_parameters=declared,
+            )
+
+        active = _ActiveQueryCapture()
+        token = self._active_query_capture.set(active)
+        try:
+            answer = await self._query_native(
+                question,
+                mode=mode,
+                generate_answer=generate_answer,
+                options=options,
+            )
+        finally:
+            self._active_query_capture.reset(token)
+
+        if active.errors:
+            return RuntimeQueryCapture.unavailable(
+                answer=answer,
+                status=ObservationStatus.CORRUPTED,
+                reason=(
+                    "native query observation capture failed: "
+                    + ", ".join(sorted(set(active.errors)))
+                ),
+                query_parameters=declared,
+            )
+        if len(active.query_results) != 1 or len(active.candidate_calls) != 1:
+            return RuntimeQueryCapture.unavailable(
+                answer=answer,
+                status=ObservationStatus.CORRUPTED,
+                reason="native query did not expose exactly one query and candidate boundary",
+                query_parameters=declared,
+            )
+        query_result = active.query_results[0]
+        parameters = active.query_parameters[0] if active.query_parameters else {}
+        observed_mode = parameters.get("mode")
+        if observed_mode != "naive":
+            return RuntimeQueryCapture.unavailable(
+                answer=answer,
+                status=ObservationStatus.CORRUPTED,
+                reason="captured LightRAG query mode differs from the requested native mode",
+                query_parameters={**declared, **parameters},
+            )
+        if parameters.get("enable_rerank") is not False:
+            return RuntimeQueryCapture.unavailable(
+                answer=answer,
+                reason="native rerank intermediate boundary is not observable",
+                query_parameters={**declared, **parameters},
+            )
+        candidate_cutoff, candidate_items = active.candidate_calls[0]
+        llm_response = query_result.get("llm_response")
+        captured_answer = (
+            llm_response.get("content") if isinstance(llm_response, Mapping) else None
+        )
+        if generate_answer and captured_answer != answer:
+            return RuntimeQueryCapture.unavailable(
+                answer=answer,
+                status=ObservationStatus.CORRUPTED,
+                reason="captured native answer differs from RAG-Anything public output",
+                query_parameters={**declared, **parameters},
+            )
+        return RuntimeQueryCapture.observed(
+            answer=answer,
+            candidate_items=candidate_items,
+            query_result=query_result,
+            candidate_cutoff=candidate_cutoff,
+            query_parameters={**declared, **parameters},
+        )
+
+    def _ensure_query_capture_hooks(self) -> str | None:
+        core = getattr(self.rag, "lightrag", None)
+        if core is None:
+            return "rag_anything_lightrag_runtime_is_unavailable"
+        vector_store = getattr(core, "chunks_vdb", None)
+        aquery_llm = getattr(core, "aquery_llm", None)
+        vector_query = getattr(vector_store, "query", None)
+        if not callable(aquery_llm) or not callable(vector_query):
+            return "rag_anything_native_query_hooks_are_unsupported"
+        if self._hooked_core is core and self._hooked_vector_store is vector_store:
+            return None
+        if self._hooked_core is not None:
+            return "rag_anything_native_query_runtime_changed_after_hook_installation"
+
+        self._original_aquery_llm = aquery_llm
+        self._original_vector_query = vector_query
+
+        async def observed_aquery_llm(*args: Any, **kwargs: Any) -> Any:
+            assert self._original_aquery_llm is not None
+            result = await self._original_aquery_llm(*args, **kwargs)
+            active = self._active_query_capture.get()
+            if active is not None:
+                try:
+                    if not isinstance(result, Mapping):
+                        raise TypeError("structured query result is not a mapping")
+                    copied_result = copy.deepcopy(dict(result))
+                    param = kwargs.get("param")
+                    if param is None and len(args) >= 2:
+                        param = args[1]
+                    parameters = {
+                        "mode": getattr(param, "mode", None),
+                        "enable_rerank": getattr(param, "enable_rerank", None),
+                        "top_k": getattr(param, "top_k", None),
+                        "chunk_top_k": getattr(param, "chunk_top_k", None),
+                        "max_total_tokens": getattr(param, "max_total_tokens", None),
+                    }
+                    active.query_results.append(copied_result)
+                    active.query_parameters.append(parameters)
+                except Exception as exc:  # noqa: BLE001 - observation is non-invasive
+                    active.errors.append(
+                        f"aquery_llm_capture:{type(exc).__name__}"
+                    )
+            return result
+
+        async def observed_vector_query(*args: Any, **kwargs: Any) -> Any:
+            assert self._original_vector_query is not None
+            result = await self._original_vector_query(*args, **kwargs)
+            active = self._active_query_capture.get()
+            if active is not None:
+                try:
+                    top_k = kwargs.get("top_k")
+                    if top_k is None and len(args) >= 2:
+                        top_k = args[1]
+                    if (
+                        not isinstance(top_k, int)
+                        or top_k < 1
+                        or not isinstance(result, list)
+                    ):
+                        raise TypeError("candidate boundary has an invalid shape")
+                    active.candidate_calls.append(
+                        (top_k, copy.deepcopy(result))
+                    )
+                except Exception as exc:  # noqa: BLE001 - observation is non-invasive
+                    active.errors.append(
+                        f"candidate_capture:{type(exc).__name__}"
+                    )
+            return result
+
+        try:
+            core.aquery_llm = observed_aquery_llm
+            vector_store.query = observed_vector_query
+        except Exception:  # noqa: BLE001 - a failed hook must restore native behavior
+            core.aquery_llm = aquery_llm
+            vector_store.query = vector_query
+            self._original_aquery_llm = None
+            self._original_vector_query = None
+            return "rag_anything_native_query_hooks_could_not_be_installed"
+        self._hooked_core = core
+        self._hooked_vector_store = vector_store
+        return None
+
+    async def observe_ingestion_catalog(self) -> RuntimeIngestionCapture:
+        """Read the complete run-scoped JsonKV stores after ingestion."""
+
+        core = getattr(self.rag, "lightrag", None)
+        if core is None:
+            raise RuntimeError("RAG-Anything did not initialize LightRAG storage")
+        chunks = await self._snapshot_json_kv(getattr(core, "text_chunks", None))
+        full_rows = await self._snapshot_json_kv(getattr(core, "full_docs", None))
+        full_documents = {
+            key: str(row["content"])
+            for key, row in full_rows.items()
+            if isinstance(row.get("content"), str)
+        }
+        return RuntimeIngestionCapture(
+            chunks=chunks,
+            full_documents=full_documents,
+            storage_identity="JsonKVStorage/complete-run-snapshot",
+        )
+
+    @staticmethod
+    async def _snapshot_json_kv(storage: Any) -> dict[str, Mapping[str, Any]]:
+        if storage is None:
+            raise RuntimeError("required LightRAG JsonKV storage is unavailable")
+        all_keys = getattr(storage, "all_keys", None)
+        get_by_ids = getattr(storage, "get_by_ids", None)
+        if callable(all_keys) and callable(get_by_ids):
+            keys = sorted(await all_keys())
+            rows = await get_by_ids(keys)
+            if len(rows) != len(keys) or any(not isinstance(row, Mapping) for row in rows):
+                raise RuntimeError("LightRAG JsonKV snapshot is incomplete")
+            return {
+                key: copy.deepcopy(dict(row)) for key, row in zip(keys, rows)
+            }
+        # LightRAG 1.4.16's JsonKV backend predates public key enumeration.
+        # This adapter pins that backend and reads its complete in-memory map
+        # only after the ingestion barrier.  Other storage types fail closed.
+        if type(storage).__name__ != "JsonKVStorage":
+            raise RuntimeError("LightRAG storage cannot prove complete enumeration")
+        raw = getattr(storage, "_data", None)
+        if raw is None:
+            raise RuntimeError("LightRAG JsonKV storage is not initialized")
+        return {
+            str(key): copy.deepcopy(dict(value))
+            for key, value in dict(raw).items()
+            if isinstance(value, Mapping)
+        }
+
     async def close(self) -> None:
+        if self._hooked_core is not None and self._original_aquery_llm is not None:
+            self._hooked_core.aquery_llm = self._original_aquery_llm
+        if self._hooked_vector_store is not None and self._original_vector_query is not None:
+            self._hooked_vector_store.query = self._original_vector_query
         await self.rag.finalize_storages()
 
 
@@ -481,6 +782,9 @@ class RAGAnythingAdapter:
         self._index_fingerprint: str | None = None
         self._work_dir: Path | None = None
         self._liveness: IngestionLiveness | None = None
+        self._native_observation_snapshot: NativeObservationSnapshot | None = None
+        self._native_observation_status = ObservationStatus.UNOBSERVED
+        self._native_observation_reason = "native ingestion has not completed"
 
     async def prepare(
         self, context: PrepareContext, config: dict[str, Any]
@@ -644,11 +948,26 @@ class RAGAnythingAdapter:
             "completed", details={"ingested_documents": len(documents)}
         )
         self._index_fingerprint = digest.hexdigest()
+        await self._capture_native_observation_snapshot(
+            documents=documents,
+            runtime=runtime,
+            config=config,
+            context=context,
+        )
         details: dict[str, object] = {
             "failed_documents": 0,
             "index_artifact_digest": directory_digest(
                 self._require_work_dir() / "storage"
             ),
+            "wire_v2_native_observation": {
+                "observation_status": self._native_observation_status.value,
+                "reason": self._native_observation_reason,
+                "runtime_chunk_count": (
+                    len(self._native_observation_snapshot.runtime_chunks)
+                    if self._native_observation_snapshot is not None
+                    else None
+                ),
+            },
         }
         if benchmark_digest is not None:
             details.update(
@@ -683,11 +1002,59 @@ class RAGAnythingAdapter:
             }
         )
         started = monotonic()
-        answer = await runtime.query(
-            request.question,
-            mode=config.query_mode,
-            generate_answer=request.generate_answer,
-            options=options,
+        query_with_observation = getattr(runtime, "query_with_observation", None)
+        capture: RuntimeQueryCapture | None = None
+        if self._native_observation_snapshot is not None and callable(
+            query_with_observation
+        ):
+            observed = await query_with_observation(
+                request.question,
+                mode=config.query_mode,
+                generate_answer=request.generate_answer,
+                options=options,
+            )
+            if not isinstance(observed, RuntimeQueryCapture):
+                raise TypeError("runtime query observation has an invalid type")
+            capture = observed
+            if config.query_mode != "naive" and (
+                capture.observation_status == ObservationStatus.OBSERVED
+            ):
+                capture = RuntimeQueryCapture.unavailable(
+                    answer=capture.answer,
+                    reason="rag_anything_non_naive_stage_derivation_is_not_observable",
+                    query_parameters=capture.query_parameters,
+                )
+            if config.enable_vlm_query and (
+                capture.observation_status == ObservationStatus.OBSERVED
+            ):
+                capture = RuntimeQueryCapture.unavailable(
+                    answer=capture.answer,
+                    reason="rag_anything_vlm_stage_derivation_is_not_observable",
+                    query_parameters=capture.query_parameters,
+                )
+            answer = capture.answer
+        else:
+            answer = await runtime.query(
+                request.question,
+                mode=config.query_mode,
+                generate_answer=request.generate_answer,
+                options=options,
+            )
+            if self._native_observation_snapshot is not None:
+                capture = RuntimeQueryCapture.unavailable(
+                    answer=answer,
+                    reason="runtime does not expose same-execution native query hooks",
+                    query_parameters={
+                        "mode": config.query_mode,
+                        "top_k": options["top_k"],
+                        "chunk_top_k": options["chunk_top_k"],
+                        "max_total_tokens": options["max_total_tokens"],
+                    },
+                )
+        wire_v2 = self._wire_v2_observation(
+            request=request,
+            capture=capture,
+            answer=answer,
         )
         return RAGResult(
             answer=answer,
@@ -712,12 +1079,127 @@ class RAGAnythingAdapter:
                 ),
             ),
             latency={"native_query_latency": monotonic() - started},
+            trace={
+                "schema_version": "rag-eval-rag-anything-adapter-trace/2.0",
+                "wire_v2_native_observation": wire_v2,
+                "native_behavior_shadow": {
+                    "status": (
+                        "verified"
+                        if capture is not None
+                        and capture.observation_status == ObservationStatus.OBSERVED
+                        else (
+                            capture.observation_status.value
+                            if capture is not None
+                            else "unobserved"
+                        )
+                    ),
+                    "execution_count": 1,
+                    "answer_sha256": (
+                        hashlib.sha256(answer.encode("utf-8")).hexdigest()
+                        if isinstance(answer, str)
+                        else None
+                    ),
+                    "source": "same_native_query_execution",
+                },
+            },
             native_metadata={
                 "query_mode": config.query_mode,
                 "index_fingerprint": self._index_fingerprint,
-                "retrieval_observability": "unavailable_in_public_api",
+                "retrieval_observability": (
+                    capture.observation_status.value
+                    if capture is not None
+                    else self._native_observation_status.value
+                ),
             },
         )
+
+    async def _capture_native_observation_snapshot(
+        self,
+        *,
+        documents: list[DocumentInput],
+        runtime: Runtime,
+        config: RAGAnythingAdapterConfig,
+        context: PrepareContext,
+    ) -> None:
+        self._native_observation_snapshot = None
+        self._native_observation_status = ObservationStatus.UNOBSERVED
+        self._native_observation_reason = (
+            "native observation requires one source-document DOCX with a canonical sidecar"
+        )
+        if config.evaluation_corpus != "source_document" or len(documents) != 1:
+            return
+        document = documents[0]
+        if (
+            document.content is not None
+            or document.source_path is None
+            or Path(document.source_path).suffix.lower() != ".docx"
+        ):
+            return
+        observe_catalog = getattr(runtime, "observe_ingestion_catalog", None)
+        if not callable(observe_catalog):
+            self._native_observation_status = ObservationStatus.UNSUPPORTED
+            self._native_observation_reason = (
+                "runtime does not expose a complete native ingestion catalog"
+            )
+            return
+        try:
+            capture = await observe_catalog()
+            if not isinstance(capture, RuntimeIngestionCapture):
+                raise TypeError("runtime ingestion observation has an invalid type")
+            snapshot = build_native_observation_snapshot(
+                document=document,
+                source_dir=Path(context.source_dir),
+                capture=capture,
+                runtime_config=config.model_dump(mode="json"),
+                system_version=runtime.system_version,
+                core_version=runtime.core_version,
+                adapter_version=ADAPTER_VERSION,
+            )
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
+            self._native_observation_status = ObservationStatus.CORRUPTED
+            self._native_observation_reason = (
+                f"native ingestion observation failed validation: {exc}"
+            )
+            return
+        self._native_observation_snapshot = snapshot
+        self._native_observation_status = ObservationStatus.OBSERVED
+        self._native_observation_reason = None
+
+    def _wire_v2_observation(
+        self,
+        *,
+        request: RAGQuery,
+        capture: RuntimeQueryCapture | None,
+        answer: str | None,
+    ) -> dict[str, Any]:
+        snapshot = self._native_observation_snapshot
+        if snapshot is None:
+            return {
+                "observation_status": self._native_observation_status.value,
+                "reason": self._native_observation_reason,
+            }
+        if capture is None:
+            capture = RuntimeQueryCapture.unavailable(
+                answer=answer,
+                reason="same-execution native query observation is unavailable",
+            )
+        try:
+            result = build_native_run_result_v2(
+                snapshot=snapshot,
+                case_id=request.case_id,
+                capture=capture,
+                generate_answer=request.generate_answer,
+                adapter_version=ADAPTER_VERSION,
+            )
+        except (TypeError, ValueError) as exc:
+            return {
+                "observation_status": ObservationStatus.CORRUPTED.value,
+                "reason": f"native Wire 2.0 trace failed validation: {exc}",
+            }
+        return {
+            "observation_status": ObservationStatus.OBSERVED.value,
+            "adapter_run_result": result.model_dump(mode="json", exclude_none=True),
+        }
 
     async def reset(self) -> ResetResult:
         return ResetResult(

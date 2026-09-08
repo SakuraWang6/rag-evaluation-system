@@ -81,6 +81,7 @@ def validate_outcomes(
     *,
     profile: str,
 ) -> list[str]:
+    gate_kind = str(config.get("gate_kind") or section)
     errors = list(recorder.collection_errors)
     missing_outcomes = recorder.collected - recorder.outcomes.keys()
     unexpected_outcomes = recorder.outcomes.keys() - recorder.collected
@@ -93,7 +94,7 @@ def validate_outcomes(
     for node_id, outcome in recorder.outcomes.items():
         by_outcome.setdefault(outcome, set()).add(node_id)
 
-    if section == "adapter_pytest":
+    if gate_kind == "adapter_pytest":
         expected_failed = _expected_failed(config)
         actual_failed = by_outcome.get("failed", set())
         missing_failed = expected_failed - actual_failed
@@ -116,7 +117,7 @@ def validate_outcomes(
                     f"forbidden {forbidden} outcomes: {sorted(by_outcome[forbidden])}"
                 )
         errors.extend(_require_named_passes(config, recorder, profile=profile))
-    elif section == "adapter_dirty_tests":
+    elif gate_kind == "adapter_dirty_tests":
         passed = len(by_outcome.get("passed", set()))
         if passed != int(config["expected_passed"]):
             errors.append(f"passed count {passed} != {config['expected_passed']}")
@@ -128,7 +129,7 @@ def validate_outcomes(
         if non_passed:
             errors.append(f"non-passing outcomes: {non_passed}")
         errors.extend(_require_named_passes(config, recorder, profile=profile))
-    elif section == "platform_pytest":
+    elif gate_kind == "platform_pytest":
         minimum_key = "minimum_passed_ci" if profile == "ci" else "minimum_passed_local"
         minimum_passed = int(config[minimum_key])
         passed = len(by_outcome.get("passed", set()))
@@ -151,7 +152,7 @@ def validate_outcomes(
         if forbidden:
             errors.append(f"forbidden outcomes: {forbidden}")
     else:
-        errors.append(f"unsupported baseline section: {section}")
+        errors.append(f"unsupported gate kind: {gate_kind}")
     return errors
 
 
@@ -173,8 +174,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--section",
-        choices=("adapter_pytest", "adapter_dirty_tests", "platform_pytest"),
         required=True,
+        help="baseline section name; its optional gate_kind selects validation policy",
     )
     parser.add_argument("--profile", choices=("ci", "local"), default="ci")
     return parser.parse_args()
@@ -183,6 +184,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     baseline = yaml.safe_load(args.baseline.read_text(encoding="utf-8"))
+    if not isinstance(baseline, Mapping) or args.section not in baseline:
+        raise SystemExit(f"unknown baseline section: {args.section}")
     config = baseline[args.section]
     pytest_exit, recorder = run_pytest([str(value) for value in config["test_paths"]])
     errors = validate_outcomes(args.section, config, recorder, profile=args.profile)

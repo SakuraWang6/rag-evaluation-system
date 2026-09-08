@@ -549,7 +549,14 @@ It does not need a new:
 - Run Artifact family;
 - API or WebUI page.
 
-The current RAG-Anything Adapter honestly reports unsupported retrieval stages. Until its runtime exposes those stages and lineage, it may run answer-only diagnostics but is not admitted to formal retrieval/context comparison. Unsupported capability is a property of the Adapter/runtime profile, not a reason to fork the architecture.
+The RAG-Anything Adapter now keeps its Wire 1.0 answer-only surface while
+publishing an additive Wire 2.0 trace for the proven native `naive`, non-VLM,
+no-rerank profile. It observes the actual vector query and structured native
+result in one execution, validates all items against the run-scoped ingestion
+catalog, and uses only exact-unique textual crosswalks. Other modes and table
+structures remain explicitly unobservable/unsupported rather than creating a
+different Benchmark or scorer. Metric and leaderboard admission therefore
+follow the shared availability rules, not the Adapter name.
 
 ## Target invariants
 

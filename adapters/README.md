@@ -4,7 +4,8 @@ Isolated Worker adapters for the RAG Evaluation Platform:
 
 - `lightrag/`: LightRAG adapter with legacy-default parity and opt-in
   experimental profiles.
-- `rag-anything/`: RAG-Anything adapter using only its public APIs.
+- `rag-anything/`: RAG-Anything adapter with an answer-only Wire 1.0 surface
+  and additive same-execution Wire 2.0 native observation hooks.
 
 Each adapter is installed in its own virtual environment and exposes the
 versioned loopback HTTP/JSON Worker Protocol. The platform never imports either
@@ -14,6 +15,10 @@ run configuration; Gold data and scorer configuration remain platform-side.
 Both adapters must pass the same Worker TCK. Capabilities are observational:
 `None` means a stage cannot be observed, while `[]` means it was observed
 and returned no evidence.
+
+Both native observers also pass the shared Wire 2.0 observation TCK. Adapter
+implementations may use different runtime hooks, but they emit the same
+`AdapterRunResultV2` and are scored by the same Platform engine.
 
 ## Current baseline boundary
 

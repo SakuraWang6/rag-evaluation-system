@@ -94,6 +94,25 @@ def test_adapter_gate_accepts_all_green_and_requires_named_contract_nodes() -> N
     assert any("required nodes did not pass" in error for error in errors)
 
 
+def test_named_adapter_section_can_reuse_exact_adapter_policy() -> None:
+    config = {
+        "gate_kind": "adapter_pytest",
+        "expected_passed": 1,
+        "exact_failed_node_ids": [],
+        "required_passed_node_ids": ["test_gate.py::test_contract"],
+    }
+
+    assert (
+        validate_outcomes(
+            "third_adapter_observation",
+            config,
+            recorder({"test_gate.py::test_contract": "passed"}),
+            profile="ci",
+        )
+        == []
+    )
+
+
 def test_platform_gate_requires_named_nodes_and_rejects_ci_skips() -> None:
     config = {
         "minimum_passed_ci": 2,
