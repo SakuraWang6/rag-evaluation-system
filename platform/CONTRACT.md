@@ -65,3 +65,24 @@ case/run artifacts rather than disappearing from metric denominators.
 
 An adapter must not reconstruct an unobservable stage using a second query or
 private diagnostic metadata. Evaluation code never reads `native_metadata`.
+
+## Evidence item identity, rank, and canonical provenance
+
+`RAGEvidenceItem` cardinality and `rank` describe the runtime retrieval output,
+not the number of canonical objects covered by that output. One runtime item
+therefore remains one evidence item even when its source span maps to several
+canonical objects. Expanding that mapping into several evidence items would
+change top-k membership, reciprocal rank, and metric denominators and is a
+Wire/Artifact semantic change rather than a presentation transform.
+
+Adapters expose a many-object mapping through plural metadata such as
+`canonical_object_ids` and `canonical_edges`. The evaluator may use those
+verified edges to match Gold evidence without requiring a Gold-specific adapter
+projection. The typed `locator` field is populated only when the runtime item
+has one unambiguous, fully covered canonical object; otherwise it remains
+`None` and the plural metadata is authoritative.
+
+Capability declarations describe actually observable output. In particular,
+`prompt_trace = true` means the adapter returns the rendered generation prompt
+from the executed query path. It does not promise model chain-of-thought or
+private provider state.

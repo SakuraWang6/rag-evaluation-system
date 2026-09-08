@@ -128,11 +128,11 @@ def test_explicit_values_override_profile_defaults() -> None:
     assert config.table_preceding_context is False
 
 
-def test_capabilities_claim_object_provenance_but_not_prompt_trace() -> None:
+def test_capabilities_claim_object_provenance_and_prompt_trace() -> None:
     assert CAPABILITIES.raw_retrieval
     assert CAPABILITIES.ranked_retrieval
     assert CAPABILITIES.final_context
-    assert not CAPABILITIES.prompt_trace
+    assert CAPABILITIES.prompt_trace
     assert CAPABILITIES.object_provenance
 
 

@@ -70,11 +70,36 @@ def test_adapter_gate_rejects_skip_and_xfail() -> None:
     assert any("forbidden xfail" in error for error in errors)
 
 
+def test_adapter_gate_accepts_all_green_and_requires_named_contract_nodes() -> None:
+    config = {
+        "expected_passed": 2,
+        "exact_failed_node_ids": [],
+        "required_passed_node_ids": ["test_gate.py::test_contract"],
+    }
+    outcomes = {
+        "test_gate.py::test_contract": "passed",
+        "test_gate.py::test_other": "passed",
+    }
+    assert (
+        validate_outcomes(
+            "adapter_pytest", config, recorder(outcomes), profile="ci"
+        )
+        == []
+    )
+
+    missing = recorder({"test_gate.py::test_replacement": "passed"})
+    missing.outcomes["test_gate.py::test_other"] = "passed"
+    missing.collected.add("test_gate.py::test_other")
+    errors = validate_outcomes("adapter_pytest", config, missing, profile="ci")
+    assert any("required nodes did not pass" in error for error in errors)
+
+
 def test_platform_gate_requires_named_nodes_and_rejects_ci_skips() -> None:
     config = {
         "minimum_passed_ci": 2,
         "minimum_passed_local": 1,
         "required_passed_node_ids": ["test_gate.py::test_required"],
+        "required_passed_node_ids_ci": ["test_gate.py::test_sandbox"],
         "allowed_local_skipped_node_ids": ["test_gate.py::test_sandbox"],
     }
     outcomes = {
@@ -86,6 +111,7 @@ def test_platform_gate_requires_named_nodes_and_rejects_ci_skips() -> None:
         "platform_pytest", config, recorder(outcomes), profile="ci"
     )
     assert any("unexpected skips" in error for error in errors)
+    assert any("required nodes did not pass" in error for error in errors)
     assert (
         validate_outcomes(
             "platform_pytest", config, recorder(outcomes), profile="local"

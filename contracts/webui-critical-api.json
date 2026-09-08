@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "base_path": "/api/v1",
+  "operations": [
+    {
+      "id": "health",
+      "method": "GET",
+      "server_path": "/api/v1/health",
+      "success_status": "200",
+      "response_type": "object",
+      "client": {"method": "health", "args": [], "path": "/health"}
+    },
+    {
+      "id": "authoring-list",
+      "method": "GET",
+      "server_path": "/api/v1/authoring/datasets",
+      "success_status": "200",
+      "response_type": "array",
+      "client": {"method": "authoringDatasets", "args": [], "path": "/authoring/datasets"}
+    },
+    {
+      "id": "authoring-analyze",
+      "method": "POST",
+      "server_path": "/api/v1/authoring/datasets/{authoring_dataset_id}/analyze",
+      "success_status": "200",
+      "response_type": "object",
+      "client": {"method": "analyzeAuthoringDocument", "args": ["dataset-1"], "path": "/authoring/datasets/dataset-1/analyze"}
+    },
+    {
+      "id": "formal-release-publish",
+      "method": "POST",
+      "server_path": "/api/v1/authoring/datasets/{authoring_dataset_id}/formal-releases",
+      "success_status": "201",
+      "request_schema": "AuthoringFormalReleaseRequest",
+      "response_type": "object",
+      "client": {"method": "publishAuthoringFormalRelease", "args": ["dataset-1", "Fixture", "1.0.0", "contract-test"], "path": "/authoring/datasets/dataset-1/formal-releases"}
+    },
+    {
+      "id": "formal-release-list",
+      "method": "GET",
+      "server_path": "/api/v1/product/formal-datasets",
+      "success_status": "200",
+      "response_type": "object",
+      "client": {"method": "formalDatasets", "args": [], "path": "/product/formal-datasets"}
+    },
+    {
+      "id": "formal-release-content",
+      "method": "GET",
+      "server_path": "/api/v1/product/formal-datasets/{release_id}/content",
+      "success_status": "200",
+      "response_type": "object",
+      "client": {"method": "formalDatasetContent", "args": ["release-1"], "path": "/product/formal-datasets/release-1/content"}
+    },
+    {
+      "id": "formal-release-case-index",
+      "method": "GET",
+      "server_path": "/api/v1/product/formal-datasets/{release_id}/cases",
+      "success_status": "200",
+      "response_type": "object",
+      "client": {"method": "formalDatasetCaseIndex", "args": ["release-1"], "path": "/product/formal-datasets/release-1/cases"}
+    },
+    {
+      "id": "formal-release-case",
+      "method": "GET",
+      "server_path": "/api/v1/product/formal-datasets/{release_id}/cases/{case_id}",
+      "success_status": "200",
+      "response_type": "object",
+      "client": {"method": "formalDatasetCase", "args": ["release-1", "case-1"], "path": "/product/formal-datasets/release-1/cases/case-1"}
+    },
+    {
+      "id": "product-system-list",
+      "method": "GET",
+      "server_path": "/api/v1/product/systems",
+      "success_status": "200",
+      "response_type": "array",
+      "client": {"method": "productSystems", "args": [], "path": "/product/systems"}
+    },
+    {
+      "id": "product-system-save",
+      "method": "POST",
+      "server_path": "/api/v1/product/systems",
+      "success_status": "200",
+      "request_schema": "SystemConnectionRequest",
+      "response_type": "object",
+      "client": {"method": "saveProductSystem", "args": [{"system_id": "system-1", "display_name": "Fixture", "profile_id": "lightrag", "profile_version": "1.0.1", "python_executable": "python"}], "path": "/product/systems"}
+    },
+    {
+      "id": "product-system-test",
+      "method": "POST",
+      "server_path": "/api/v1/product/systems/{system_id}/test",
+      "success_status": "200",
+      "response_type": "object",
+      "client": {"method": "testProductSystem", "args": ["system-1"], "path": "/product/systems/system-1/test"}
+    },
+    {
+      "id": "evaluation-draft-list",
+      "method": "GET",
+      "server_path": "/api/v1/product/evaluation-drafts",
+      "success_status": "200",
+      "response_type": "array",
+      "client": {"method": "evaluationDrafts", "args": [], "path": "/product/evaluation-drafts"}
+    },
+    {
+      "id": "evaluation-draft-save",
+      "method": "POST",
+      "server_path": "/api/v1/product/evaluation-drafts",
+      "success_status": "200",
+      "request_schema": "EvaluationDraft",
+      "response_type": "object",
+      "client": {"method": "saveEvaluationDraft", "args": [{"draft_id": "draft-1"}], "path": "/product/evaluation-drafts"}
+    },
+    {
+      "id": "evaluation-draft-preview",
+      "method": "GET",
+      "server_path": "/api/v1/product/evaluation-drafts/{draft_id}/preview",
+      "success_status": "200",
+      "response_type": "object",
+      "client": {"method": "previewEvaluationDraft", "args": ["draft-1"], "path": "/product/evaluation-drafts/draft-1/preview"}
+    },
+    {
+      "id": "evaluation-draft-finalize",
+      "method": "POST",
+      "server_path": "/api/v1/product/evaluation-drafts/{draft_id}/finalize",
+      "success_status": "200",
+      "request_schema": "EvaluationFinalizeRequest",
+      "response_type": "object",
+      "client": {"method": "finalizeEvaluationDraft", "args": ["draft-1"], "path": "/product/evaluation-drafts/draft-1/finalize"}
+    },
+    {
+      "id": "run-queue",
+      "method": "POST",
+      "server_path": "/api/v1/experiments/{experiment_id}/runs",
+      "success_status": "200",
+      "response_type": "object",
+      "client": {"method": "queueRun", "args": ["experiment-1"], "path": "/experiments/experiment-1/runs"}
+    },
+    {
+      "id": "job-list",
+      "method": "GET",
+      "server_path": "/api/v1/jobs",
+      "success_status": "200",
+      "response_type": "array",
+      "client": {"method": "jobs", "args": [], "path": "/jobs"}
+    },
+    {
+      "id": "run-summary",
+      "method": "GET",
+      "server_path": "/api/v1/runs/{run_id}/summary",
+      "success_status": "200",
+      "response_type": "object",
+      "client": {"method": "summary", "args": ["run-1"], "path": "/runs/run-1/summary"}
+    },
+    {
+      "id": "run-cases",
+      "method": "GET",
+      "server_path": "/api/v1/runs/{run_id}/cases",
+      "success_status": "200",
+      "response_type": "array",
+      "client": {"method": "cases", "args": ["run-1"], "path": "/runs/run-1/cases"}
+    },
+    {
+      "id": "run-artifact-verification",
+      "method": "GET",
+      "server_path": "/api/v1/runs/{run_id}/artifacts/verify",
+      "success_status": "200",
+      "response_type": "object",
+      "client": {"method": "verify", "args": ["run-1"], "path": "/runs/run-1/artifacts/verify"}
+    }
+  ]
+}
