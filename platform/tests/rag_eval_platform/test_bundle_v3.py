@@ -259,8 +259,20 @@ def test_bundle_v3_retains_figure_and_equation_locator_boundaries(tmp_path: Path
             "relations": [json.loads(line) for line in (root / str(view.canonical_contract_relations_path)).read_text().splitlines()],
         }
     )
-    figure = next(item for item in canonical.objects if item.object_type.value == "figure" and item.gold_evidence_eligible)
-    equation = next(item for item in canonical.objects if item.object_type.value == "equation" and item.gold_evidence_eligible)
+    figure = next(
+        item
+        for item in canonical.objects
+        if item.object_type.value == "figure"
+        and item.representation_status.value == "complete"
+        and item.attributes.get("gold_evidence_scope") == "caption_and_text_only"
+    )
+    equation = next(
+        item
+        for item in canonical.objects
+        if item.object_type.value == "equation"
+        and item.representation_status.value == "complete"
+        and item.attributes.get("placement") == "block"
+    )
     for evidence_id, object_ in (("figure", figure), ("equation", equation)):
         record = BundleV3EvidenceRecord(
             evidence_key=f"gold-revision-rich-000001:{evidence_id}",
@@ -277,8 +289,10 @@ def test_bundle_v3_retains_figure_and_equation_locator_boundaries(tmp_path: Path
         assert BundleV3EvidenceRecord.model_validate_json(record.model_dump_json()).canonical == object_
     assert figure.attributes["gold_evidence_scope"] == "caption_and_text_only"
     assert figure.attributes["visual_semantic_status"] == "unverified"
+    assert figure.gold_evidence_eligible is False
     assert equation.attributes["raw_omml_sha256"]
     assert equation.attributes["omml_tree"]
+    assert equation.gold_evidence_eligible is False
 
 
 def test_bundle_v3_tamper_and_release_snapshot_mismatch_fail_closed(tmp_path: Path) -> None:

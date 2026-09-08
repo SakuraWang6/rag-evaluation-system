@@ -65,7 +65,7 @@ No phase may opportunistically implement work assigned to a later phase.
 | --- | --- | --- | --- |
 | 0 | Isolate P0 `retrieval_missed` fix | Complete | `3cfcb64` |
 | 1 | ADR and behavior baseline | Complete in this phase | ADR 0003 plus `native_evaluation_v2` baseline |
-| 2 | Canonical Stability | Not started | Requires Phase 1 acceptance |
+| 2 | Canonical Stability | Complete in this phase | Immutable conformance artifact and Platform-owned matrix |
 | 3 | Wire 2.0 / Unified Trace | Not started | Requires Phase 2 acceptance |
 | 4 | LightRAG Native Observation | Not started | Requires Phase 3 acceptance |
 | 5 | Unified Evaluation | Not started | Requires Phase 4 acceptance |
@@ -138,6 +138,17 @@ docs(architecture): freeze native evaluation v2 decisions
 - Every tested table/cell subtype has an explicit admitted or ineligible result.
 - Benchmark code does not import Adapter capabilities.
 - Historical Snapshot fixtures remain byte-stable.
+
+### Implementation evidence
+
+- `CanonicalConformanceSuite` validates Snapshot identity, typed locators,
+  object relations, representation state, and explicit subtype admission.
+- New canonical artifacts are immutable and content-addressed by canonical
+  digest; identity changes create a sibling Snapshot.
+- The formal Dataset loader verifies the conformance checksum, report digest,
+  Snapshot binding, exact object coverage, and projected Gold decisions.
+- New table targets use logical cells. Physical cells remain proof-only.
+- Historical snapshots without the policy marker keep their read semantics.
 
 ### Commit
 

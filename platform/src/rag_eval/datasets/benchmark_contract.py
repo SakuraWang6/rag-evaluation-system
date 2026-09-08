@@ -464,6 +464,29 @@ def _build_segments(
             ordinal += len(leaf_segments)
             consumed.add(object_id)
 
+        # Canonical v2 table Gold names logical cells, while the legacy
+        # benchmark-segment projection may still materialize the physical
+        # origin cell as its retrieval leaf. Preserve that compatibility
+        # projection through explicit Canonical derivation instead of making
+        # physical cells Gold-eligible again.
+        for record in records:
+            if record.get("object_type") != "logical_cell":
+                continue
+            object_id = str(record["object_id"])
+            if leaves_by_object.get(object_id):
+                continue
+            provenance = record.get("provenance")
+            if not isinstance(provenance, Mapping):
+                continue
+            derived = provenance.get("derived_from_object_ids")
+            if not isinstance(derived, list):
+                continue
+            for source_object_id in derived:
+                if isinstance(source_object_id, str):
+                    leaves_by_object[object_id].extend(
+                        leaves_by_object.get(source_object_id, ())
+                    )
+
         # Preserve structural lineage without creating retrievable table or
         # row aggregate chunks.  Their Gold projection becomes an AND of the
         # deterministically ordered child leaves.

@@ -1,0 +1,211 @@
+{
+  "$defs": {
+    "CanonicalConformanceStatus": {
+      "enum": [
+        "conformant",
+        "nonconformant",
+        "not_evaluated"
+      ],
+      "title": "CanonicalConformanceStatus",
+      "type": "string"
+    },
+    "CanonicalGoldEligibilityRule": {
+      "additionalProperties": false,
+      "description": "One Platform-owned admission decision for a canonical subtype.",
+      "properties": {
+        "subtype": {
+          "minLength": 1,
+          "title": "Subtype",
+          "type": "string"
+        },
+        "object_types": {
+          "items": {
+            "$ref": "#/$defs/CanonicalObjectType"
+          },
+          "minItems": 1,
+          "title": "Object Types",
+          "type": "array"
+        },
+        "gold_evidence_eligible": {
+          "title": "Gold Evidence Eligible",
+          "type": "boolean"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subtype",
+        "object_types",
+        "gold_evidence_eligible",
+        "rationale"
+      ],
+      "title": "CanonicalGoldEligibilityRule",
+      "type": "object"
+    },
+    "CanonicalObjectConformance": {
+      "additionalProperties": false,
+      "description": "Conformance and Gold eligibility for one Snapshot-local object.",
+      "properties": {
+        "object_id": {
+          "minLength": 1,
+          "title": "Object Id",
+          "type": "string"
+        },
+        "object_type": {
+          "$ref": "#/$defs/CanonicalObjectType"
+        },
+        "subtype": {
+          "minLength": 1,
+          "title": "Subtype",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CanonicalConformanceStatus"
+        },
+        "gold_evidence_eligible": {
+          "title": "Gold Evidence Eligible",
+          "type": "boolean"
+        },
+        "reason_codes": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "locator_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Locator Digest",
+          "type": "string"
+        },
+        "witness_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Witness Sha256"
+        }
+      },
+      "required": [
+        "object_id",
+        "object_type",
+        "subtype",
+        "status",
+        "gold_evidence_eligible",
+        "reason_codes",
+        "locator_digest"
+      ],
+      "title": "CanonicalObjectConformance",
+      "type": "object"
+    },
+    "CanonicalObjectType": {
+      "enum": [
+        "document",
+        "section",
+        "heading",
+        "paragraph",
+        "text_span",
+        "table",
+        "row",
+        "cell",
+        "logical_row",
+        "logical_column",
+        "logical_cell",
+        "figure",
+        "caption",
+        "equation",
+        "reference",
+        "footnote",
+        "endnote",
+        "embedded_object",
+        "media_resource"
+      ],
+      "title": "CanonicalObjectType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable, adapter-independent conformance result for one Snapshot.",
+  "properties": {
+    "schema_version": {
+      "const": "canonical-conformance/1",
+      "default": "canonical-conformance/1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "policy_identity": {
+      "const": "rag-eval-canonical-gold-eligibility/1",
+      "default": "rag-eval-canonical-gold-eligibility/1",
+      "title": "Policy Identity",
+      "type": "string"
+    },
+    "canonical_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Canonical Digest",
+      "type": "string"
+    },
+    "source_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Sha256",
+      "type": "string"
+    },
+    "parser_identity": {
+      "minLength": 1,
+      "title": "Parser Identity",
+      "type": "string"
+    },
+    "canonicalizer_identity": {
+      "minLength": 1,
+      "title": "Canonicalizer Identity",
+      "type": "string"
+    },
+    "configuration_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Configuration Digest",
+      "type": "string"
+    },
+    "object_results": {
+      "items": {
+        "$ref": "#/$defs/CanonicalObjectConformance"
+      },
+      "minItems": 1,
+      "title": "Object Results",
+      "type": "array"
+    },
+    "rule_matrix": {
+      "items": {
+        "$ref": "#/$defs/CanonicalGoldEligibilityRule"
+      },
+      "minItems": 1,
+      "title": "Rule Matrix",
+      "type": "array"
+    },
+    "report_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Report Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "canonical_digest",
+    "source_sha256",
+    "parser_identity",
+    "canonicalizer_identity",
+    "configuration_digest",
+    "object_results",
+    "rule_matrix",
+    "report_digest"
+  ],
+  "title": "CanonicalConformanceReport",
+  "type": "object"
+}

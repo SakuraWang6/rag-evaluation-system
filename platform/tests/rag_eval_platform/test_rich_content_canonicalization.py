@@ -90,7 +90,8 @@ def test_rich_drawingml_caption_reference_and_omml_are_auditable_and_determinist
     inline = next(item for item in figures if item["attributes"]["anchor_kind"] == "inline")
     anchor = next(item for item in figures if item["attributes"]["anchor_kind"] == "anchor")
     assert inline["representation_status"] == "complete"
-    assert inline["attributes"]["gold_evidence_eligible"] is True
+    assert inline["attributes"]["gold_evidence_eligible"] is False
+    assert inline["attributes"]["gold_eligibility_subtype"] == "non_candidate.figure"
     assert inline["attributes"]["gold_evidence_scope"] == "caption_and_text_only"
     assert inline["attributes"]["visual_semantic_status"] == "unverified"
     assert anchor["representation_status"] == "complete"
@@ -116,7 +117,11 @@ def test_rich_drawingml_caption_reference_and_omml_are_auditable_and_determinist
     assert inline_equation["representation_status"] == "complete"
     assert inline_equation["attributes"]["gold_evidence_eligible"] is False
     assert block_equation["representation_status"] == "complete"
-    assert block_equation["attributes"]["gold_evidence_eligible"] is True
+    assert block_equation["attributes"]["gold_evidence_eligible"] is False
+    assert (
+        block_equation["attributes"]["gold_eligibility_subtype"]
+        == "non_candidate.equation"
+    )
     assert block_equation["attributes"]["raw_omml"]
     assert block_equation["attributes"]["raw_omml_sha256"]
     assert block_equation["attributes"]["omml_tree"]["tag"] == "oMathPara"

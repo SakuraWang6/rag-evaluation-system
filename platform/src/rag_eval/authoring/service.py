@@ -92,6 +92,9 @@ class AuthoringService:
                         "records_by_status": result.diagnostics["records_by_status"],
                         "records_by_object_type": result.diagnostics["records_by_object_type"],
                         "canonical_contract": result.diagnostics["canonical_contract"],
+                        "canonical_conformance": result.diagnostics[
+                            "canonical_conformance"
+                        ],
                         "rich_content": result.diagnostics.get("rich_content", {}),
                         "package_rich_content": result.diagnostics.get("package", {}),
                     },

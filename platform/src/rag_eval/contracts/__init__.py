@@ -31,10 +31,16 @@ from rag_eval.contracts.dataset import (
     TextSpanLocator,
 )
 from rag_eval.contracts.canonical import (
+    CANONICAL_CONFORMANCE_SCHEMA_VERSION,
+    CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY,
     CANONICAL_SCHEMA_VERSION,
+    CanonicalConformanceReport,
+    CanonicalConformanceStatus,
     CanonicalDocument,
     CanonicalDocumentManifest,
+    CanonicalGoldEligibilityRule,
     CanonicalObject,
+    CanonicalObjectConformance,
     CanonicalObjectType,
     CanonicalRelation,
     CanonicalRelationType,
@@ -81,6 +87,8 @@ PRODUCER = "rag_eval_platform"
 
 __all__ = [
     "CONTRACT_VERSION",
+    "CANONICAL_CONFORMANCE_SCHEMA_VERSION",
+    "CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY",
     "CANONICAL_SCHEMA_VERSION",
     "BENCHMARK_CONTRACT_SCHEMA_VERSION",
     "BENCHMARK_SEGMENTATION_POLICY_VERSION",
@@ -92,7 +100,11 @@ __all__ = [
     "CaseResult",
     "CanonicalDocument",
     "CanonicalDocumentManifest",
+    "CanonicalConformanceReport",
+    "CanonicalConformanceStatus",
+    "CanonicalGoldEligibilityRule",
     "CanonicalObject",
+    "CanonicalObjectConformance",
     "CanonicalObjectType",
     "CanonicalRelation",
     "CanonicalRelationType",

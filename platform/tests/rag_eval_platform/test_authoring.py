@@ -1264,8 +1264,8 @@ def test_authoring_target_preview_exposes_frozen_source_without_internal_ids(tmp
     assert preview.status_code == 200
     assert preview.json()["target_id"] == target["target_id"]
     source = preview.json()["source"]
-    value = next(item for item in source if item["object_type"] == "cell")
-    assert value["object_type"] == "cell"
+    value = next(item for item in source if item["object_type"] == "logical_cell")
+    assert value["object_type"] == "logical_cell"
     assert value["text"]
     assert value["table"]["row"] is not None
     assert value["table"]["column"] is not None

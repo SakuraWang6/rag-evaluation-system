@@ -74,6 +74,13 @@ class CanonicalView(AuthoringModel):
     canonical_contract_manifest_path: str | None = None
     canonical_contract_objects_path: str | None = None
     canonical_contract_relations_path: str | None = None
+    canonical_conformance_path: str | None = None
+    canonical_conformance_digest: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    canonical_conformance_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
 
 
 class CandidateState(StrEnum):

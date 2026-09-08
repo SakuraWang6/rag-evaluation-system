@@ -287,9 +287,10 @@ class AuthoringWorkflow:
                 )
                 table: dict[str, Any] | None = None
                 if record.get("object_type") in {"cell", "logical_cell"}:
+                    row, column = self._cell_position(record)
                     table = {
-                        "row": record.get("row"),
-                        "column": record.get("column"),
+                        "row": row,
+                        "column": column,
                         "header_path": [str(item) for item in header_path if str(item).strip()],
                     }
                 values.append(
@@ -1729,28 +1730,42 @@ class AuthoringWorkflow:
             if re.search(r"版本|version|v\d|批准|发布|author", text, re.I):
                 capability = "version_or_authority_relation"
             values.append(self._target_value(dataset, digest=digest, capability=capability, source_ids=[str(record["object_id"])], route=["section", "text"], flags=flags, confidence=0.75, rationale="deterministic body-block discovery"))
-        cells = [record for record in records if record.get("object_type") == "cell" and str(record.get("canonical_value", "")).strip()]
+        # Logical cells are the Platform's table-evidence atoms. Physical
+        # cells remain in the Catalog as merge/topology proof and must not be
+        # selected as independent Gold.
+        cells = [
+            record
+            for record in records
+            if record.get("object_type") == "logical_cell"
+            and str(record.get("canonical_value", "")).strip()
+        ]
         cells_by_table: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for cell in cells:
             cells_by_table[str(cell["table_id"])].append(cell)
         for table_cells in cells_by_table.values():
-            ordered_cells = sorted(table_cells, key=lambda item: (int(item.get("row", 0)), int(item.get("column", 0))))
-            min_row = min(int(item.get("row", 0)) for item in ordered_cells)
-            min_column = min(int(item.get("column", 0)) for item in ordered_cells)
+            ordered_cells = sorted(table_cells, key=self._cell_position)
+            min_row = min(self._cell_position(item)[0] for item in ordered_cells)
+            min_column = min(self._cell_position(item)[1] for item in ordered_cells)
             # A raw header such as "value" does not make a useful authoring
             # target by itself.  Prefer a data-row cell and carry its visible
             # column/row context with it so question and answer proposals can
             # be understood without relying on opaque canonical IDs.
-            data_cells = [item for item in ordered_cells if int(item.get("row", 0)) > min_row] or ordered_cells
+            data_cells = [
+                item
+                for item in ordered_cells
+                if self._cell_position(item)[0] > min_row
+            ] or ordered_cells
             for cell in data_cells:
-                row, column = int(cell.get("row", 0)), int(cell.get("column", 0))
+                row, column = self._cell_position(cell)
                 column_headers = [
                     item for item in ordered_cells
-                    if int(item.get("column", 0)) == column and int(item.get("row", 0)) < row
+                    if self._cell_position(item)[1] == column
+                    and self._cell_position(item)[0] < row
                 ]
                 row_headers = [
                     item for item in ordered_cells
-                    if int(item.get("row", 0)) == row and min_column <= int(item.get("column", 0)) < column
+                    if self._cell_position(item)[0] == row
+                    and min_column <= self._cell_position(item)[1] < column
                 ]
                 source_records = column_headers + row_headers + [cell]
                 source_ids = list(dict.fromkeys(str(item["object_id"]) for item in source_records))
@@ -1922,6 +1937,19 @@ class AuthoringWorkflow:
         values = record.get("effective_header_path") or attributes.get("effective_header_path") or []
         return [str(item).strip() for item in values if str(item).strip()]
 
+    @staticmethod
+    def _cell_position(record: dict[str, Any]) -> tuple[int, int]:
+        """Return one-based physical or logical coordinates."""
+
+        locator = record.get("structural_locator") or {}
+        row = record.get("row") or record.get("logical_row_start") or locator.get("row")
+        column = (
+            record.get("column")
+            or record.get("logical_column_start")
+            or locator.get("column")
+        )
+        return int(row or 0), int(column or 0)
+
     def _rule_question_proposal(
         self,
         target: BenchmarkTargetCandidate,
@@ -1943,7 +1971,7 @@ class AuthoringWorkflow:
         if target.capability == "table_lookup" and table_cells:
             value_cell = max(
                 table_cells,
-                key=lambda item: (int(item.get("row", 0)), int(item.get("column", 0))),
+                key=self._cell_position,
             )
             header_path = self._header_path(value_cell)
             if header_path:
@@ -1994,7 +2022,7 @@ class AuthoringWorkflow:
         if target.capability == "table_lookup" and table_cells:
             evidence = max(
                 table_cells,
-                key=lambda item: (int(item.get("row", 0)), int(item.get("column", 0))),
+                key=self._cell_position,
             )
         elif len(source) == 1:
             evidence = source[0]
@@ -2372,23 +2400,27 @@ class AuthoringWorkflow:
             table_id = cell.get("table_id")
             if not table_id:
                 continue
-            row, column = int(cell.get("row", 0)), int(cell.get("column", 0))
+            row, column = AuthoringWorkflow._cell_position(cell)
             table_cells = sorted(
                 (
                     item
                     for item in records.values()
                     if item.get("table_id") == table_id
-                    and item.get("object_type") in {"cell", "logical_cell"}
+                    and item.get("object_type") == cell.get("object_type")
                     and str(item.get("canonical_value") or "").strip()
                 ),
-                key=lambda item: (int(item.get("row", 0)), int(item.get("column", 0))),
+                key=AuthoringWorkflow._cell_position,
             )
-            min_row = min(int(item.get("row", 0)) for item in table_cells)
-            min_column = min(int(item.get("column", 0)) for item in table_cells)
+            min_row = min(
+                AuthoringWorkflow._cell_position(item)[0] for item in table_cells
+            )
+            min_column = min(
+                AuthoringWorkflow._cell_position(item)[1] for item in table_cells
+            )
             seen_text: set[str] = set()
             for item in table_cells:
                 item_id = str(item["object_id"])
-                item_row, item_column = int(item.get("row", 0)), int(item.get("column", 0))
+                item_row, item_column = AuthoringWorkflow._cell_position(item)
                 is_column_context = item_column == column and item_row == min_row
                 is_row_context = item_row == row and item_column == min_column
                 text = str(item.get("canonical_value") or "").strip()

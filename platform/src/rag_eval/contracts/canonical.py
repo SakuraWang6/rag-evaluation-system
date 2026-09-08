@@ -27,6 +27,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 CANONICAL_SCHEMA_VERSION = "1.2"
 PREVIOUS_CANONICAL_SCHEMA_VERSION = "1.1"
 LEGACY_CANONICAL_SCHEMA_VERSION = "1.0"
+CANONICAL_CONFORMANCE_SCHEMA_VERSION = "canonical-conformance/1"
+CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY = (
+    "rag-eval-canonical-gold-eligibility/1"
+)
 
 
 class CanonicalContractError(ValueError):
@@ -87,6 +91,140 @@ class CanonicalRelationType(StrEnum):
     PHYSICAL_TO_LOGICAL_CELL = "physical_to_logical_cell"
     HEADER_FOR = "header_for"
     NESTED_TABLE_IN_CELL = "nested_table_in_cell"
+
+
+class CanonicalConformanceStatus(StrEnum):
+    CONFORMANT = "conformant"
+    NONCONFORMANT = "nonconformant"
+    NOT_EVALUATED = "not_evaluated"
+
+
+class CanonicalGoldEligibilityRule(CanonicalModel):
+    """One Platform-owned admission decision for a canonical subtype."""
+
+    subtype: str = Field(min_length=1)
+    object_types: tuple[CanonicalObjectType, ...] = Field(min_length=1)
+    gold_evidence_eligible: bool
+    rationale: str = Field(min_length=1)
+
+
+class CanonicalObjectConformance(CanonicalModel):
+    """Conformance and Gold eligibility for one Snapshot-local object."""
+
+    object_id: str = Field(min_length=1)
+    object_type: CanonicalObjectType
+    subtype: str = Field(min_length=1)
+    status: CanonicalConformanceStatus
+    gold_evidence_eligible: bool
+    reason_codes: tuple[str, ...] = Field(min_length=1)
+    locator_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    witness_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def validate_eligibility_requires_conformance(
+        self,
+    ) -> CanonicalObjectConformance:
+        if (
+            self.gold_evidence_eligible
+            and self.status != CanonicalConformanceStatus.CONFORMANT
+        ):
+            raise ValueError("Gold-eligible canonical objects must be conformant")
+        if len(set(self.reason_codes)) != len(self.reason_codes):
+            raise ValueError("canonical conformance reason codes must be unique")
+        return self
+
+
+class CanonicalConformanceReport(CanonicalModel):
+    """Immutable, adapter-independent conformance result for one Snapshot."""
+
+    schema_version: Literal[CANONICAL_CONFORMANCE_SCHEMA_VERSION] = (
+        CANONICAL_CONFORMANCE_SCHEMA_VERSION
+    )
+    policy_identity: Literal[CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY] = (
+        CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY
+    )
+    canonical_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    parser_identity: str = Field(min_length=1)
+    canonicalizer_identity: str = Field(min_length=1)
+    configuration_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    object_results: tuple[CanonicalObjectConformance, ...] = Field(min_length=1)
+    rule_matrix: tuple[CanonicalGoldEligibilityRule, ...] = Field(min_length=1)
+    report_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def validate_report(self) -> CanonicalConformanceReport:
+        object_ids = [item.object_id for item in self.object_results]
+        if len(object_ids) != len(set(object_ids)):
+            raise ValueError("canonical conformance report repeats object IDs")
+        subtypes = [item.subtype for item in self.rule_matrix]
+        if len(subtypes) != len(set(subtypes)):
+            raise ValueError("canonical Gold eligibility matrix repeats subtypes")
+        expected = canonical_conformance_report_digest(
+            schema_version=self.schema_version,
+            policy_identity=self.policy_identity,
+            canonical_digest=self.canonical_digest,
+            source_sha256=self.source_sha256,
+            parser_identity=self.parser_identity,
+            canonicalizer_identity=self.canonicalizer_identity,
+            configuration_digest=self.configuration_digest,
+            object_results=self.object_results,
+            rule_matrix=self.rule_matrix,
+        )
+        if self.report_digest != expected:
+            raise ValueError("canonical conformance report digest does not match")
+        return self
+
+    def result_for(self, object_id: str) -> CanonicalObjectConformance:
+        for item in self.object_results:
+            if item.object_id == object_id:
+                return item
+        raise KeyError(object_id)
+
+    def require_gold_eligible(self, object_id: str) -> CanonicalObjectConformance:
+        result = self.result_for(object_id)
+        if not result.gold_evidence_eligible:
+            raise CanonicalContractError(
+                f"canonical object {object_id!r} is not Gold-eligible under "
+                f"{self.policy_identity}: {', '.join(result.reason_codes)}"
+            )
+        return result
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        canonical_digest: str,
+        source_sha256: str,
+        parser_identity: str,
+        canonicalizer_identity: str,
+        configuration_digest: str,
+        object_results: tuple[CanonicalObjectConformance, ...],
+        rule_matrix: tuple[CanonicalGoldEligibilityRule, ...],
+    ) -> CanonicalConformanceReport:
+        ordered_results = tuple(sorted(object_results, key=lambda item: item.object_id))
+        ordered_rules = tuple(sorted(rule_matrix, key=lambda item: item.subtype))
+        digest = canonical_conformance_report_digest(
+            schema_version=CANONICAL_CONFORMANCE_SCHEMA_VERSION,
+            policy_identity=CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY,
+            canonical_digest=canonical_digest,
+            source_sha256=source_sha256,
+            parser_identity=parser_identity,
+            canonicalizer_identity=canonicalizer_identity,
+            configuration_digest=configuration_digest,
+            object_results=ordered_results,
+            rule_matrix=ordered_rules,
+        )
+        return cls(
+            canonical_digest=canonical_digest,
+            source_sha256=source_sha256,
+            parser_identity=parser_identity,
+            canonicalizer_identity=canonicalizer_identity,
+            configuration_digest=configuration_digest,
+            object_results=ordered_results,
+            rule_matrix=ordered_rules,
+            report_digest=digest,
+        )
 
 
 class SourceSpan(CanonicalModel):
@@ -277,6 +415,29 @@ class CanonicalDocument(CanonicalModel):
             raise ValueError("canonical object document IDs must match the manifest")
         if not any(item.object_type == CanonicalObjectType.DOCUMENT for item in self.objects):
             raise ValueError("canonical document requires one document object")
+        policy_values = {
+            item.attributes.get("gold_eligibility_policy") for item in self.objects
+        }
+        policy_values.discard(None)
+        if policy_values:
+            if policy_values != {CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY}:
+                raise ValueError("canonical objects use an unknown Gold eligibility policy")
+            for item in self.objects:
+                if (
+                    item.attributes.get("gold_eligibility_policy")
+                    != CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY
+                    or not isinstance(
+                        item.attributes.get("gold_evidence_eligible"), bool
+                    )
+                    or not isinstance(
+                        item.attributes.get("gold_eligibility_subtype"), str
+                    )
+                    or not item.attributes.get("gold_eligibility_reasons")
+                ):
+                    raise ValueError(
+                        "current canonical snapshots require an explicit Gold "
+                        "eligibility decision for every object"
+                    )
 
         relation_ids = [item.relation_id for item in self.relations]
         if len(relation_ids) != len(set(relation_ids)):
@@ -441,6 +602,38 @@ def records_digest(values: tuple[CanonicalObject, ...] | tuple[CanonicalRelation
         for value in sorted(values, key=lambda item: str(getattr(item, key)))
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def canonical_conformance_report_digest(
+    *,
+    schema_version: str,
+    policy_identity: str,
+    canonical_digest: str,
+    source_sha256: str,
+    parser_identity: str,
+    canonicalizer_identity: str,
+    configuration_digest: str,
+    object_results: tuple[CanonicalObjectConformance, ...],
+    rule_matrix: tuple[CanonicalGoldEligibilityRule, ...],
+) -> str:
+    payload = {
+        "schema_version": schema_version,
+        "policy_identity": policy_identity,
+        "canonical_digest": canonical_digest,
+        "source_sha256": source_sha256,
+        "parser_identity": parser_identity,
+        "canonicalizer_identity": canonicalizer_identity,
+        "configuration_digest": configuration_digest,
+        "object_results": [
+            item.model_dump(mode="json", exclude_none=True)
+            for item in sorted(object_results, key=lambda value: value.object_id)
+        ],
+        "rule_matrix": [
+            item.model_dump(mode="json")
+            for item in sorted(rule_matrix, key=lambda value: value.subtype)
+        ],
+    }
+    return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
 def build_canonical_manifest(

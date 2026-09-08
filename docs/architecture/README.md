@@ -11,6 +11,7 @@ remaining native gap, the destination, and the executable phase plan.
 | [`NATIVE_DOCUMENT_GAP_ANALYSIS.md`](NATIVE_DOCUMENT_GAP_ANALYSIS.md) | Remaining native provenance and observability gaps |
 | [`TARGET_ARCHITECTURE.md`](TARGET_ARCHITECTURE.md) | Normative four-layer destination and semantic rules |
 | [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md) | Phase-by-phase implementation, gates, commits, and rollback |
+| [`CANONICAL_CONFORMANCE.md`](CANONICAL_CONFORMANCE.md) | Phase 2 Snapshot identity and Platform-owned Gold admission |
 | [`../decisions/0003-native-document-evaluation-v2.md`](../decisions/0003-native-document-evaluation-v2.md) | Accepted architecture decision |
 
 The Phase 1 executable baseline is

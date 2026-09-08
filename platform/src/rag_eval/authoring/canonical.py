@@ -19,6 +19,7 @@ from lxml import etree
 
 from rag_eval.authoring.canonical_adapter import LegacyDocxCanonicalAdapter
 from rag_eval.authoring.models import CanonicalView
+from rag_eval.canonical.conformance import CanonicalConformanceSuite
 from rag_eval.contracts.canonical import CANONICAL_SCHEMA_VERSION, canonical_json
 from rag_eval.storage.atomic import atomic_write_bytes, atomic_write_json
 
@@ -32,7 +33,7 @@ V = "urn:schemas-microsoft-com:vml"
 O = "urn:schemas-microsoft-com:office:office"
 REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 NS = {"w": W, "r": R, "m": M, "a": A, "wp": WP, "v": V, "o": O, "rel": REL}
-CANONICALIZER_VERSION = "rag-eval-authoring-canonicalizer/5"
+CANONICALIZER_VERSION = "rag-eval-authoring-canonicalizer/6"
 
 
 def _tag(namespace: str, name: str) -> str:
@@ -78,6 +79,9 @@ class CanonicalizationResult:
     contract_objects_path: Path
     contract_relations_path: Path
     canonical_contract_digest: str
+    conformance_path: Path
+    conformance_digest: str
+    conformance_sha256: str
     diagnostics: dict[str, Any]
 
     def view(self, *, root: Path, source_sha256: str) -> CanonicalView:
@@ -95,6 +99,9 @@ class CanonicalizationResult:
             canonical_contract_manifest_path=str(self.contract_manifest_path.relative_to(root)),
             canonical_contract_objects_path=str(self.contract_objects_path.relative_to(root)),
             canonical_contract_relations_path=str(self.contract_relations_path.relative_to(root)),
+            canonical_conformance_path=str(self.conformance_path.relative_to(root)),
+            canonical_conformance_digest=self.conformance_digest,
+            canonical_conformance_sha256=self.conformance_sha256,
         )
 
 
@@ -135,6 +142,24 @@ class DocxCanonicalizer:
             package_diagnostics = self._package_diagnostics(package, document, notes)
 
         base_records = [self._base_record(record) for record in records]
+        provisional_contract = LegacyDocxCanonicalAdapter().adapt(
+            document_id=document_id,
+            source_sha256=source_sha256,
+            records=base_records,
+            parser_identity=parser_identity,
+            canonicalizer_identity=CANONICALIZER_VERSION,
+            configuration_digest=configuration_digest,
+        )
+        legacy_gold_eligibility = {
+            item.object_id: item.gold_evidence_eligible
+            for item in provisional_contract.objects
+        }
+        suite = CanonicalConformanceSuite()
+        provisional_conformance = suite.evaluate(provisional_contract)
+        eligibility = suite.eligibility_attributes(provisional_conformance)
+        base_records = [
+            record | eligibility[str(record["object_id"])] for record in base_records
+        ]
         canonical_digest = _digest_records(base_records)
         records = [
             record | {"canonical_digest": canonical_digest, "canonicalizer": CANONICALIZER_VERSION}
@@ -158,21 +183,36 @@ class DocxCanonicalizer:
             canonicalizer_identity=CANONICALIZER_VERSION,
             configuration_digest=configuration_digest,
         )
-        contract_manifest_path = canonical_dir / "canonical-contract-manifest.v1.2.json"
-        contract_objects_path = canonical_dir / "canonical-objects.v1.2.jsonl"
-        contract_relations_path = canonical_dir / "canonical-relations.v1.2.jsonl"
-        atomic_write_json(
-            contract_manifest_path,
-            contract.manifest.model_dump(mode="json"),
-        )
-        atomic_write_bytes(
-            contract_objects_path,
-            "".join(canonical_json(item) + "\n" for item in contract.objects).encode("utf-8"),
-        )
-        atomic_write_bytes(
-            contract_relations_path,
-            "".join(canonical_json(item) + "\n" for item in contract.relations).encode("utf-8"),
-        )
+        conformance = suite.evaluate(contract)
+        if any(
+            item.attributes.get("gold_evidence_eligible")
+            != conformance.result_for(item.object_id).gold_evidence_eligible
+            or item.attributes.get("gold_eligibility_policy")
+            != conformance.policy_identity
+            for item in contract.objects
+        ):
+            raise ValueError("canonical Gold eligibility projection is inconsistent")
+        snapshot_dir = canonical_dir / "snapshots" / contract.manifest.canonical_digest
+        contract_manifest_path = snapshot_dir / "manifest.json"
+        contract_objects_path = snapshot_dir / "objects.jsonl"
+        contract_relations_path = snapshot_dir / "relations.jsonl"
+        conformance_path = snapshot_dir / "conformance.json"
+        manifest_payload = (canonical_json(contract.manifest) + "\n").encode("utf-8")
+        objects_payload = "".join(
+            canonical_json(item) + "\n" for item in contract.objects
+        ).encode("utf-8")
+        relations_payload = "".join(
+            canonical_json(item) + "\n" for item in contract.relations
+        ).encode("utf-8")
+        conformance_payload = (canonical_json(conformance) + "\n").encode("utf-8")
+        conformance_sha256 = hashlib.sha256(conformance_payload).hexdigest()
+        for path, payload in (
+            (contract_manifest_path, manifest_payload),
+            (contract_objects_path, objects_payload),
+            (contract_relations_path, relations_payload),
+            (conformance_path, conformance_payload),
+        ):
+            self._write_immutable_snapshot_file(path, payload)
         diagnostics = self._diagnostics(
             records=records,
             extraction=extraction,
@@ -189,6 +229,44 @@ class DocxCanonicalizer:
             "object_count": contract.manifest.object_count,
             "relation_count": contract.manifest.relation_count,
         }
+        diagnostics["canonical_conformance"] = {
+            "schema_version": conformance.schema_version,
+            "policy_identity": conformance.policy_identity,
+            "report_digest": conformance.report_digest,
+            "report_sha256": conformance_sha256,
+            "gold_eligible_object_count": sum(
+                item.gold_evidence_eligible for item in conformance.object_results
+            ),
+            "status_counts": {
+                status: sum(
+                    item.status == status for item in conformance.object_results
+                )
+                for status in ("conformant", "nonconformant", "not_evaluated")
+            },
+            "legacy_shadow": {
+                "changed_object_count": sum(
+                    legacy_gold_eligibility[item.object_id]
+                    != item.gold_evidence_eligible
+                    for item in conformance.object_results
+                ),
+                "changed_by_object_type": {
+                    object_type: sum(
+                        result.object_type.value == object_type
+                        and legacy_gold_eligibility[result.object_id]
+                        != result.gold_evidence_eligible
+                        for result in conformance.object_results
+                    )
+                    for object_type in sorted(
+                        {
+                            result.object_type.value
+                            for result in conformance.object_results
+                            if legacy_gold_eligibility[result.object_id]
+                            != result.gold_evidence_eligible
+                        }
+                    )
+                },
+            },
+        }
         atomic_write_json(diagnostics_path, diagnostics)
         atomic_write_json(
             summary_path,
@@ -202,6 +280,7 @@ class DocxCanonicalizer:
                     execution_markdown.encode("utf-8")
                 ).hexdigest(),
                 "canonical_contract": contract.manifest.model_dump(mode="json"),
+                "canonical_conformance": diagnostics["canonical_conformance"],
                 # Retain the conservative rich-content inventory alongside
                 # the contract manifest.  It is diagnostic provenance, not a
                 # claim that visual/OLE semantics have been interpreted.
@@ -221,12 +300,25 @@ class DocxCanonicalizer:
             contract_objects_path=contract_objects_path,
             contract_relations_path=contract_relations_path,
             canonical_contract_digest=contract.manifest.canonical_digest,
+            conformance_path=conformance_path,
+            conformance_digest=conformance.report_digest,
+            conformance_sha256=conformance_sha256,
             diagnostics=diagnostics,
         )
 
     @staticmethod
     def _base_record(record: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in record.items() if key != "canonical_digest"}
+
+    @staticmethod
+    def _write_immutable_snapshot_file(path: Path, payload: bytes) -> None:
+        if path.exists():
+            if path.read_bytes() != payload:
+                raise ValueError(
+                    f"immutable canonical Snapshot collision at {path.name}"
+                )
+            return
+        atomic_write_bytes(path, payload)
 
     @staticmethod
     def _styles(package: zipfile.ZipFile) -> dict[str, str]:

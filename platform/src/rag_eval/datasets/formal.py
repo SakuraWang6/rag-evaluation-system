@@ -46,9 +46,11 @@ from rag_eval.datasets.benchmark_contract import (
 )
 from rag_eval.contracts.benchmark import BenchmarkDataset
 from rag_eval.contracts.canonical import (
+    CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY,
     CANONICAL_SCHEMA_VERSION,
     LEGACY_CANONICAL_SCHEMA_VERSION,
     PREVIOUS_CANONICAL_SCHEMA_VERSION,
+    CanonicalConformanceReport,
     CanonicalDocument,
     CanonicalObject,
     CanonicalRelation,
@@ -867,7 +869,99 @@ class FormalDatasetValidator:
         document = CanonicalDocument.model_validate({"manifest": manifest, "objects": objects, "relations": relations})
         if dataset.canonical_contract_digest != document.manifest.canonical_digest:
             raise FormalDatasetError("dataset canonical contract digest does not match canonical manifest")
+        FormalDatasetValidator._validate_canonical_conformance(
+            document=document,
+            view=view,
+            root=root,
+        )
         return document
+
+    @staticmethod
+    def _validate_canonical_conformance(
+        *,
+        document: CanonicalDocument,
+        view: CanonicalView,
+        root: Path,
+    ) -> None:
+        references = (
+            view.canonical_conformance_path,
+            view.canonical_conformance_digest,
+            view.canonical_conformance_sha256,
+        )
+        has_current_policy = any(
+            item.attributes.get("gold_eligibility_policy")
+            == CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY
+            for item in document.objects
+        )
+        if not any(references):
+            if has_current_policy:
+                raise FormalDatasetError(
+                    "current canonical snapshot has no conformance artifact"
+                )
+            return
+        if not all(references):
+            raise FormalDatasetError("canonical conformance references are incomplete")
+
+        path = root / str(view.canonical_conformance_path)
+        if not path.is_file():
+            raise FormalDatasetError("canonical conformance artifact is missing")
+        payload = path.read_bytes()
+        if hashlib.sha256(payload).hexdigest() != view.canonical_conformance_sha256:
+            raise FormalDatasetError("canonical conformance artifact checksum mismatch")
+        try:
+            report = CanonicalConformanceReport.model_validate_json(payload)
+        except ValueError as exc:
+            raise FormalDatasetError(
+                f"canonical conformance artifact is invalid: {exc}"
+            ) from exc
+        if report.report_digest != view.canonical_conformance_digest:
+            raise FormalDatasetError("canonical conformance report digest mismatch")
+
+        manifest = document.manifest
+        bindings = {
+            "canonical digest": (report.canonical_digest, manifest.canonical_digest),
+            "source digest": (report.source_sha256, manifest.source_sha256),
+            "parser identity": (report.parser_identity, manifest.parser_identity),
+            "canonicalizer identity": (
+                report.canonicalizer_identity,
+                manifest.canonicalizer_identity,
+            ),
+            "configuration digest": (
+                report.configuration_digest,
+                manifest.configuration_digest,
+            ),
+        }
+        mismatches = [name for name, values in bindings.items() if values[0] != values[1]]
+        if mismatches:
+            raise FormalDatasetError(
+                "canonical conformance artifact is bound to a different snapshot: "
+                + ", ".join(mismatches)
+            )
+
+        results = {item.object_id: item for item in report.object_results}
+        if set(results) != {item.object_id for item in document.objects}:
+            raise FormalDatasetError(
+                "canonical conformance artifact does not cover the exact object set"
+            )
+        for item in document.objects:
+            result = results[item.object_id]
+            expected = (
+                item.object_type,
+                item.attributes.get("gold_evidence_eligible"),
+                item.attributes.get("gold_eligibility_subtype"),
+                tuple(item.attributes.get("gold_eligibility_reasons") or ()),
+            )
+            observed = (
+                result.object_type,
+                result.gold_evidence_eligible,
+                result.subtype,
+                result.reason_codes,
+            )
+            if observed != expected:
+                raise FormalDatasetError(
+                    "canonical conformance decision disagrees with canonical object "
+                    f"{item.object_id!r}"
+                )
 
     @staticmethod
     def _load_cases(ledger: AuthoringLedger, dataset_id: str, ids: tuple[str, ...]) -> tuple[list[CaseRevision], list[str]]:
