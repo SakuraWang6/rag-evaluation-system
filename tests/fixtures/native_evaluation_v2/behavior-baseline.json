@@ -1,0 +1,140 @@
+{
+  "adapter_profiles": {
+    "lightrag": {
+      "observation_profile": {
+        "answer": true,
+        "final_context": true,
+        "latency_breakdown": true,
+        "object_provenance": true,
+        "prompt_trace": true,
+        "ranked_retrieval": true,
+        "raw_retrieval": true,
+        "rerank_trace": false,
+        "reset": false,
+        "segment_traces": true,
+        "strict_segment_ranking": true,
+        "token_usage": false
+      },
+      "runtime_profile": {
+        "chunking": {
+          "chunk_overlap_token_size": 100,
+          "chunk_token_size": 1200,
+          "strategy": "fixed_token"
+        },
+        "enable_rerank": false,
+        "evaluation_corpus": "source_document",
+        "final_context_k": 5,
+        "max_context_tokens": 12000,
+        "profile": "legacy",
+        "query_mode": "naive",
+        "ranking_strategy": "none",
+        "retrieval_candidate_k": 20
+      }
+    },
+    "rag-anything": {
+      "observation_profile": {
+        "answer": true,
+        "final_context": false,
+        "latency_breakdown": true,
+        "object_provenance": false,
+        "prompt_trace": false,
+        "ranked_retrieval": false,
+        "raw_retrieval": false,
+        "rerank_trace": false,
+        "reset": false,
+        "segment_traces": true,
+        "strict_segment_ranking": false,
+        "token_usage": false
+      },
+      "runtime_profile": {
+        "chunk_top_k": 20,
+        "chunking": {
+          "chunk_overlap_token_size": 100,
+          "chunk_token_size": 1200
+        },
+        "enable_equation_processing": true,
+        "enable_image_processing": true,
+        "enable_table_processing": true,
+        "enable_vlm_query": false,
+        "evaluation_corpus": "source_document",
+        "max_context_tokens": 12000,
+        "parse_method": "auto",
+        "parser": "mineru",
+        "query_mode": "mix",
+        "top_k": 60
+      }
+    }
+  },
+  "baseline_revision": "3cfcb64",
+  "characterization_nodes": {
+    "benchmark_segments": [
+      "platform/tests/rag_eval_platform/test_benchmark_execution_v1.py::test_execute_benchmark_case_scores_segment_trace_not_legacy_provenance",
+      "adapters/lightrag/tests/test_benchmark_segment_trace.py::test_benchmark_leaf_mapping_and_trace_are_exact"
+    ],
+    "canonical_segments": [
+      "platform/tests/rag_eval_platform/test_canonical_segment_corpus.py::test_canonical_segments_are_stable_and_materialize_as_primary_inputs",
+      "adapters/lightrag/tests/test_canonical_segment_provenance.py::test_primary_chunk_mapping_is_exact_and_contains_no_guesswork"
+    ],
+    "legacy_artifact": [
+      "platform/tests/rag_eval_platform/test_history_provenance.py::test_baseline_and_destination_guards_are_read_only",
+      "platform/tests/rag_eval_platform/test_run_history.py::test_archive_run_is_available_through_normal_run_contract"
+    ],
+    "p0_unobservable_semantics": [
+      "platform/tests/rag_eval_platform/test_evidence_localization_contract.py::test_catalogued_unmapped_gold_is_not_scored_as_retrieval_missed"
+    ],
+    "rag-anything_answer_only": [
+      "tests/rag_eval_adapters/test_rag_anything_adapter.py::test_capabilities_are_honest_about_public_api_observability",
+      "tests/rag_eval_adapters/test_rag_anything_adapter.py::test_query_returns_none_for_unobservable_stages"
+    ],
+    "source_document": [
+      "adapters/lightrag/tests/test_runtime_docx_and_trace.py::test_source_only_docx_is_uploaded_from_prepared_runtime_sandbox",
+      "adapters/lightrag/tests/test_runtime_docx_and_trace.py::test_query_retains_native_trace_and_exposes_rendered_prompt"
+    ]
+  },
+  "contract_baseline": {
+    "artifact_contract": "1.2",
+    "future_artifact_contract": "2.0",
+    "future_wire_protocol": "2.0",
+    "wire_protocol": "1.0"
+  },
+  "legacy_corpus_modes": {
+    "benchmark_segments": {
+      "baseline_role": "strict segment-native characterization oracle",
+      "future_role": "legacy fixture and read-only compatibility",
+      "input_boundary": "one Platform benchmark leaf per Adapter document"
+    },
+    "canonical_segments": {
+      "baseline_role": "deterministic canonical provenance characterization oracle",
+      "future_role": "legacy fixture and read-only compatibility",
+      "input_boundary": "Platform canonical batches"
+    },
+    "source_document": {
+      "baseline_role": "native DOCX behavior baseline",
+      "future_role": "only formal new-run corpus",
+      "input_boundary": "original checksum-pinned DOCX"
+    }
+  },
+  "offline_artifacts": [
+    {
+      "path": "platform/tests/fixtures/history_provenance/v1/fixture-manifest.json",
+      "sha256": "8c484e07b20ec178f3368c0c68b5979d05173e9797cc1b42df25831070be23eb",
+      "size_bytes": 5910
+    },
+    {
+      "path": "platform/tests/fixtures/history_provenance/v1/immutable-baseline.json",
+      "sha256": "eee8b25ee145f74fde95f928dacbb8e4baa4e27af18e24a8304f8fa2d8aea11b",
+      "size_bytes": 3359
+    },
+    {
+      "path": "platform/tests/fixtures/history_provenance/v1/run/experiment.json",
+      "sha256": "854293861ea55cc6bd4e3a21d9b82af2b6cdd04b4764c2058fc35311d915cd14",
+      "size_bytes": 79
+    },
+    {
+      "path": "platform/tests/fixtures/history_provenance/v1/run/summary.json",
+      "sha256": "aeb17e71060d01b99b8b4fda574816bf8a1edf05fcff18ca21252394fb9da232",
+      "size_bytes": 48
+    }
+  ],
+  "schema_version": "native-evaluation-v2-behavior-baseline/1"
+}

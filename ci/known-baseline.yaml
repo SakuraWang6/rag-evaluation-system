@@ -9,15 +9,18 @@ adapter_pytest:
     pytest -q --tb=short
     tests/rag_eval_adapters/test_canonical_provenance.py
     tests/rag_eval_adapters/test_lightrag_adapter.py
+    tests/rag_eval_adapters/test_native_evaluation_v2_baseline.py
   test_paths:
     - tests/rag_eval_adapters/test_canonical_provenance.py
     - tests/rag_eval_adapters/test_lightrag_adapter.py
-  expected_passed: 21
+    - tests/rag_eval_adapters/test_native_evaluation_v2_baseline.py
+  expected_passed: 24
   exact_failed_node_ids: []
   required_passed_node_ids:
     - tests/rag_eval_adapters/test_canonical_provenance.py::test_gold_matches_projected_full_object_without_gold_aware_mapping
     - tests/rag_eval_adapters/test_canonical_provenance.py::test_structure_bridge_preserves_hierarchy_table_topology_and_round_trips
     - tests/rag_eval_adapters/test_lightrag_adapter.py::test_capabilities_claim_object_provenance_and_prompt_trace
+    - tests/rag_eval_adapters/test_native_evaluation_v2_baseline.py::test_v2_baseline_separates_runtime_and_observation_profiles
   policy:
     xfail: forbidden
     skip: forbidden
