@@ -14,6 +14,8 @@ from rag_eval.contracts.dataset import GoldAnswer, GoldEvidenceSet
 from rag_eval.contracts.run import CaseResult, ExperimentSpec, RunManifest
 from rag_eval.evaluation.answers import AnswerVerdict, score_answer
 from rag_eval.evaluation.evidence import CorpusEvidenceIndex, evidence_observability
+from rag_eval.runs.artifacts import ArtifactV2Reader, ArtifactV2Verification
+from rag_eval.runs.models import RunArtifactManifestV2
 from rag_eval.storage.atomic import atomic_write_json
 
 logger = logging.getLogger(__name__)
@@ -71,6 +73,17 @@ class RunStore:
     def experiment(self, run_id: str) -> ExperimentSpec:
         path = self.root / safe_id(run_id) / "experiment.json"
         return ExperimentSpec.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def artifact_v2(self, run_id: str) -> ArtifactV2Reader:
+        """Return the immutable v2 reader without changing Artifact 1.2 APIs."""
+
+        return ArtifactV2Reader(self.root / safe_id(run_id) / "artifact-v2")
+
+    def artifact_v2_manifest(self, run_id: str) -> RunArtifactManifestV2:
+        return self.artifact_v2(run_id).manifest()
+
+    def verify_artifact_v2(self, run_id: str) -> ArtifactV2Verification:
+        return self.artifact_v2(run_id).verify()
 
     def artifact_hashes(self, run_id: str) -> dict[str, str]:
         return artifact_file_hashes(self.root / safe_id(run_id))

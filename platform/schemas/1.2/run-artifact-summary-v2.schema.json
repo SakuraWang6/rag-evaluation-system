@@ -1,0 +1,172 @@
+{
+  "$defs": {
+    "AggregateMetricV2": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_id": {
+          "minLength": 1,
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/EvaluationMetricStatus"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "case_count": {
+          "minimum": 1,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "observed_case_count": {
+          "minimum": 0,
+          "title": "Observed Case Count",
+          "type": "integer"
+        },
+        "unavailable_case_count": {
+          "minimum": 0,
+          "title": "Unavailable Case Count",
+          "type": "integer"
+        },
+        "descriptor_digests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Descriptor Digests",
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "metric_id",
+        "status",
+        "case_count",
+        "observed_case_count",
+        "unavailable_case_count",
+        "descriptor_digests"
+      ],
+      "title": "AggregateMetricV2",
+      "type": "object"
+    },
+    "EvaluationMetricStatus": {
+      "enum": [
+        "observed",
+        "unavailable"
+      ],
+      "title": "EvaluationMetricStatus",
+      "type": "string"
+    },
+    "LeaderboardEligibilityV2": {
+      "additionalProperties": false,
+      "properties": {
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "case_count": {
+          "minimum": 1,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "required_metric_ids": {
+          "default": [
+            "ranked_evidence_coverage@1",
+            "ranked_complete_evidence_recall@1",
+            "ranked_evidence_coverage@3",
+            "ranked_complete_evidence_recall@3",
+            "ranked_evidence_coverage@5",
+            "ranked_complete_evidence_recall@5",
+            "ranked_complete_evidence_mrr@5"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Metric Ids",
+          "type": "array"
+        },
+        "descriptor_digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Descriptor Digests",
+          "type": "object"
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "eligible",
+        "case_count"
+      ],
+      "title": "LeaderboardEligibilityV2",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "case_count": {
+      "minimum": 1,
+      "title": "Case Count",
+      "type": "integer"
+    },
+    "execution_status_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Execution Status Counts",
+      "type": "object"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/AggregateMetricV2"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "leaderboard_eligibility": {
+      "$ref": "#/$defs/LeaderboardEligibilityV2"
+    }
+  },
+  "required": [
+    "case_count",
+    "execution_status_counts",
+    "metrics",
+    "leaderboard_eligibility"
+  ],
+  "title": "RunArtifactSummaryV2",
+  "type": "object"
+}

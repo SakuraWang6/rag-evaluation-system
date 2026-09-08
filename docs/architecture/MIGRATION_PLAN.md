@@ -69,7 +69,7 @@ No phase may opportunistically implement work assigned to a later phase.
 | 3 | Wire 2.0 / Unified Trace | Complete in this phase | RAG-neutral contracts, validator, schemas, and v1 normalizer |
 | 4 | LightRAG Native Observation | Complete in this phase | Verified native catalog, provenance receipts, Unified Trace, and Wire 1.0 shadow |
 | 5 | Unified Evaluation | Complete in this phase | Availability bounds, extent union, explicit MRR@5, pipeline deltas, and proof-gated failures |
-| 6 | Run / Artifact 2.0 | Not started | Requires Phase 5 acceptance |
+| 6 | Run / Artifact 2.0 | Complete in this phase | Immutable case artifacts, persisted views, metric-driven eligibility, and checksum graph |
 | 7 | Platform API / WebUI | Not started | Requires Phase 6 acceptance |
 | 8 | Native formal cutover | Not started | Requires Phase 7 acceptance |
 | 9 | RAG-Anything full observation | Not started | Independent after shared v2 boundaries |
@@ -328,6 +328,29 @@ and a checksum graph. Retain Artifact 1.2 as read-only input.
 - A completed Run renders fully without the current runtime or scorer.
 - Artifact 1.2 remains read-only and accessible.
 - Persisted metric availability alone determines leaderboard eligibility.
+
+### Phase 6 implementation
+
+- `rag_eval.runs` owns the RAG-neutral `BenchmarkResolver -> AdapterSession ->
+  TraceValidator -> EvaluationEngine -> ArtifactWriter` boundary. The standard
+  executor calls the Adapter once and keeps its legacy CaseResult/scorer path
+  authoritative while collecting the new case artifact in shadow.
+- A validated Wire 2.0 trace is stored in full. Missing, unsupported, failed, or
+  corrupted observation instead persists explicit unavailable formal metrics
+  and `UNOBSERVABLE`; it is never inferred as a retrieval failure.
+- Artifact publication is atomic, immutable, and idempotent for byte-identical
+  content. Per-case self-digests, Adapter-result/trace digests, file hashes, a
+  dependency graph, and a manifest self-digest fail closed under verification.
+- `summary.json` and `case-index.json` are persisted read models. They contain
+  answer/evidence judgments, metric statuses/descriptors, localization-derived
+  state, failure attribution, aggregates, and metric-driven leaderboard
+  eligibility, so ordinary reads invoke neither runtime nor scorer.
+- Artifact 1.2 remains unchanged and readable. A newly published v2 directory
+  is exposed by additive `RunStore` accessors and an optional legacy-manifest
+  pointer; historical Runs are not rewritten.
+
+Detailed layout, integrity rules, and compatibility limits are in
+`docs/architecture/RUN_ARTIFACT_V2.md`.
 
 ### Commit
 

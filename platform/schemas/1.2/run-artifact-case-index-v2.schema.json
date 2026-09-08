@@ -1,0 +1,194 @@
+{
+  "$defs": {
+    "ArtifactAnswerJudgment": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/ArtifactAnswerStatus"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "enum": [
+                "correct",
+                "incorrect"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ArtifactAnswerJudgment",
+      "type": "object"
+    },
+    "ArtifactAnswerStatus": {
+      "enum": [
+        "observed",
+        "needs_review",
+        "unavailable"
+      ],
+      "title": "ArtifactAnswerStatus",
+      "type": "string"
+    },
+    "ArtifactCaseIndexEntryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "repetition": {
+          "minimum": 1,
+          "title": "Repetition",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "status": {
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "answer_judgment": {
+          "$ref": "#/$defs/ArtifactAnswerJudgment"
+        },
+        "evidence_judgment": {
+          "$ref": "#/$defs/ArtifactEvidenceJudgment"
+        },
+        "core_metrics_available": {
+          "title": "Core Metrics Available",
+          "type": "boolean"
+        },
+        "failure_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Kind"
+        },
+        "artifact_path": {
+          "minLength": 1,
+          "title": "Artifact Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "repetition",
+        "seed",
+        "status",
+        "question",
+        "answer_judgment",
+        "evidence_judgment",
+        "core_metrics_available",
+        "artifact_path"
+      ],
+      "title": "ArtifactCaseIndexEntryV2",
+      "type": "object"
+    },
+    "ArtifactEvidenceJudgment": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/ArtifactEvidenceStatus"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "enum": [
+                "complete",
+                "partial",
+                "missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ArtifactEvidenceJudgment",
+      "type": "object"
+    },
+    "ArtifactEvidenceStatus": {
+      "enum": [
+        "observed",
+        "unavailable"
+      ],
+      "title": "ArtifactEvidenceStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/ArtifactCaseIndexEntryV2"
+      },
+      "title": "Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "cases"
+  ],
+  "title": "ArtifactCaseIndexV2",
+  "type": "object"
+}

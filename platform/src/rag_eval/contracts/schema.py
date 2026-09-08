@@ -36,6 +36,12 @@ from rag_eval.contracts.research import (
 )
 from rag_eval.contracts.run import CaseResult, ExperimentSpec, RunManifest
 from rag_eval.contracts.wire import HandshakeResponse, WireRequest, WireResponse
+from rag_eval.runs.models import (
+    ArtifactCaseIndexV2,
+    RunArtifactCaseV2,
+    RunArtifactManifestV2,
+    RunArtifactSummaryV2,
+)
 
 PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "canonical-document": CanonicalDocument,
@@ -56,6 +62,10 @@ PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "experiment-spec": ExperimentSpec,
     "case-result": CaseResult,
     "run-manifest": RunManifest,
+    "run-artifact-v2": RunArtifactManifestV2,
+    "run-artifact-case-v2": RunArtifactCaseV2,
+    "run-artifact-summary-v2": RunArtifactSummaryV2,
+    "run-artifact-case-index-v2": ArtifactCaseIndexV2,
     "comparison-spec": ComparisonSpec,
     "analysis-contract": AnalysisContract,
     "blind-protocol": BlindProtocol,

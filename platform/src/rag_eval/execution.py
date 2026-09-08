@@ -37,6 +37,7 @@ from rag_eval.contracts.benchmark import (
     SegmentEvaluationTrace,
 )
 from rag_eval.contracts.dataset import GoldEvidence, ObjectLocator, Question
+from rag_eval.contracts.observation import ObservationStatus
 from rag_eval.contracts.research import (
     FailureAssessment,
     FailureLabel,
@@ -102,6 +103,7 @@ from rag_eval.evaluation.segment_metrics import (
     SEGMENT_SCORER_ID,
     SEGMENT_SCORER_VERSION,
 )
+from rag_eval.evaluation.unified import EvaluationProfile
 from rag_eval.execution_provider import (
     ExecutionProvider,
     ExecutionRequest,
@@ -110,6 +112,20 @@ from rag_eval.execution_provider import (
 )
 from rag_eval.report import markdown_report
 from rag_eval.reproducibility import capture_reproducibility
+from rag_eval.runs import (
+    AdapterSession,
+    ArtifactCaseErrorV2,
+    ArtifactWriter,
+    BenchmarkResolver,
+    EvaluationEngine,
+    NativeCaseOrchestrator,
+    RunArtifactCaseV2,
+    TraceValidationRecordV2,
+    TraceValidationResult,
+    TraceValidator,
+    benchmark_identity_from_release_metadata,
+    evaluation_profile_from_configs,
+)
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.runs import RunStore
 from rag_eval.worker.client import WorkerRemoteError
@@ -171,6 +187,9 @@ class RunExecutor:
         documents: list[DocumentInput] | None = None
         corpus: CorpusEvidenceIndex | None = None
         results: list[CaseResult] = []
+        artifact_v2_cases: list[RunArtifactCaseV2] = []
+        artifact_v2_profile: EvaluationProfile | None = None
+        artifact_v2_profile_resolved = False
         index_fingerprints: list[str] = []
         index_artifact_digests: list[str] = []
         first_handshake = None
@@ -306,6 +325,17 @@ class RunExecutor:
                     validate_prepared(
                         prepared, experiment, validation_effective_config
                     )
+                    current_artifact_v2_profile = evaluation_profile_from_configs(
+                        experiment.query_config,
+                        prepared.effective_config,
+                    )
+                    if not artifact_v2_profile_resolved:
+                        artifact_v2_profile = current_artifact_v2_profile
+                        artifact_v2_profile_resolved = True
+                    elif current_artifact_v2_profile != artifact_v2_profile:
+                        raise ValueError(
+                            "Artifact 2.0 evaluation profile changed across repetitions"
+                        )
                     current_effective = {
                         "adapter": prepared.effective_config,
                         "query": experiment.query_config,
@@ -444,6 +474,12 @@ class RunExecutor:
                                 cancelled,
                                 repetition,
                                 repetition_seed,
+                                artifact_v2_profile=artifact_v2_profile,
+                                artifact_v2_cases=artifact_v2_cases,
+                                expected_adapter_id=handshake.adapter_id,
+                                expected_adapter_version=handshake.adapter_version,
+                                expected_system_id=handshake.system_id,
+                                expected_system_version=prepared.system_version,
                             )
                         )
                         self.run_store.write_case(run_id, case)
@@ -490,9 +526,39 @@ class RunExecutor:
                     },
                 },
             )
+            completed_at = datetime.now(UTC)
+            artifact_v2_reference: dict[str, str] = {}
+            if (
+                manifest.status == RunStatus.COMPLETED
+                and artifact_v2_cases
+                and len(artifact_v2_cases) == expected_cases
+            ):
+                benchmark_identity = benchmark_identity_from_release_metadata(
+                    bundle_id=bundle.bundle_id,
+                    case_selection_id=experiment.case_selection_id,
+                    dataset_release_id=experiment.dataset_release_id,
+                    metadata=bundle.manifest.metadata,
+                    document_sources={
+                        document.document_id: document.sha256
+                        for document in bundle.manifest.documents
+                    },
+                    cases=tuple(artifact_v2_cases),
+                )
+                if benchmark_identity is not None:
+                    ArtifactWriter(run_dir).publish(
+                        run_id=run_id,
+                        experiment_id=experiment.experiment_id,
+                        benchmark_identity=benchmark_identity,
+                        cases=tuple(artifact_v2_cases),
+                        started_at=manifest.started_at,
+                        completed_at=completed_at,
+                    )
+                    artifact_v2_reference = {
+                        "artifact_v2": "artifact-v2/artifact.json"
+                    }
             manifest = manifest.model_copy(
                 update={
-                    "completed_at": datetime.now(UTC),
+                    "completed_at": completed_at,
                     "execution_counts": counts,
                     "artifacts": {
                         **manifest.artifacts,
@@ -501,6 +567,7 @@ class RunExecutor:
                         "cases": "cases/",
                         "reproducibility": "reproducibility/",
                         "report": "report.md",
+                        **artifact_v2_reference,
                     },
                 }
             )
@@ -850,10 +917,22 @@ def execute_case(
     cancelled: Callable[[], bool],
     repetition: int,
     seed: int,
+    *,
+    artifact_v2_profile: EvaluationProfile | None = None,
+    artifact_v2_cases: list[RunArtifactCaseV2] | None = None,
+    expected_adapter_id: str | None = None,
+    expected_adapter_version: str | None = None,
+    expected_system_id: str | None = None,
+    expected_system_version: str | None = None,
 ) -> CaseResult:
     started = datetime.now(UTC)
     gold_answer = bundle.gold_answers[question.gold_answer_id]
     evidence_set = bundle.gold_evidence_sets[question.gold_evidence_set_id]
+    resolver = BenchmarkResolver(
+        questions={question.case_id: question},
+        gold_answers={question.gold_answer_id: gold_answer},
+        gold_evidence_sets={question.gold_evidence_set_id: evidence_set},
+    )
     query = RAGQuery(
         case_id=question.case_id,
         question=question.question,
@@ -863,16 +942,15 @@ def execute_case(
         max_context_tokens=experiment.query_config.get("max_context_tokens"),
         generation_options=experiment.query_config.get("generation_options", {}),
     )
-    try:
-        query_started = monotonic()
-        rag_result = client.query(query)
+
+    def validate_adapter_response(rag_result: RAGResult) -> None:
         validate_result_capabilities(
             rag_result,
             capabilities,
             generate_answer=query.generate_answer,
         )
-        latency = dict(rag_result.latency or {})
-        latency["end_to_end_query_latency"] = monotonic() - query_started
+
+    def postprocess_result(rag_result: RAGResult) -> RAGResult:
         native_metadata = dict(rag_result.native_metadata)
         if corpus.catalog_diagnostics:
             native_metadata["evidence_catalog_diagnostics"] = list(
@@ -885,9 +963,39 @@ def execute_case(
             "map_pin_verified": corpus.map_pin_verified,
             "source_pins_verified": corpus.source_pins_verified,
         }
-        rag_result = rag_result.model_copy(
-            update={"latency": latency, "native_metadata": native_metadata}
-        )
+        return rag_result.model_copy(update={"native_metadata": native_metadata})
+
+    try:
+        if artifact_v2_profile is not None:
+            flow = NativeCaseOrchestrator(
+                benchmark_resolver=resolver,
+                adapter_session=AdapterSession(
+                    client, validate_response=validate_adapter_response
+                ),
+                trace_validator=TraceValidator(),
+                evaluation_engine=EvaluationEngine(artifact_v2_profile),
+                expected_adapter_id=expected_adapter_id,
+                expected_adapter_version=expected_adapter_version,
+                expected_system_id=expected_system_id,
+                expected_system_version=expected_system_version,
+            )
+            outcome = flow.execute(
+                case_id=question.case_id,
+                query=query,
+                postprocess=postprocess_result,
+                repetition=repetition,
+                seed=seed,
+                started_at=started,
+            )
+            rag_result = outcome.rag_result
+            if artifact_v2_cases is not None:
+                artifact_v2_cases.append(outcome.artifact_case)
+        else:
+            rag_result = postprocess_result(
+                AdapterSession(
+                    client, validate_response=validate_adapter_response
+                ).query(query)
+            )
         metrics = evaluate_case(
             rag_result,
             gold_answer,
@@ -917,35 +1025,93 @@ def execute_case(
             seed=seed,
         )
     except httpx.TimeoutException as exc:
-        return failed_case(
+        was_cancelled = cancelled()
+        status = "cancelled" if was_cancelled else "timeout"
+        code = "cancelled" if was_cancelled else "timeout"
+        message = str(exc) or "adapter query timed out"
+        case = failed_case(
             question.case_id,
             question.question,
             gold_answer,
             evidence_set,
             started,
-            status="cancelled" if cancelled() else "timeout",
-            code="cancelled" if cancelled() else "timeout",
-            message=str(exc) or "adapter query timed out",
+            status=status,
+            code=code,
+            message=message,
             experiment=experiment,
             repetition=repetition,
             seed=seed,
         )
+        append_unavailable_artifact_v2_case(
+            profile=artifact_v2_profile,
+            cases=artifact_v2_cases,
+            resolver=resolver,
+            case=case,
+            code=code,
+            message=message,
+        )
+        return case
     except (WorkerRemoteError, httpx.HTTPError) as exc:
-        return failed_case(
+        was_cancelled = cancelled()
+        status = "cancelled" if was_cancelled else "system_error"
+        code = (
+            "cancelled"
+            if was_cancelled
+            else getattr(exc, "code", "adapter_error")
+        )
+        message = str(exc)
+        case = failed_case(
             question.case_id,
             question.question,
             gold_answer,
             evidence_set,
             started,
-            status="cancelled" if cancelled() else "system_error",
-            code="cancelled"
-            if cancelled()
-            else getattr(exc, "code", "adapter_error"),
-            message=str(exc),
+            status=status,
+            code=code,
+            message=message,
             experiment=experiment,
             repetition=repetition,
             seed=seed,
         )
+        append_unavailable_artifact_v2_case(
+            profile=artifact_v2_profile,
+            cases=artifact_v2_cases,
+            resolver=resolver,
+            case=case,
+            code=code,
+            message=message,
+        )
+        return case
+
+
+def append_unavailable_artifact_v2_case(
+    *,
+    profile: EvaluationProfile | None,
+    cases: list[RunArtifactCaseV2] | None,
+    resolver: BenchmarkResolver,
+    case: CaseResult,
+    code: str,
+    message: str,
+) -> None:
+    if profile is None or cases is None:
+        return
+    cases.append(
+        EvaluationEngine(profile).evaluate(
+            resolver.resolve(case.case_id),
+            TraceValidationResult(
+                record=TraceValidationRecordV2(
+                    status=ObservationStatus.FAILED,
+                    reason=message,
+                )
+            ),
+            started_at=case.started_at,
+            completed_at=case.completed_at,
+            repetition=case.repetition,
+            seed=case.seed,
+            status=case.status,
+            error=ArtifactCaseErrorV2(code=code, message=message),
+        )
+    )
 
 
 def execute_benchmark_case(
