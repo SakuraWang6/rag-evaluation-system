@@ -20,6 +20,14 @@ first LightRAG mode whose native vector, post-ranking, and final-context stages
 can all be observed without assigning false semantics to KG entity/relation
 retrieval.
 
+For `source_document`, the Adapter also emits an additive Wire 2.0 native
+observation under `RAGResult.trace.wire_v2_native_observation`. It is built
+from the authoritative persisted chunk store and the same LightRAG query
+response used by Wire 1.0. Native IDs, ranks, content, scores, source pins,
+lineage, canonical coverage, and forward/reverse receipts are validated; a
+failure degrades only the shadow observation and never changes LightRAG's
+native answer. The Adapter does not read Gold or determine Gold Eligibility.
+
 `legacy` is the default profile: exact-ID, table augmentation, structured
 ranking and reranking are disabled. `structured` is an explicit experiment
 profile. Reranking requires an explicit `rerank_model`; the Worker never

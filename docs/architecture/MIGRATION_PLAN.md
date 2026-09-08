@@ -67,7 +67,7 @@ No phase may opportunistically implement work assigned to a later phase.
 | 1 | ADR and behavior baseline | Complete in this phase | ADR 0003 plus `native_evaluation_v2` baseline |
 | 2 | Canonical Stability | Complete in this phase | Immutable conformance artifact and Platform-owned matrix |
 | 3 | Wire 2.0 / Unified Trace | Complete in this phase | RAG-neutral contracts, validator, schemas, and v1 normalizer |
-| 4 | LightRAG Native Observation | Not started | Requires Phase 3 acceptance |
+| 4 | LightRAG Native Observation | Complete in this phase | Verified native catalog, provenance receipts, Unified Trace, and Wire 1.0 shadow |
 | 5 | Unified Evaluation | Not started | Requires Phase 4 acceptance |
 | 6 | Run / Artifact 2.0 | Not started | Requires Phase 5 acceptance |
 | 7 | Platform API / WebUI | Not started | Requires Phase 6 acceptance |
@@ -218,6 +218,34 @@ feat(contracts): add wire v2 unified observation
 
 - Tests cover one chunk to many evidence objects, many chunks completing one
   object, duplicates, partial evidence, and split/merged tables.
+- Native chunk content, source identity, lineage digest, canonical witness,
+  forward/reverse mapping, and receipt integrity are independently checked.
+- Candidate, ranked, context, prompt, and answer observations are built from
+  one native response; Wire 1.0 and Wire 2.0 stage items pass an exact shadow
+  comparison.
+- The legacy native runtime result remains authoritative and all observation
+  failures fail closed without changing LightRAG behavior.
+- The Adapter imports no Gold model and does not participate in Canonical Gold
+  Eligibility.
+
+### Phase 4 implementation
+
+- `source_document` now freezes the authoritative LightRAG chunk store into a
+  content- and lineage-pinned `RuntimeChunkRecord` catalog.
+- Native OOXML lineage creates direct proof edges; verified structural
+  crosswalks project paragraph spans and physical-cell unions to logical cells
+  and tables without text search.
+- Every canonical object gets a reverse mapping status. A union of partial
+  table fragments can be complete at run scope, while an ambiguous or
+  mismatched object remains missing/corrupted.
+- The `naive` legacy profile declares identity-subset transitions. Profiles
+  whose raw hook omits explicit-ID injection declare candidate observation
+  partial and candidate-to-ranked transformation unobservable.
+- `RAGResult.trace.wire_v2_native_observation` is additive shadow output;
+  Phase 5 will be the first consumer for unified scoring.
+
+Detailed boundary and proof rules are in
+`docs/architecture/LIGHTRAG_NATIVE_OBSERVATION.md`.
 - Observation on/off has no unexplained difference in chunks, rank, context,
   prompt, or answer for every admitted runtime profile.
 - Every observed stage item is verified or explicitly unobservable.

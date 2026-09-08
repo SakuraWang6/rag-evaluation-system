@@ -51,11 +51,11 @@ from rag_eval.datasets.canonical_segments import (
 from rag_eval.worker.app import WorkerDefinition
 
 from rag_eval_lightrag_adapter.canonical_provenance import (
+    SUPPORTED_NATIVE_DOCX_CANONICALIZERS,
     CanonicalDocumentMap,
     NativeDocxDocumentMap,
-    SUPPORTED_NATIVE_DOCX_CANONICALIZERS,
-    build_native_docx_provenance_manifest,
     build_canonical_segment_provenance_manifest,
+    build_native_docx_provenance_manifest,
     build_provenance_manifest,
     load_canonical_document_map,
     load_native_docx_document_map,
@@ -63,6 +63,12 @@ from rag_eval_lightrag_adapter.canonical_provenance import (
     normalize_source_span,
     sha256_text,
     write_provenance_manifest,
+)
+from rag_eval_lightrag_adapter.native_observation import (
+    NativeObservationSnapshot,
+    build_native_observation_snapshot,
+    build_native_run_result_v2,
+    verify_wire_v1_shadow,
 )
 
 ADAPTER_VERSION = "0.1.0"
@@ -248,6 +254,10 @@ class LightRAGAdapter:
         self._benchmark_mapping_file_digest: str | None = None
         self._runtime_provenance_by_chunk: dict[str, dict[str, Any]] = {}
         self._provenance_map_digest: str | None = None
+        self._runtime_chunk_store: dict[str, dict[str, Any]] = {}
+        self._native_provenance_manifest: dict[str, Any] | None = None
+        self._native_observation_snapshot: NativeObservationSnapshot | None = None
+        self._native_observation_reason = "native DOCX ingestion has not run"
         self._index_fingerprint: str | None = None
         self._work_dir: Path | None = None
 
@@ -325,6 +335,10 @@ class LightRAGAdapter:
 
     async def ingest(self, documents: list[DocumentInput]) -> IngestionResult:
         config = self._require_prepared()
+        self._runtime_chunk_store = {}
+        self._native_provenance_manifest = None
+        self._native_observation_snapshot = None
+        self._native_observation_reason = "native DOCX observation was not admitted"
         self._benchmark_segment_inputs = self._load_benchmark_segment_contract(
             documents, config
         )
@@ -421,6 +435,39 @@ class LightRAGAdapter:
                 provenance_path, provenance_manifest
             )
             self._runtime_provenance_by_chunk = provenance_manifest["runtime_chunks"]
+            if (
+                config.evaluation_corpus == "source_document"
+                and len(self._native_docx_provenance_by_document) == 1
+                and self._native_provenance_manifest is not None
+            ):
+                native_document = next(
+                    iter(self._native_docx_provenance_by_document.values())
+                )
+                try:
+                    self._native_observation_snapshot = (
+                        build_native_observation_snapshot(
+                            document=native_document,
+                            stored_chunks=self._runtime_chunk_store,
+                            provenance_manifest=self._native_provenance_manifest,
+                            runtime_config=config.model_dump(mode="json"),
+                            system_version=system_version(),
+                            adapter_version=ADAPTER_VERSION,
+                        )
+                    )
+                    self._native_observation_reason = "observed"
+                except Exception as exc:  # noqa: BLE001
+                    # Wire 2.0 is additive during Phase 4.  An observation
+                    # failure must remain visible, but cannot turn a completed
+                    # native ingestion into different runtime behavior.
+                    self._native_observation_reason = exception_diagnostic(exc)
+            elif config.evaluation_corpus != "source_document":
+                self._native_observation_reason = (
+                    "Wire 2.0 formal observation is limited to source_document"
+                )
+            elif len(self._native_docx_provenance_by_document) != 1:
+                self._native_observation_reason = (
+                    "Wire 2.0 requires exactly one native DOCX canonical catalog"
+                )
         self._index_fingerprint = digest.hexdigest()
         provenance_statuses: dict[str, int] = {}
         for mapping in self._runtime_provenance_by_chunk.values():
@@ -442,6 +489,14 @@ class LightRAGAdapter:
                 self._native_docx_provenance_by_document
             ),
             "runtime_chunk_provenance": provenance_statuses,
+            "wire_v2_native_observation": {
+                "observation_status": (
+                    "observed"
+                    if self._native_observation_snapshot is not None
+                    else "unobserved"
+                ),
+                "reason": self._native_observation_reason,
+            },
             "native_source_pins": {
                 document_id: {
                     "source_sha256": native.source_sha256,
@@ -541,6 +596,18 @@ class LightRAGAdapter:
         answer = response.get("response") if request.generate_answer else None
         if request.generate_answer and not isinstance(answer, str):
             raise RuntimeError("LightRAG answer response is malformed")
+        wire_v2 = self._native_wire_v2_query_observation(
+            request=request,
+            retrieval_stages=stages,
+            final_prompt=trace.get("final_prompt"),
+            answer=answer,
+            candidate_cutoff=candidate_k,
+            ranked_cutoff=context_k if config.enable_rerank else candidate_k,
+            context_cutoff=context_k,
+            raw_items=raw_items,
+            ranked_items=ranked_items,
+            final_items=final_items,
+        )
         return RAGResult(
             answer=answer,
             raw_retrieval=raw_items,
@@ -557,6 +624,7 @@ class LightRAGAdapter:
                     "payload": payload,
                 },
                 "light_rag_evaluation_trace": trace,
+                "wire_v2_native_observation": wire_v2,
                 "answer_prompt": {
                     "status": "available",
                     "value": trace.get("final_prompt"),
@@ -593,6 +661,68 @@ class LightRAGAdapter:
                 "benchmark_segment_mapping_file_digest": self._benchmark_mapping_file_digest,
             },
         )
+
+    def _native_wire_v2_query_observation(
+        self,
+        *,
+        request: RAGQuery,
+        retrieval_stages: Any,
+        final_prompt: Any,
+        answer: Any,
+        candidate_cutoff: int,
+        ranked_cutoff: int,
+        context_cutoff: int,
+        raw_items: list[RAGEvidenceItem] | None,
+        ranked_items: list[RAGEvidenceItem] | None,
+        final_items: list[RAGEvidenceItem] | None,
+    ) -> dict[str, Any]:
+        snapshot = self._native_observation_snapshot
+        if snapshot is None:
+            return {
+                "observation_status": "unobserved",
+                "reason": self._native_observation_reason,
+            }
+        if not isinstance(retrieval_stages, dict):
+            return {
+                "observation_status": "corrupted",
+                "reason": "LightRAG evaluation trace lacks retrieval stages",
+            }
+        try:
+            result = build_native_run_result_v2(
+                snapshot=snapshot,
+                case_id=request.case_id,
+                retrieval_stages=retrieval_stages,
+                final_prompt=final_prompt,
+                answer=answer,
+                candidate_cutoff=candidate_cutoff,
+                ranked_cutoff=ranked_cutoff,
+                context_cutoff=context_cutoff,
+                generate_answer=request.generate_answer,
+            )
+            shadow = verify_wire_v1_shadow(
+                result,
+                raw_retrieval=raw_items,
+                ranked_retrieval=ranked_items,
+                final_context=final_items,
+            )
+        except (TypeError, ValueError) as exc:
+            return {
+                "observation_status": "corrupted",
+                "reason": exception_diagnostic(exc),
+            }
+        except Exception as exc:  # noqa: BLE001
+            # This is a shadow path until Phase 6.  Persist the failed
+            # observation without changing the Wire 1.0 result produced from
+            # the same native response.
+            return {
+                "observation_status": "failed",
+                "reason": exception_diagnostic(exc),
+            }
+        return {
+            "observation_status": "observed",
+            "adapter_run_result": result.model_dump(mode="json", exclude_none=True),
+            "wire_comparison": shadow,
+        }
 
     async def reset(self) -> ResetResult:
         return ResetResult(
@@ -1601,19 +1731,9 @@ class LightRAGAdapter:
 
     def _build_ingestion_provenance_manifest(self) -> dict[str, Any]:
         if self._canonical_segment_manifest is not None:
-            candidates = sorted(
-                (self._require_work_dir() / "storage").rglob("kv_store_text_chunks.json")
+            payload = self._load_authoritative_text_chunk_store(
+                purpose="canonical segment provenance"
             )
-            if len(candidates) != 1:
-                raise RuntimeError(
-                    "LightRAG canonical segment provenance requires one authoritative "
-                    f"text chunk store; observed {len(candidates)}"
-                )
-            payload = json.loads(candidates[0].read_text(encoding="utf-8"))
-            if not isinstance(payload, dict) or any(
-                not isinstance(value, dict) for value in payload.values()
-            ):
-                raise RuntimeError("LightRAG text chunk store is malformed")
             try:
                 return build_canonical_segment_provenance_manifest(
                     manifest=self._canonical_segment_manifest,
@@ -1629,25 +1749,17 @@ class LightRAGAdapter:
             not self._canonical_provenance_by_document
             and not self._native_docx_provenance_by_document
         ):
+            self._runtime_chunk_store = {}
+            self._native_provenance_manifest = None
             return build_provenance_manifest(
                 documents={},
                 sources={},
                 document_by_file={},
                 stored_chunks={},
             )
-        candidates = sorted(
-            (self._require_work_dir() / "storage").rglob("kv_store_text_chunks.json")
+        payload = self._load_authoritative_text_chunk_store(
+            purpose="canonical provenance"
         )
-        if len(candidates) != 1:
-            raise RuntimeError(
-                "LightRAG canonical provenance requires one authoritative "
-                f"text chunk store; observed {len(candidates)}"
-            )
-        payload = json.loads(candidates[0].read_text(encoding="utf-8"))
-        if not isinstance(payload, dict) or any(
-            not isinstance(value, dict) for value in payload.values()
-        ):
-            raise RuntimeError("LightRAG text chunk store is malformed")
         source_manifest = build_provenance_manifest(
             documents=self._canonical_provenance_by_document,
             sources=self._source_text_by_document,
@@ -1659,7 +1771,29 @@ class LightRAGAdapter:
             document_by_file=self._source_by_file,
             stored_chunks=payload,
         )
+        self._native_provenance_manifest = native_docx_manifest
         return merge_provenance_manifests(source_manifest, native_docx_manifest)
+
+    def _load_authoritative_text_chunk_store(
+        self, *, purpose: str
+    ) -> dict[str, dict[str, Any]]:
+        candidates = sorted(
+            (self._require_work_dir() / "storage").rglob("kv_store_text_chunks.json")
+        )
+        if len(candidates) != 1:
+            raise RuntimeError(
+                f"LightRAG {purpose} requires one authoritative text chunk "
+                f"store; observed {len(candidates)}"
+            )
+        payload = json.loads(candidates[0].read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or any(
+            not isinstance(value, dict) for value in payload.values()
+        ):
+            raise RuntimeError("LightRAG text chunk store is malformed")
+        self._runtime_chunk_store = {
+            str(key): dict(value) for key, value in payload.items()
+        }
+        return self._runtime_chunk_store
 
     def _require_prepared(self) -> LightRAGAdapterConfig:
         if self._closed:

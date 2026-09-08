@@ -35,13 +35,18 @@ adapter_dirty_tests:
     PYTHONPATH=platform/src:adapters/lightrag/src pytest -q
     adapters/lightrag/tests/test_benchmark_segment_trace.py
     adapters/lightrag/tests/test_canonical_segment_provenance.py
+    adapters/lightrag/tests/test_native_unified_trace.py
     adapters/lightrag/tests/test_runtime_docx_and_trace.py
   test_paths:
     - adapters/lightrag/tests/test_benchmark_segment_trace.py
     - adapters/lightrag/tests/test_canonical_segment_provenance.py
+    - adapters/lightrag/tests/test_native_unified_trace.py
     - adapters/lightrag/tests/test_runtime_docx_and_trace.py
-  expected_passed: 17
+  expected_passed: 22
   required_passed_node_ids:
+    - adapters/lightrag/tests/test_native_unified_trace.py::test_native_snapshot_projects_one_chunk_to_paragraph_and_text_span
+    - adapters/lightrag/tests/test_native_unified_trace.py::test_split_merged_table_chunks_union_to_complete_logical_evidence
+    - adapters/lightrag/tests/test_native_unified_trace.py::test_run_result_v2_observes_same_native_stage_items_without_second_execution
     - adapters/lightrag/tests/test_runtime_docx_and_trace.py::test_query_retains_native_trace_and_exposes_rendered_prompt
     - adapters/lightrag/tests/test_runtime_docx_and_trace.py::test_adapter_keeps_one_item_for_many_native_edges
 
