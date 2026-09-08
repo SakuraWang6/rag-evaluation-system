@@ -182,7 +182,10 @@ If an old run is rescored, the result is a new, versioned derivative artifact li
 
 ## Unified observation contract
 
-ADR 0003 authorizes a new Wire 2.0 schema. Phase 3 will implement the following concepts without RAG-specific fields in the scorer-facing surface.
+ADR 0003 authorizes a new Wire 2.0 schema. Phase 3 implements the following
+concepts without RAG-specific fields in the scorer-facing surface. The full
+contract and compatibility rules are recorded in
+[`UNIFIED_OBSERVATION_CONTRACT.md`](UNIFIED_OBSERVATION_CONTRACT.md).
 
 ### Source identity
 

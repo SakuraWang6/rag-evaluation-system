@@ -7,6 +7,7 @@ remaining native gap, the destination, and the executable phase plan.
 | Document | Role |
 | --- | --- |
 | [`CURRENT_ARCHITECTURE_AUDIT.md`](CURRENT_ARCHITECTURE_AUDIT.md) | Evidence-backed current implementation audit |
+| [`UNIFIED_OBSERVATION_CONTRACT.md`](UNIFIED_OBSERVATION_CONTRACT.md) | Wire 2.0 observation, provenance, and transformation contract |
 | [`MULTI_CORPUS_HISTORY.md`](MULTI_CORPUS_HISTORY.md) | Why the three corpus modes appeared and what each preserved |
 | [`NATIVE_DOCUMENT_GAP_ANALYSIS.md`](NATIVE_DOCUMENT_GAP_ANALYSIS.md) | Remaining native provenance and observability gaps |
 | [`TARGET_ARCHITECTURE.md`](TARGET_ARCHITECTURE.md) | Normative four-layer destination and semantic rules |

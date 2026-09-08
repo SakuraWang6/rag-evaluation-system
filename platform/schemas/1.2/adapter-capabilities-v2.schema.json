@@ -1,0 +1,112 @@
+{
+  "$defs": {
+    "StageName": {
+      "enum": [
+        "candidate",
+        "ranked",
+        "context"
+      ],
+      "title": "StageName",
+      "type": "string"
+    },
+    "StageTransitionDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "source_stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "target_stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "mode": {
+          "$ref": "#/$defs/StageTransitionMode"
+        }
+      },
+      "required": [
+        "source_stage",
+        "target_stage",
+        "mode"
+      ],
+      "title": "StageTransitionDeclaration",
+      "type": "object"
+    },
+    "StageTransitionMode": {
+      "enum": [
+        "identity_subset",
+        "verified_derivation",
+        "unobservable"
+      ],
+      "title": "StageTransitionMode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Adapter observation capabilities, independent of runtime behavior.",
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "ingestion_catalog": {
+      "default": false,
+      "title": "Ingestion Catalog",
+      "type": "boolean"
+    },
+    "candidate_retrieval": {
+      "default": false,
+      "title": "Candidate Retrieval",
+      "type": "boolean"
+    },
+    "ranked_retrieval": {
+      "default": false,
+      "title": "Ranked Retrieval",
+      "type": "boolean"
+    },
+    "final_context": {
+      "default": false,
+      "title": "Final Context",
+      "type": "boolean"
+    },
+    "prompt_trace": {
+      "default": false,
+      "title": "Prompt Trace",
+      "type": "boolean"
+    },
+    "answer": {
+      "default": false,
+      "title": "Answer",
+      "type": "boolean"
+    },
+    "provenance": {
+      "default": false,
+      "title": "Provenance",
+      "type": "boolean"
+    },
+    "transformation_lineage": {
+      "default": false,
+      "title": "Transformation Lineage",
+      "type": "boolean"
+    },
+    "latency_breakdown": {
+      "default": false,
+      "title": "Latency Breakdown",
+      "type": "boolean"
+    },
+    "token_usage": {
+      "default": false,
+      "title": "Token Usage",
+      "type": "boolean"
+    },
+    "transitions": {
+      "items": {
+        "$ref": "#/$defs/StageTransitionDeclaration"
+      },
+      "title": "Transitions",
+      "type": "array"
+    }
+  },
+  "title": "AdapterCapabilitiesV2",
+  "type": "object"
+}

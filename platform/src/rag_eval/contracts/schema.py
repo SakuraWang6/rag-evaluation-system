@@ -8,13 +8,23 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from rag_eval.contracts.adapter import RAGQuery, RAGResult
+from rag_eval.contracts.benchmark import (
+    BenchmarkGold,
+    BenchmarkManifest,
+    BenchmarkQuestion,
+    BenchmarkSegment,
+)
 from rag_eval.contracts.canonical import CanonicalConformanceReport, CanonicalDocument
-from rag_eval.contracts.benchmark import BenchmarkGold, BenchmarkManifest, BenchmarkQuestion, BenchmarkSegment
 from rag_eval.contracts.dataset import (
     DatasetBundleManifest,
     GoldAnswer,
     GoldEvidenceSet,
     Question,
+)
+from rag_eval.contracts.observation import (
+    AdapterCapabilitiesV2,
+    AdapterRunResultV2,
+    UnifiedTrace,
 )
 from rag_eval.contracts.research import (
     AnalysisContract,
@@ -40,6 +50,9 @@ PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "gold-evidence-set": GoldEvidenceSet,
     "rag-query": RAGQuery,
     "rag-result": RAGResult,
+    "adapter-capabilities-v2": AdapterCapabilitiesV2,
+    "unified-trace-v2": UnifiedTrace,
+    "adapter-run-result-v2": AdapterRunResultV2,
     "experiment-spec": ExperimentSpec,
     "case-result": CaseResult,
     "run-manifest": RunManifest,

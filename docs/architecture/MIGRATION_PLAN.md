@@ -66,7 +66,7 @@ No phase may opportunistically implement work assigned to a later phase.
 | 0 | Isolate P0 `retrieval_missed` fix | Complete | `3cfcb64` |
 | 1 | ADR and behavior baseline | Complete in this phase | ADR 0003 plus `native_evaluation_v2` baseline |
 | 2 | Canonical Stability | Complete in this phase | Immutable conformance artifact and Platform-owned matrix |
-| 3 | Wire 2.0 / Unified Trace | Not started | Requires Phase 2 acceptance |
+| 3 | Wire 2.0 / Unified Trace | Complete in this phase | RAG-neutral contracts, validator, schemas, and v1 normalizer |
 | 4 | LightRAG Native Observation | Not started | Requires Phase 3 acceptance |
 | 5 | Unified Evaluation | Not started | Requires Phase 4 acceptance |
 | 6 | Run / Artifact 2.0 | Not started | Requires Phase 5 acceptance |
@@ -178,6 +178,21 @@ feat(canonical): enforce platform-owned gold eligibility
 - `observed + truncated` proves the intended Top-K prefix.
 - Identity-subset and verified-derivation profiles pass conformance tests.
 - Wire 1.0 behavior remains runnable and normalizable.
+
+### Implementation evidence
+
+- Wire 2.0 models live in the RAG-neutral observation contract and export
+  versioned JSON Schemas without redefining Wire 1.0 fields.
+- Status/completeness matrices, Top-K prefixes, runtime identities, content
+  hashes, native lineage, forward/reverse maps, and receipt integrity fail
+  closed under contract tests.
+- Each stage transition declares `identity_subset`, `verified_derivation`, or
+  `unobservable`; derived outputs retain source references and content hashes.
+- The Wire 1.0 normalizer preserves the difference between missing and empty,
+  content-pins visible items, and explicitly refuses to invent catalog,
+  completeness, provenance, or transformation proof.
+- Live execution still consumes authoritative `RAGResult`; LightRAG
+  instrumentation and Unified Evaluation remain Phase 4 and Phase 5 work.
 
 ### Commit
 
