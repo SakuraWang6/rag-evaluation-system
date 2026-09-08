@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from datetime import UTC, datetime
@@ -95,6 +96,14 @@ def test_lossless_release_materializes_a_release_pinned_runtime_bundle(tmp_path:
     assert bundle.questions[0].case_id == release.cases[0].case_id
     assert bundle.manifest.metadata["formal_runtime_projection"]["release_id"] == release.release_id
     assert bundle.manifest.metadata["formal_runtime_projection"]["release_digest"] == release.release_digest
+    evidence_set = next(iter(bundle.gold_evidence_sets.values()))
+    source_pin = evidence_set.source_identities[0]
+    document = bundle.manifest.documents[0]
+    assert source_pin.source_sha256 == document.sha256
+    assert source_pin.canonical_catalog_sha256 == hashlib.sha256(
+        (bundle.root / document.canonical_path).read_bytes()
+    ).hexdigest()
+    assert all(item.canonical_object_id for item in evidence_set.evidence)
 
 
 def test_formal_release_publishes_a_release_pinned_benchmark_contract(tmp_path: Path) -> None:

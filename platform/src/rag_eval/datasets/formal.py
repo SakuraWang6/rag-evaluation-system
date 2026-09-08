@@ -1738,13 +1738,23 @@ class FormalDatasetReleaseService:
             destination_source = documents / source_name
             shutil.copyfile(source, destination_source)
             canonical_records = [self._runtime_canonical_record(item) for item in canonical.objects]
+            canonical_catalog = "".join(
+                json.dumps(
+                    item,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+                for item in canonical_records
+            )
             (canonical_root / "evidence.jsonl").write_text(
-                "".join(
-                    json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
-                    for item in canonical_records
-                ),
+                canonical_catalog,
                 encoding="utf-8",
             )
+            canonical_catalog_sha256 = hashlib.sha256(
+                canonical_catalog.encode("utf-8")
+            ).hexdigest()
 
             questions: list[dict[str, object]] = []
             answers: list[dict[str, object]] = []
@@ -1789,6 +1799,8 @@ class FormalDatasetReleaseService:
                         case_id=case.case_id,
                         gold=gold,
                         objects=objects,
+                        source_sha256=release.document.source_digest,
+                        canonical_catalog_sha256=canonical_catalog_sha256,
                     )
                 )
 
@@ -1922,6 +1934,8 @@ class FormalDatasetReleaseService:
         case_id: str,
         gold: GoldRevision,
         objects: dict[str, CanonicalObject],
+        source_sha256: str,
+        canonical_catalog_sha256: str,
     ) -> dict[str, object]:
         values: list[dict[str, object]] = []
         rendered: dict[str, str] = {}
@@ -1939,6 +1953,7 @@ class FormalDatasetReleaseService:
                         "evidence_id": runtime_id,
                         "document_id": canonical.document_id,
                         "locator": self._runtime_locator(canonical),
+                        "canonical_object_id": canonical.object_id,
                         "canonical_value": self._runtime_witness_value(canonical.canonical_value),
                         "quote_anchor": None,
                     }
@@ -1968,6 +1983,14 @@ class FormalDatasetReleaseService:
             "gold_evidence_set_id": f"evidence-set-{case_id}",
             "evidence": values,
             "required_groups": required_groups,
+            "source_identities": [
+                {
+                    "document_id": next(iter(objects.values())).document_id,
+                    "source_sha256": source_sha256,
+                    "source_coordinate_schema": "ooxml-structural-v1",
+                    "canonical_catalog_sha256": canonical_catalog_sha256,
+                }
+            ],
             **({} if mses_paths is None else {"mses_paths": mses_paths}),
         }
 

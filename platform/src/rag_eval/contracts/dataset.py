@@ -110,6 +110,11 @@ class GoldEvidence(ContractModel):
     evidence_id: str = Field(min_length=1)
     document_id: str = Field(min_length=1)
     locator: EvidenceLocator
+    # Stable Canonical identity used by Wire 2.0 evaluation.  This is an
+    # additive field so historical Bundle 2.0 readers remain valid.  New
+    # Canonical Benchmark publications pin it explicitly, including for
+    # table-cell locators whose human-readable coordinates are not identity.
+    canonical_object_id: str | None = Field(default=None, min_length=1)
     canonical_value: str | None = None
     quote_anchor: str | None = None
 
@@ -119,13 +124,34 @@ class GoldEvidence(ContractModel):
             self.quote_anchor or ""
         ).strip():
             raise ValueError("gold evidence requires canonical_value or quote_anchor")
+        if (
+            isinstance(self.locator, ObjectLocator)
+            and self.canonical_object_id is not None
+            and self.canonical_object_id != self.locator.object_id
+        ):
+            raise ValueError(
+                "Gold canonical object identity must agree with its object locator"
+            )
         return self
+
+
+class GoldSourceIdentity(ContractModel):
+    """Canonical Benchmark source pin required by Unified Evaluation v2."""
+
+    document_id: str = Field(min_length=1)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_coordinate_schema: str = Field(min_length=1)
+    canonical_catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class GoldEvidenceSet(ContractModel):
     gold_evidence_set_id: str = Field(min_length=1)
     evidence: list[GoldEvidence]
     required_groups: list[list[str]]
+    # Additive for historical Bundle 2.0 compatibility. New formal
+    # publications always pin every document; Wire 2.0 scoring fails closed
+    # when a required pin is absent.
+    source_identities: tuple[GoldSourceIdentity, ...] = ()
     # Formal runtime projections retain the Ledger's exact OR(paths) of
     # AND(clauses) semantics.  ``required_groups`` remains the legacy/default
     # view for existing bundles; evidence IDs may legitimately repeat across
@@ -166,6 +192,17 @@ class GoldEvidenceSet(ContractModel):
             }
             if unknown_mses:
                 raise ValueError(f"mses_paths reference unknown evidence: {sorted(unknown_mses)}")
+        source_ids = [item.document_id for item in self.source_identities]
+        if len(source_ids) != len(set(source_ids)):
+            raise ValueError("Gold source identities must have unique document IDs")
+        if self.source_identities:
+            unpinned = {
+                item.document_id for item in self.evidence
+            }.difference(source_ids)
+            if unpinned:
+                raise ValueError(
+                    f"Gold evidence references unpinned documents: {sorted(unpinned)}"
+                )
         return self
 
 

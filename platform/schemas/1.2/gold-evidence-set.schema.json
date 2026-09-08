@@ -39,6 +39,19 @@
           ],
           "title": "Locator"
         },
+        "canonical_object_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Object Id"
+        },
         "canonical_value": {
           "anyOf": [
             {
@@ -70,6 +83,40 @@
         "locator"
       ],
       "title": "GoldEvidence",
+      "type": "object"
+    },
+    "GoldSourceIdentity": {
+      "additionalProperties": false,
+      "description": "Canonical Benchmark source pin required by Unified Evaluation v2.",
+      "properties": {
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "source_coordinate_schema": {
+          "minLength": 1,
+          "title": "Source Coordinate Schema",
+          "type": "string"
+        },
+        "canonical_catalog_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Catalog Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "source_coordinate_schema",
+        "canonical_catalog_sha256"
+      ],
+      "title": "GoldSourceIdentity",
       "type": "object"
     },
     "ObjectLocator": {
@@ -235,6 +282,14 @@
         "type": "array"
       },
       "title": "Required Groups",
+      "type": "array"
+    },
+    "source_identities": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/GoldSourceIdentity"
+      },
+      "title": "Source Identities",
       "type": "array"
     },
     "mses_paths": {

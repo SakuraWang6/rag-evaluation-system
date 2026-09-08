@@ -68,7 +68,7 @@ No phase may opportunistically implement work assigned to a later phase.
 | 2 | Canonical Stability | Complete in this phase | Immutable conformance artifact and Platform-owned matrix |
 | 3 | Wire 2.0 / Unified Trace | Complete in this phase | RAG-neutral contracts, validator, schemas, and v1 normalizer |
 | 4 | LightRAG Native Observation | Complete in this phase | Verified native catalog, provenance receipts, Unified Trace, and Wire 1.0 shadow |
-| 5 | Unified Evaluation | Not started | Requires Phase 4 acceptance |
+| 5 | Unified Evaluation | Complete in this phase | Availability bounds, extent union, explicit MRR@5, pipeline deltas, and proof-gated failures |
 | 6 | Run / Artifact 2.0 | Not started | Requires Phase 5 acceptance |
 | 7 | Platform API / WebUI | Not started | Requires Phase 6 acceptance |
 | 8 | Native formal cutover | Not started | Requires Phase 7 acceptance |
@@ -270,6 +270,27 @@ feat(lightrag): emit verified native unified trace
   pipeline loss, and stage gain.
 - Implement proof-gated failure attribution.
 - Keep the old scorer available as a shadow fallback during this phase.
+
+### Phase 5 implementation
+
+- `rag_eval.evaluation.unified` is a separate RAG-neutral scoring owner that
+  consumes only `GoldEvidenceSet`, `UnifiedTrace`, and an explicit evaluation
+  profile. It does not replace the legacy live scorer.
+- Canonical Gold now carries an additive `canonical_object_id` plus source,
+  coordinate-system, and Canonical Catalog hash pins. New formal publications
+  emit them for both object and table-cell locators, while historical records
+  remain readable and fail closed for v2 scoring when the pins are absent.
+- Per-evidence lower/upper coverage bounds drive metric availability. A proved
+  upper-bound result remains observed; uncertainty that can change the value
+  produces `UNAVAILABLE`.
+- Text uses verified interval unions. Table coverage groups physical receipts
+  by merge origin so a logical cell remains one scoring atom.
+- Pipeline diagnostics persist separate canonical set loss and gain and require
+  the declared identity-subset or verified-derivation relation.
+- Failure attribution advances only through proved ingestion, candidate,
+  ranking, context, and answer boundaries.
+- The compatibility comparator records equivalent, explicitly versioned, or
+  non-comparable shadow outcomes without mutating legacy output.
 
 ### Exit Gate
 

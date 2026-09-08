@@ -14,6 +14,7 @@ remaining native gap, the destination, and the executable phase plan.
 | [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md) | Phase-by-phase implementation, gates, commits, and rollback |
 | [`CANONICAL_CONFORMANCE.md`](CANONICAL_CONFORMANCE.md) | Phase 2 Snapshot identity and Platform-owned Gold admission |
 | [`LIGHTRAG_NATIVE_OBSERVATION.md`](LIGHTRAG_NATIVE_OBSERVATION.md) | Phase 4 native runtime catalog, provenance receipts, and Wire 2.0 shadow |
+| [`UNIFIED_EVALUATION_V2.md`](UNIFIED_EVALUATION_V2.md) | Phase 5 availability-driven extent scoring and proof-gated attribution |
 | [`../decisions/0003-native-document-evaluation-v2.md`](../decisions/0003-native-document-evaluation-v2.md) | Accepted architecture decision |
 
 The Phase 1 executable baseline is
