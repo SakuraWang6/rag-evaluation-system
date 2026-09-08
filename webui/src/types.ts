@@ -426,13 +426,237 @@ export interface FormalDocumentView {
 }
 
 export interface SystemProfile {
-  profile_id: 'lightrag' | 'rag-anything'
+  profile_id: string
   profile_version: string
   display_name: string
   system_id: string
   adapter_id: string
   default_logical_endpoint: string
   docker_available: boolean
+  query_modes: string[]
+  query_timeout_min_seconds: number | null
+}
+
+export type ArtifactViewAvailability = 'available' | 'legacy_unavailable' | 'corrupted'
+export type ObservationStatus = 'observed' | 'unsupported' | 'unobserved' | 'failed' | 'corrupted'
+export type ObservationCompleteness = 'complete' | 'truncated' | 'partial' | 'unknown'
+export type ArtifactMetricStatus = 'observed' | 'unavailable'
+
+export interface ArtifactVerification {
+  valid: boolean
+  missing: string[]
+  unexpected: string[]
+  mismatched: string[]
+  invalid_models?: string[]
+}
+
+export interface MetricDescriptorV2 {
+  metric_id: string
+  scorer_id: string
+  scorer_version: string
+  scorer_digest: string
+  aggregation: string
+  stage: 'candidate' | 'ranked' | 'context' | null
+  cutoff: number | null
+  candidate_cutoff: number
+  ranked_cutoff: number
+  context_budget: number
+}
+
+export interface MetricDescriptorBindingV2 {
+  metric_id: string
+  descriptor_digest: string
+  descriptor: MetricDescriptorV2
+}
+
+export interface AggregateMetricV2 {
+  metric_id: string
+  status: ArtifactMetricStatus
+  value: number | null
+  case_count: number
+  observed_case_count: number
+  unavailable_case_count: number
+  descriptor_digests: string[]
+  reason: string | null
+}
+
+export interface EvaluationMetricV2 {
+  metric_id: string
+  status: ArtifactMetricStatus
+  value: number | null
+  lower_bound: number
+  upper_bound: number
+  descriptor: MetricDescriptorV2
+  reason: string | null
+}
+
+export interface ArtifactJudgmentV2 {
+  status: 'observed' | 'needs_review' | 'unavailable'
+  value: string | null
+  reason: string | null
+}
+
+export interface ArtifactEvidenceJudgmentV2 {
+  status: 'observed' | 'unavailable'
+  value: 'complete' | 'partial' | 'missing' | null
+  reason: string | null
+}
+
+export interface ObservedStageItemV2 {
+  native_chunk_id: string
+  native_rank: number
+  runtime_score: number | null
+  content_sha256: string
+  content: string | null
+  provenance_edge_ids: string[]
+  metadata: Record<string, unknown>
+}
+
+export interface StageObservationV2 {
+  stage: 'candidate' | 'ranked' | 'context'
+  observation_status: ObservationStatus
+  completeness: ObservationCompleteness
+  configured_cutoff: number | null
+  proven_prefix_depth: number | null
+  items: ObservedStageItemV2[]
+  reason: string | null
+  diagnostics: Record<string, unknown>
+}
+
+export interface ContentObservationV2 {
+  observation_status: ObservationStatus
+  completeness: ObservationCompleteness
+  content: string | null
+  content_sha256: string | null
+  reason: string | null
+}
+
+export interface RunArtifactCaseV2 {
+  schema_version: '2.0'
+  case_id: string
+  repetition: number
+  seed: number
+  status: string
+  question: string
+  gold_answer: { kind: string; canonical: string | string[] | null; unit?: string | null }
+  gold_evidence_set: {
+    gold_evidence_set_id: string
+    required_groups: string[][]
+    mses_paths: string[][][] | null
+    source_identities: unknown[]
+    evidence: Array<{
+      evidence_id: string
+      document_id: string
+      canonical_object_id?: string | null
+      canonical_value?: string | null
+      quote_anchor?: string | null
+      locator?: Record<string, unknown>
+    }>
+  }
+  trace_validation: { status: ObservationStatus; reason: string | null; wire_shadow_verified: boolean }
+  adapter_result: {
+    protocol_version: '2.0'
+    adapter_id: string
+    adapter_version: string
+    system_id: string
+    system_version: string
+    trace: {
+      runtime_profile: { profile_id: string; system_id: string; system_version: string; configuration_digest: string }
+      observation_profile: { profile_id: string; adapter_id: string; adapter_version: string; profile_digest: string }
+      ingestion_catalog: { observation_status: ObservationStatus; completeness: ObservationCompleteness; items: unknown[]; reason: string | null }
+      raw_retrieval: StageObservationV2
+      ranked_retrieval: StageObservationV2
+      final_context: StageObservationV2
+      prompt_trace: ContentObservationV2
+      answer: ContentObservationV2
+      transformations: unknown[]
+      mapping_diagnostics: unknown[]
+      trace_digest: string
+    }
+  } | null
+  evaluation: {
+    scorer_id: string
+    scorer_version: string
+    scorer_digest: string
+    metrics: EvaluationMetricV2[]
+    localizations: Array<Record<string, unknown>>
+    pipeline_deltas: Array<Record<string, unknown>>
+    failure: { kind: string; cutoff: number | null; reason: string; proof_subjects: string[] } | null
+  }
+  answer_judgment: ArtifactJudgmentV2
+  evidence_judgment: ArtifactEvidenceJudgmentV2
+  error: { code: string; message: string; retryable: boolean } | null
+}
+
+export interface ArtifactOverviewV2 {
+  schema_version: '1.0'
+  run_id: string
+  artifact_contract_version: '2.0' | '1.2'
+  availability: ArtifactViewAvailability
+  reason: string | null
+  verification: ArtifactVerification | null
+  manifest: {
+    benchmark_identity: { dataset_release_id: string; benchmark_snapshot_digest: string; source_identities: unknown[] }
+    runtime_profiles: Array<{ profile_id: string; system_id: string; system_version: string; configuration_digest: string }>
+    observation_profiles: Array<{ profile_id: string; adapter_id: string; adapter_version: string; profile_digest: string }>
+    artifact_digest: string
+  } | null
+  summary: {
+    case_count: number
+    execution_status_counts: Record<string, number>
+    metrics: AggregateMetricV2[]
+    leaderboard_eligibility: {
+      eligible: boolean
+      case_count: number
+      required_metric_ids: string[]
+      descriptor_digests: Record<string, string>
+      reasons: string[]
+    }
+  } | null
+  metric_descriptors: MetricDescriptorBindingV2[]
+}
+
+export interface RunCaseIndexEntryV2 {
+  case_id: string
+  repetition: number
+  seed: number | null
+  status: string
+  question: string
+  answer_judgment: ArtifactJudgmentV2
+  evidence_judgment: ArtifactEvidenceJudgmentV2
+  core_metrics_available: boolean
+  failure_kind: string | null
+}
+
+export interface ArtifactCaseIndexViewV2 {
+  schema_version: '1.0'
+  run_id: string
+  artifact_contract_version: '2.0' | '1.2'
+  availability: ArtifactViewAvailability
+  reason: string | null
+  verification: ArtifactVerification | null
+  cases: RunCaseIndexEntryV2[]
+}
+
+export interface LegacyRunCaseV2 {
+  case_id: string
+  repetition: number
+  seed: number | null
+  status: string
+  question: string
+  answer: string | null
+  error: Record<string, unknown> | null
+}
+
+export interface ArtifactCaseViewV2 {
+  schema_version: '1.0'
+  run_id: string
+  artifact_contract_version: '2.0' | '1.2'
+  availability: ArtifactViewAvailability
+  reason: string | null
+  verification: ArtifactVerification | null
+  artifact_case: RunArtifactCaseV2 | null
+  legacy_case: LegacyRunCaseV2 | null
 }
 
 export interface ProductSystemSummary {
@@ -737,5 +961,5 @@ export interface ComparisonResponse {
     coverage_by_run: Record<string, number>
     winner_eligible: boolean
   }>
-  runs: Array<{ run: RunManifest; summary: RunSummary }>
+  runs: Array<{ run: RunManifest; summary: ArtifactOverviewV2 }>
 }

@@ -232,10 +232,15 @@ def _metric_decisions(
         }
     )
     required_coverage = spec.minimum_metric_coverage if spec else 1.0
+    descriptors_required = any(
+        summaries.get(run.run_id, {}).get("artifact_contract_version") == "2.0"
+        for run in runs
+    )
     decisions: list[MetricComparisonDecision] = []
     for metric_id in metric_ids:
         reasons: list[str] = []
         coverage: dict[str, float] = {}
+        descriptor_digests: dict[str, tuple[str, ...]] = {}
         for run in runs:
             metric = summaries.get(run.run_id, {}).get("metrics", {}).get(metric_id)
             if not isinstance(metric, dict):
@@ -246,12 +251,22 @@ def _metric_decisions(
             value = metric.get("value")
             raw_coverage = metric.get("coverage", 0.0)
             coverage[run.run_id] = float(raw_coverage) if isinstance(raw_coverage, (int, float)) else 0.0
+            raw_descriptors = metric.get("descriptor_digests")
+            if isinstance(raw_descriptors, (list, tuple)) and all(
+                isinstance(item, str) for item in raw_descriptors
+            ):
+                descriptor_digests[run.run_id] = tuple(sorted(set(raw_descriptors)))
+            elif descriptors_required:
+                descriptor_digests[run.run_id] = ()
+                reasons.append(f"{run.run_id}: metric descriptor is absent")
             if status != "observed" or value is None:
                 reasons.append(f"{run.run_id}: metric status is {status}")
             elif coverage[run.run_id] < required_coverage:
                 reasons.append(
                     f"{run.run_id}: metric coverage {coverage[run.run_id]:.3f} is below {required_coverage:.3f}"
                 )
+        if descriptors_required and len(set(descriptor_digests.values())) > 1:
+            reasons.append("metric descriptor differs across Runs")
         comparable = not reasons and not global_reasons
         decisions.append(
             MetricComparisonDecision(

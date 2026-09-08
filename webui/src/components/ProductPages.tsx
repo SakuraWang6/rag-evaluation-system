@@ -1098,14 +1098,14 @@ export function ProductSystemsPage({ legacy }: { legacy: SystemSummary[] }) {
   const { t } = useLocale()
   const [profiles, setProfiles] = useState<SystemProfile[]>([])
   const [systems, setSystems] = useState<ProductSystemSummary[]>([])
-  const [selected, setSelected] = useState('lightrag@1.0.1')
-  const [displayName, setDisplayName] = useState('LightRAG')
+  const [selected, setSelected] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [provider, setProvider] = useState<'local' | 'docker'>('local')
   const [secretKey, setSecretKey] = useState('')
   const [secretValue, setSecretValue] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const refresh = async () => { try { const [nextProfiles, nextSystems] = await Promise.all([api.profiles(), api.productSystems()]); setProfiles(nextProfiles); setSystems(nextSystems) } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) } }
+  const refresh = async () => { try { const [nextProfiles, nextSystems] = await Promise.all([api.profiles(), api.productSystems()]); setProfiles(nextProfiles); setSystems(nextSystems); setSelected((current) => current || (nextProfiles[0] ? `${nextProfiles[0].profile_id}@${nextProfiles[0].profile_version}` : '')) } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) } }
   useEffect(() => { void refresh() }, [])
   const profile = profiles.find((item) => `${item.profile_id}@${item.profile_version}` === selected)
   useEffect(() => { if (profile) setDisplayName(profile.display_name) }, [profile?.profile_id, profile?.profile_version])
@@ -1400,10 +1400,6 @@ const evaluationModels = (providers: LLMProviderConfig[], use: ModelUse): Evalua
   return values.filter((item, index) => values.findIndex((candidate) => candidate.value === item.value) === index)
 }
 
-const queryModesFor = (profileId: SystemProfile['profile_id'] | undefined) => profileId === 'rag-anything'
-  ? ['naive', 'mix']
-  : ['naive', 'local', 'global', 'hybrid', 'mix']
-
 export function NewEvaluationPage({ datasets, formalDatasets, onQueued }: { datasets: DatasetSummary[]; formalDatasets: FormalDatasetsResponse; onQueued: () => void }) {
   const { t } = useLocale()
   const [profiles, setProfiles] = useState<SystemProfile[]>([])
@@ -1449,8 +1445,8 @@ export function NewEvaluationPage({ datasets, formalDatasets, onQueued }: { data
   const selectedRelease = formalDatasets.releases.find((item) => item.release_id === selectedReleaseId)
   const system = systems.find((item) => item.system_id === systemId)
   const profile = profiles.find((item) => item.profile_id === system?.profile_id && item.profile_version === system?.profile_version)
-  const queryModes = queryModesFor(profile?.profile_id)
-  const isLightRAG = profile?.profile_id === 'lightrag'
+  const queryModes = profile?.query_modes ?? []
+  const queryTimeoutMinimum = profile?.query_timeout_min_seconds ?? null
   const validDataset = Boolean(selectedLegacyBundle || selectedRelease?.runnable)
 
   const clearPreview = () => { setPreview(null); setDraft(null); setMessage('') }
@@ -1466,11 +1462,10 @@ export function NewEvaluationPage({ datasets, formalDatasets, onQueued }: { data
     const candidate = mode === 'advanced' ? parseInteger(candidateK, 1, t('product.wizard.candidateK')) : undefined
     const context = mode === 'advanced' ? parseInteger(contextK, 1, t('product.wizard.contextK')) : undefined
     const tokens = mode === 'advanced' ? parseInteger(tokenBudget, 1, t('product.wizard.tokenBudget')) : undefined
-    // This is one deadline, not a second independent timeout.  The adapter
-    // applies the same value to LightRAG's QUERY_LLM_TIMEOUT and keeps only a
-    // fixed response-serialization grace window outside the experiment.
-    const queryTimeout = isLightRAG
-      ? parseInteger(queryTimeoutSeconds || '0', 30, t('product.wizard.queryTimeout'))
+    // Timeout support and its lower bound are declared by the selected
+    // immutable profile; the WebUI never branches on a concrete RAG name.
+    const queryTimeout = queryTimeoutMinimum !== null
+      ? parseInteger(queryTimeoutSeconds || '0', queryTimeoutMinimum, t('product.wizard.queryTimeout'))
       : undefined
     const selectedSeed = mode === 'advanced' ? parseInteger(seed, 0, t('product.wizard.seed')) ?? 0 : 0
     const selectedRepetitions = mode === 'advanced' ? parseInteger(repetitions, 1, t('product.wizard.repetitions')) ?? 1 : 1
@@ -1541,7 +1536,7 @@ export function NewEvaluationPage({ datasets, formalDatasets, onQueued }: { data
     <Surface className="wizard-form">
       <div className="authoring-actions"><span className="field-note">{t('product.wizard.mode')}</span><SegmentedControl label={t('product.wizard.mode')} value={mode} onChange={(value) => { setMode(value); clearPreview() }} options={[{ value: 'basic', label: t('product.wizard.basicMode') }, { value: 'advanced', label: t('product.wizard.advancedMode') }]} /></div>
       <div className="authoring-grid">
-        <label><span>运行名称（可选）</span><input value={runName} maxLength={160} placeholder="例如：LightRAG · 供应商审计 v1" onChange={(event) => { setRunName(event.target.value); clearPreview() }} /><small className="field-note">留空时会生成包含系统、时间和短 Run ID 的默认名称。</small></label>
+        <label><span>运行名称（可选）</span><input value={runName} maxLength={160} placeholder="例如：供应商审计 v1" onChange={(event) => { setRunName(event.target.value); clearPreview() }} /><small className="field-note">留空时会生成包含系统、时间和短 Run ID 的默认名称。</small></label>
         <label><span>{t('product.wizard.dataset')}</span><select value={datasetValue} onChange={(event) => { setDatasetValue(event.target.value); clearPreview() }}><option value="">{t('product.wizard.selectDataset')}</option>{formalDatasets.releases.map((item) => <option value={`release:${item.release_id}`} disabled={!item.runnable} key={item.release_id}>{item.name}{item.name === item.version ? '' : ` · ${item.version}`} · {t('product.datasets.caseCount', { count: item.case_count })}{item.runnable ? '' : ` · ${t('product.wizard.datasetUnavailable')}`}</option>)}{datasets.map((item) => <option value={`bundle:${item.bundle_id}`} key={item.bundle_id}>{item.name}{item.name === item.version ? '' : ` · ${item.version}`}</option>)}</select>{selectedRelease && !selectedRelease.runnable && <small className="field-note">{t('product.wizard.datasetUnavailableReason', { reason: selectedRelease.runtime_reason || t('product.wizard.datasetUnavailable') })}</small>}{selectedRelease?.runnable && <small className="field-note">{t('product.wizard.formalDatasetNote')}</small>}</label>
         <label><span>{t('product.wizard.system')}</span><select value={systemId} onChange={(event) => { setSystemId(event.target.value); setQueryMode(''); clearPreview() }}><option value="">{t('product.wizard.selectSystem')}</option>{systems.map((item) => <option value={item.system_id} key={item.system_id}>{item.display_name}</option>)}</select></label>
         <label><span>{t('product.wizard.model')}</span><select value={model} onChange={(event) => { setModel(event.target.value); clearPreview() }} disabled={!modelChoices.length}><option value="">{modelChoices.length ? t('product.wizard.selectModel') : t('product.wizard.detectModelsFirst')}</option>{modelChoices.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select><small className="field-note">{t('product.wizard.modelSource')}</small></label>
@@ -1552,7 +1547,7 @@ export function NewEvaluationPage({ datasets, formalDatasets, onQueued }: { data
         <label><span>{t('product.wizard.candidateK')}</span><select value={candidateK} onChange={(event) => { setCandidateK(event.target.value); clearPreview() }}><option value="">{t('product.wizard.useSystemDefault')}</option>{[10, 20, 40, 80].map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
         <label><span>{t('product.wizard.contextK')}</span><select value={contextK} onChange={(event) => { setContextK(event.target.value); clearPreview() }}><option value="">{t('product.wizard.useSystemDefault')}</option>{[1, 3, 5, 8, 10].map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
         <label><span>{t('product.wizard.tokenBudget')}</span><select value={tokenBudget} onChange={(event) => { setTokenBudget(event.target.value); clearPreview() }}><option value="">{t('product.wizard.useSystemDefault')}</option>{[2048, 4096, 8192, 12000, 16384].map((value) => <option value={value} key={value}>{value.toLocaleString()}</option>)}</select></label>
-        {isLightRAG && <label><span>{t('product.wizard.queryTimeout')}</span><input type="number" min="30" step="30" inputMode="numeric" value={queryTimeoutSeconds} onChange={(event) => { setQueryTimeoutSeconds(event.target.value); clearPreview() }} /><small className="field-note">{t('product.wizard.queryTimeoutHelp')}</small></label>}
+        {queryTimeoutMinimum !== null && <label><span>{t('product.wizard.queryTimeout')}</span><input type="number" min={queryTimeoutMinimum} step={queryTimeoutMinimum} inputMode="numeric" value={queryTimeoutSeconds} onChange={(event) => { setQueryTimeoutSeconds(event.target.value); clearPreview() }} /><small className="field-note">{t('product.wizard.queryTimeoutHelp')}</small></label>}
         <label><span>{t('product.wizard.answerGeneration')}</span><select value={generateAnswer} onChange={(event) => { setGenerateAnswer(event.target.value); clearPreview() }}><option value="default">{t('product.wizard.useSystemDefault')}</option><option value="on">{t('product.wizard.answerGenerationOn')}</option><option value="off">{t('product.wizard.answerGenerationOff')}</option></select></label>
         <label><span>{t('product.wizard.metricRange')}</span><select value={metricPreset} onChange={(event) => { setMetricPreset(event.target.value); clearPreview() }}><option value="balanced">{t('product.wizard.metricBalanced')}</option><option value="quick">{t('product.wizard.metricQuick')}</option><option value="recall">{t('product.wizard.metricRecall')}</option></select></label>
         <label><span>{t('product.wizard.repetitions')}</span><select value={repetitions} onChange={(event) => { setRepetitions(event.target.value); clearPreview() }}>{[1, 3, 5, 10].map((value) => <option value={value} key={value}>{value}</option>)}</select></label>

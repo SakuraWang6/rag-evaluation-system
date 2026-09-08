@@ -1,0 +1,886 @@
+{
+  "$defs": {
+    "AdapterCapabilitiesV2": {
+      "additionalProperties": false,
+      "description": "Adapter observation capabilities, independent of runtime behavior.",
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "ingestion_catalog": {
+          "default": false,
+          "title": "Ingestion Catalog",
+          "type": "boolean"
+        },
+        "candidate_retrieval": {
+          "default": false,
+          "title": "Candidate Retrieval",
+          "type": "boolean"
+        },
+        "ranked_retrieval": {
+          "default": false,
+          "title": "Ranked Retrieval",
+          "type": "boolean"
+        },
+        "final_context": {
+          "default": false,
+          "title": "Final Context",
+          "type": "boolean"
+        },
+        "prompt_trace": {
+          "default": false,
+          "title": "Prompt Trace",
+          "type": "boolean"
+        },
+        "answer": {
+          "default": false,
+          "title": "Answer",
+          "type": "boolean"
+        },
+        "provenance": {
+          "default": false,
+          "title": "Provenance",
+          "type": "boolean"
+        },
+        "transformation_lineage": {
+          "default": false,
+          "title": "Transformation Lineage",
+          "type": "boolean"
+        },
+        "latency_breakdown": {
+          "default": false,
+          "title": "Latency Breakdown",
+          "type": "boolean"
+        },
+        "token_usage": {
+          "default": false,
+          "title": "Token Usage",
+          "type": "boolean"
+        },
+        "transitions": {
+          "items": {
+            "$ref": "#/$defs/StageTransitionDeclaration"
+          },
+          "title": "Transitions",
+          "type": "array"
+        }
+      },
+      "title": "AdapterCapabilitiesV2",
+      "type": "object"
+    },
+    "AggregateMetricV2": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_id": {
+          "minLength": 1,
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/EvaluationMetricStatus"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "case_count": {
+          "minimum": 1,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "observed_case_count": {
+          "minimum": 0,
+          "title": "Observed Case Count",
+          "type": "integer"
+        },
+        "unavailable_case_count": {
+          "minimum": 0,
+          "title": "Unavailable Case Count",
+          "type": "integer"
+        },
+        "descriptor_digests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Descriptor Digests",
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "metric_id",
+        "status",
+        "case_count",
+        "observed_case_count",
+        "unavailable_case_count",
+        "descriptor_digests"
+      ],
+      "title": "AggregateMetricV2",
+      "type": "object"
+    },
+    "ArtifactCaseReferenceV2": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "repetition": {
+          "minimum": 1,
+          "title": "Repetition",
+          "type": "integer"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "repetition",
+        "path",
+        "sha256"
+      ],
+      "title": "ArtifactCaseReferenceV2",
+      "type": "object"
+    },
+    "ArtifactChecksumGraphV2": {
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/ArtifactMemberV2"
+          },
+          "minItems": 1,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "graph_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Graph Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "nodes",
+        "graph_digest"
+      ],
+      "title": "ArtifactChecksumGraphV2",
+      "type": "object"
+    },
+    "ArtifactMemberV2": {
+      "additionalProperties": false,
+      "properties": {
+        "member_id": {
+          "minLength": 1,
+          "title": "Member Id",
+          "type": "string"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        }
+      },
+      "required": [
+        "member_id",
+        "path",
+        "sha256"
+      ],
+      "title": "ArtifactMemberV2",
+      "type": "object"
+    },
+    "ArtifactVerificationView": {
+      "additionalProperties": false,
+      "properties": {
+        "valid": {
+          "title": "Valid",
+          "type": "boolean"
+        },
+        "missing": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing",
+          "type": "array"
+        },
+        "unexpected": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Unexpected",
+          "type": "array"
+        },
+        "mismatched": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Mismatched",
+          "type": "array"
+        },
+        "invalid_models": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Invalid Models",
+          "type": "array"
+        }
+      },
+      "required": [
+        "valid"
+      ],
+      "title": "ArtifactVerificationView",
+      "type": "object"
+    },
+    "ArtifactViewAvailability": {
+      "enum": [
+        "available",
+        "legacy_unavailable",
+        "corrupted"
+      ],
+      "title": "ArtifactViewAvailability",
+      "type": "string"
+    },
+    "BenchmarkIdentityV2": {
+      "additionalProperties": false,
+      "properties": {
+        "dataset_release_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Dataset Release Id",
+          "type": "string"
+        },
+        "dataset_release_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Dataset Release Digest",
+          "type": "string"
+        },
+        "bundle_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "case_selection_id": {
+          "minLength": 1,
+          "title": "Case Selection Id",
+          "type": "string"
+        },
+        "benchmark_snapshot_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Benchmark Snapshot Digest",
+          "type": "string"
+        },
+        "source_identities": {
+          "items": {
+            "$ref": "#/$defs/GoldSourceIdentity"
+          },
+          "minItems": 1,
+          "title": "Source Identities",
+          "type": "array"
+        }
+      },
+      "required": [
+        "dataset_release_id",
+        "dataset_release_digest",
+        "bundle_id",
+        "case_selection_id",
+        "benchmark_snapshot_digest",
+        "source_identities"
+      ],
+      "title": "BenchmarkIdentityV2",
+      "type": "object"
+    },
+    "EvaluationMetricStatus": {
+      "enum": [
+        "observed",
+        "unavailable"
+      ],
+      "title": "EvaluationMetricStatus",
+      "type": "string"
+    },
+    "GoldSourceIdentity": {
+      "additionalProperties": false,
+      "description": "Canonical Benchmark source pin required by Unified Evaluation v2.",
+      "properties": {
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "source_coordinate_schema": {
+          "minLength": 1,
+          "title": "Source Coordinate Schema",
+          "type": "string"
+        },
+        "canonical_catalog_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Catalog Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "source_coordinate_schema",
+        "canonical_catalog_sha256"
+      ],
+      "title": "GoldSourceIdentity",
+      "type": "object"
+    },
+    "LeaderboardEligibilityV2": {
+      "additionalProperties": false,
+      "properties": {
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "case_count": {
+          "minimum": 1,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "required_metric_ids": {
+          "default": [
+            "ranked_evidence_coverage@1",
+            "ranked_complete_evidence_recall@1",
+            "ranked_evidence_coverage@3",
+            "ranked_complete_evidence_recall@3",
+            "ranked_evidence_coverage@5",
+            "ranked_complete_evidence_recall@5",
+            "ranked_complete_evidence_mrr@5"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Metric Ids",
+          "type": "array"
+        },
+        "descriptor_digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Descriptor Digests",
+          "type": "object"
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "eligible",
+        "case_count"
+      ],
+      "title": "LeaderboardEligibilityV2",
+      "type": "object"
+    },
+    "MetricDescriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_id": {
+          "minLength": 1,
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "scorer_id": {
+          "const": "canonical-unified-evidence",
+          "default": "canonical-unified-evidence",
+          "title": "Scorer Id",
+          "type": "string"
+        },
+        "scorer_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Scorer Version",
+          "type": "string"
+        },
+        "scorer_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Scorer Digest",
+          "type": "string"
+        },
+        "aggregation": {
+          "enum": [
+            "mses_clause_equal_weight",
+            "canonical_extent_union"
+          ],
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageName"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cutoff": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cutoff"
+        },
+        "candidate_cutoff": {
+          "minimum": 1,
+          "title": "Candidate Cutoff",
+          "type": "integer"
+        },
+        "ranked_cutoff": {
+          "minimum": 1,
+          "title": "Ranked Cutoff",
+          "type": "integer"
+        },
+        "context_budget": {
+          "minimum": 1,
+          "title": "Context Budget",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "metric_id",
+        "scorer_digest",
+        "aggregation",
+        "candidate_cutoff",
+        "ranked_cutoff",
+        "context_budget"
+      ],
+      "title": "MetricDescriptor",
+      "type": "object"
+    },
+    "MetricDescriptorBindingView": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_id": {
+          "minLength": 1,
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "descriptor_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Descriptor Digest",
+          "type": "string"
+        },
+        "descriptor": {
+          "$ref": "#/$defs/MetricDescriptor"
+        }
+      },
+      "required": [
+        "metric_id",
+        "descriptor_digest",
+        "descriptor"
+      ],
+      "title": "MetricDescriptorBindingView",
+      "type": "object"
+    },
+    "ObservationProfileIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_version": {
+          "minLength": 1,
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/AdapterCapabilitiesV2"
+        },
+        "profile_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Profile Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id",
+        "adapter_id",
+        "adapter_version",
+        "capabilities",
+        "profile_digest"
+      ],
+      "title": "ObservationProfileIdentity",
+      "type": "object"
+    },
+    "RunArtifactManifestV2": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "artifact_contract_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Artifact Contract Version",
+          "type": "string"
+        },
+        "producer": {
+          "const": "rag_eval_platform",
+          "default": "rag_eval_platform",
+          "title": "Producer",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "experiment_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Experiment Id",
+          "type": "string"
+        },
+        "status": {
+          "const": "completed",
+          "default": "completed",
+          "title": "Status",
+          "type": "string"
+        },
+        "benchmark_identity": {
+          "$ref": "#/$defs/BenchmarkIdentityV2"
+        },
+        "runtime_profiles": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RuntimeProfileIdentity"
+          },
+          "title": "Runtime Profiles",
+          "type": "array"
+        },
+        "observation_profiles": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ObservationProfileIdentity"
+          },
+          "title": "Observation Profiles",
+          "type": "array"
+        },
+        "cases": {
+          "items": {
+            "$ref": "#/$defs/ArtifactCaseReferenceV2"
+          },
+          "minItems": 1,
+          "title": "Cases",
+          "type": "array"
+        },
+        "case_index_path": {
+          "const": "case-index.json",
+          "default": "case-index.json",
+          "title": "Case Index Path",
+          "type": "string"
+        },
+        "summary_path": {
+          "const": "summary.json",
+          "default": "summary.json",
+          "title": "Summary Path",
+          "type": "string"
+        },
+        "checksum_graph": {
+          "$ref": "#/$defs/ArtifactChecksumGraphV2"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "completed_at": {
+          "format": "date-time",
+          "title": "Completed At",
+          "type": "string"
+        },
+        "artifact_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Artifact Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "experiment_id",
+        "benchmark_identity",
+        "cases",
+        "checksum_graph",
+        "started_at",
+        "completed_at",
+        "artifact_digest"
+      ],
+      "title": "RunArtifactManifestV2",
+      "type": "object"
+    },
+    "RunArtifactSummaryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "case_count": {
+          "minimum": 1,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "execution_status_counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Execution Status Counts",
+          "type": "object"
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/AggregateMetricV2"
+          },
+          "title": "Metrics",
+          "type": "array"
+        },
+        "leaderboard_eligibility": {
+          "$ref": "#/$defs/LeaderboardEligibilityV2"
+        }
+      },
+      "required": [
+        "case_count",
+        "execution_status_counts",
+        "metrics",
+        "leaderboard_eligibility"
+      ],
+      "title": "RunArtifactSummaryV2",
+      "type": "object"
+    },
+    "RuntimeProfileIdentity": {
+      "additionalProperties": false,
+      "description": "Opaque RAG-owned runtime configuration identity.",
+      "properties": {
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "system_id": {
+          "minLength": 1,
+          "title": "System Id",
+          "type": "string"
+        },
+        "system_version": {
+          "minLength": 1,
+          "title": "System Version",
+          "type": "string"
+        },
+        "configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id",
+        "system_id",
+        "system_version",
+        "configuration_digest"
+      ],
+      "title": "RuntimeProfileIdentity",
+      "type": "object"
+    },
+    "StageName": {
+      "enum": [
+        "candidate",
+        "ranked",
+        "context"
+      ],
+      "title": "StageName",
+      "type": "string"
+    },
+    "StageTransitionDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "source_stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "target_stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "mode": {
+          "$ref": "#/$defs/StageTransitionMode"
+        }
+      },
+      "required": [
+        "source_stage",
+        "target_stage",
+        "mode"
+      ],
+      "title": "StageTransitionDeclaration",
+      "type": "object"
+    },
+    "StageTransitionMode": {
+      "enum": [
+        "identity_subset",
+        "verified_derivation",
+        "unobservable"
+      ],
+      "title": "StageTransitionMode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "artifact_contract_version": {
+      "enum": [
+        "2.0",
+        "1.2"
+      ],
+      "title": "Artifact Contract Version",
+      "type": "string"
+    },
+    "availability": {
+      "$ref": "#/$defs/ArtifactViewAvailability"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    },
+    "verification": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArtifactVerificationView"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "manifest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunArtifactManifestV2"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "summary": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunArtifactSummaryV2"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "metric_descriptors": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/MetricDescriptorBindingView"
+      },
+      "title": "Metric Descriptors",
+      "type": "array"
+    }
+  },
+  "required": [
+    "run_id",
+    "artifact_contract_version",
+    "availability"
+  ],
+  "title": "RunArtifactOverviewView",
+  "type": "object"
+}

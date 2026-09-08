@@ -1,9 +1,9 @@
-"""Unified read-only access to native runs and completed Bundle 3 rehearsals.
+"""Locate primary and archived Runs without mutating their artifacts.
 
-Completed rehearsals already use the schema-v2 ``RunManifest`` and are
-immutable.  Their per-case execution/evaluation artifacts predate the normal
-WebUI case/summary projection, so this reader presents a compatible view at
-request time.  It never copies, rewrites, or exposes Gold-bearing fields.
+Legacy projection helpers remain available for offline compatibility and
+shadow tests. Normal API/WebUI result reads use the persisted-only Artifact
+presentation methods near the end of ``RunHistory`` and never invoke these
+historical score/provenance projections.
 """
 
 from __future__ import annotations
@@ -32,6 +32,13 @@ from rag_eval.reviews import (
 from rag_eval.run_presentations import RunPresentationStore
 from rag_eval.history_provenance.acceptance import accepted_projection_receipt
 from rag_eval.storage.runs import ArtifactVerification, RunStore, case_judgments, safe_id
+from rag_eval.runs.views import (
+    ArtifactPresentationReader,
+    RunArtifactCaseCollectionView,
+    RunArtifactCaseIndexView,
+    RunArtifactCaseView,
+    RunArtifactOverviewView,
+)
 
 
 _RUN_ARCHIVES_ENV = "RAG_EVAL_RUN_ARCHIVES"
@@ -984,6 +991,33 @@ class RunHistory:
     def verify_artifacts(self, run_id: str) -> ArtifactVerification:
         _is_primary, store = self._locate(run_id)
         return store.verify_artifacts(run_id)
+
+    def artifact_presentation(self, run_id: str) -> ArtifactPresentationReader:
+        """Resolve the persisted-only result reader for a primary or archive Run."""
+
+        _is_primary, store = self._locate(run_id)
+        return ArtifactPresentationReader(
+            store.root / safe_id(run_id), run_id=run_id
+        )
+
+    def artifact_overview(self, run_id: str) -> RunArtifactOverviewView:
+        return self.artifact_presentation(run_id).overview()
+
+    def artifact_case_index(self, run_id: str) -> RunArtifactCaseIndexView:
+        return self.artifact_presentation(run_id).case_index()
+
+    def artifact_case(
+        self, run_id: str, case_id: str, *, repetition: int = 1
+    ) -> RunArtifactCaseView:
+        return self.artifact_presentation(run_id).case(
+            case_id, repetition=repetition
+        )
+
+    def artifact_cases(self, run_id: str) -> RunArtifactCaseCollectionView:
+        return self.artifact_presentation(run_id).cases()
+
+    def artifact_comparison_summary(self, run_id: str) -> dict[str, Any]:
+        return self.artifact_presentation(run_id).comparison_summary()
 
     def report(self, run_id: str) -> str:
         is_primary, store = self._locate(run_id)

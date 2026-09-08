@@ -1,0 +1,2894 @@
+{
+  "$defs": {
+    "AdapterCapabilitiesV2": {
+      "additionalProperties": false,
+      "description": "Adapter observation capabilities, independent of runtime behavior.",
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "ingestion_catalog": {
+          "default": false,
+          "title": "Ingestion Catalog",
+          "type": "boolean"
+        },
+        "candidate_retrieval": {
+          "default": false,
+          "title": "Candidate Retrieval",
+          "type": "boolean"
+        },
+        "ranked_retrieval": {
+          "default": false,
+          "title": "Ranked Retrieval",
+          "type": "boolean"
+        },
+        "final_context": {
+          "default": false,
+          "title": "Final Context",
+          "type": "boolean"
+        },
+        "prompt_trace": {
+          "default": false,
+          "title": "Prompt Trace",
+          "type": "boolean"
+        },
+        "answer": {
+          "default": false,
+          "title": "Answer",
+          "type": "boolean"
+        },
+        "provenance": {
+          "default": false,
+          "title": "Provenance",
+          "type": "boolean"
+        },
+        "transformation_lineage": {
+          "default": false,
+          "title": "Transformation Lineage",
+          "type": "boolean"
+        },
+        "latency_breakdown": {
+          "default": false,
+          "title": "Latency Breakdown",
+          "type": "boolean"
+        },
+        "token_usage": {
+          "default": false,
+          "title": "Token Usage",
+          "type": "boolean"
+        },
+        "transitions": {
+          "items": {
+            "$ref": "#/$defs/StageTransitionDeclaration"
+          },
+          "title": "Transitions",
+          "type": "array"
+        }
+      },
+      "title": "AdapterCapabilitiesV2",
+      "type": "object"
+    },
+    "AdapterRunResultV2": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_version": {
+          "minLength": 1,
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "system_id": {
+          "minLength": 1,
+          "title": "System Id",
+          "type": "string"
+        },
+        "system_version": {
+          "minLength": 1,
+          "title": "System Version",
+          "type": "string"
+        },
+        "trace": {
+          "$ref": "#/$defs/UnifiedTrace"
+        },
+        "normalization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompatibilityNormalization"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "adapter_id",
+        "adapter_version",
+        "system_id",
+        "system_version",
+        "trace"
+      ],
+      "title": "AdapterRunResultV2",
+      "type": "object"
+    },
+    "ArtifactAnswerJudgment": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/ArtifactAnswerStatus"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "enum": [
+                "correct",
+                "incorrect"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ArtifactAnswerJudgment",
+      "type": "object"
+    },
+    "ArtifactAnswerStatus": {
+      "enum": [
+        "observed",
+        "needs_review",
+        "unavailable"
+      ],
+      "title": "ArtifactAnswerStatus",
+      "type": "string"
+    },
+    "ArtifactCaseErrorV2": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ArtifactCaseErrorV2",
+      "type": "object"
+    },
+    "ArtifactEvidenceJudgment": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/ArtifactEvidenceStatus"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "enum": [
+                "complete",
+                "partial",
+                "missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ArtifactEvidenceJudgment",
+      "type": "object"
+    },
+    "ArtifactEvidenceStatus": {
+      "enum": [
+        "observed",
+        "unavailable"
+      ],
+      "title": "ArtifactEvidenceStatus",
+      "type": "string"
+    },
+    "ArtifactVerificationView": {
+      "additionalProperties": false,
+      "properties": {
+        "valid": {
+          "title": "Valid",
+          "type": "boolean"
+        },
+        "missing": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing",
+          "type": "array"
+        },
+        "unexpected": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Unexpected",
+          "type": "array"
+        },
+        "mismatched": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Mismatched",
+          "type": "array"
+        },
+        "invalid_models": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Invalid Models",
+          "type": "array"
+        }
+      },
+      "required": [
+        "valid"
+      ],
+      "title": "ArtifactVerificationView",
+      "type": "object"
+    },
+    "ArtifactViewAvailability": {
+      "enum": [
+        "available",
+        "legacy_unavailable",
+        "corrupted"
+      ],
+      "title": "ArtifactViewAvailability",
+      "type": "string"
+    },
+    "CanonicalExtent": {
+      "additionalProperties": false,
+      "properties": {
+        "extent_kind": {
+          "minLength": 1,
+          "title": "Extent Kind",
+          "type": "string"
+        },
+        "units": {
+          "items": {
+            "$ref": "#/$defs/ExtentUnit"
+          },
+          "minItems": 1,
+          "title": "Units",
+          "type": "array"
+        },
+        "extent_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Extent Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "extent_kind",
+        "units",
+        "extent_digest"
+      ],
+      "title": "CanonicalExtent",
+      "type": "object"
+    },
+    "CanonicalMappingRecord": {
+      "additionalProperties": false,
+      "description": "Reverse view used to prove mapping completeness for a canonical object.",
+      "properties": {
+        "canonical_object_id": {
+          "minLength": 1,
+          "title": "Canonical Object Id",
+          "type": "string"
+        },
+        "expected_extent": {
+          "$ref": "#/$defs/CanonicalExtent"
+        },
+        "reverse_mapping_status": {
+          "$ref": "#/$defs/ReverseMappingStatus"
+        },
+        "native_chunk_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Native Chunk Ids",
+          "type": "array"
+        },
+        "receipt_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Receipt Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "canonical_object_id",
+        "expected_extent",
+        "reverse_mapping_status",
+        "receipt_sha256"
+      ],
+      "title": "CanonicalMappingRecord",
+      "type": "object"
+    },
+    "CompatibilityNormalization": {
+      "additionalProperties": false,
+      "properties": {
+        "source_protocol_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Source Protocol Version",
+          "type": "string"
+        },
+        "source_result_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Result Sha256",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_result_sha256",
+        "limitations"
+      ],
+      "title": "CompatibilityNormalization",
+      "type": "object"
+    },
+    "ContentObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "observation_status": {
+          "$ref": "#/$defs/ObservationStatus"
+        },
+        "completeness": {
+          "$ref": "#/$defs/ObservationCompleteness"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Sha256"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "diagnostics": {
+          "additionalProperties": true,
+          "title": "Diagnostics",
+          "type": "object"
+        }
+      },
+      "required": [
+        "observation_status",
+        "completeness"
+      ],
+      "title": "ContentObservation",
+      "type": "object"
+    },
+    "EvaluationMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_id": {
+          "minLength": 1,
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/EvaluationMetricStatus"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "lower_bound": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Lower Bound",
+          "type": "number"
+        },
+        "upper_bound": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Upper Bound",
+          "type": "number"
+        },
+        "descriptor": {
+          "$ref": "#/$defs/MetricDescriptor"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "metric_id",
+        "status",
+        "lower_bound",
+        "upper_bound",
+        "descriptor"
+      ],
+      "title": "EvaluationMetric",
+      "type": "object"
+    },
+    "EvaluationMetricStatus": {
+      "enum": [
+        "observed",
+        "unavailable"
+      ],
+      "title": "EvaluationMetricStatus",
+      "type": "string"
+    },
+    "EvidenceLocalization": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "minLength": 1,
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "canonical_object_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Object Id"
+        },
+        "lower_coverage": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Lower Coverage",
+          "type": "number"
+        },
+        "upper_coverage": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Upper Coverage",
+          "type": "number"
+        },
+        "exact": {
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "lower_coverage",
+        "upper_coverage",
+        "exact"
+      ],
+      "title": "EvidenceLocalization",
+      "type": "object"
+    },
+    "ExtentUnit": {
+      "additionalProperties": false,
+      "description": "One canonical scoring atom or a verified range within that atom.",
+      "properties": {
+        "unit_id": {
+          "minLength": 1,
+          "title": "Unit Id",
+          "type": "string"
+        },
+        "coordinate_system": {
+          "minLength": 1,
+          "title": "Coordinate System",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "coordinates": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "title": "Coordinates",
+          "type": "object"
+        }
+      },
+      "required": [
+        "unit_id",
+        "coordinate_system"
+      ],
+      "title": "ExtentUnit",
+      "type": "object"
+    },
+    "FailureKind": {
+      "enum": [
+        "PARSER_INDEX_LOSS",
+        "RETRIEVAL_LOSS",
+        "RANKING_LOSS",
+        "CONTEXT_LOSS",
+        "GENERATION_FAILURE",
+        "UNOBSERVABLE"
+      ],
+      "title": "FailureKind",
+      "type": "string"
+    },
+    "GoldAnswer": {
+      "additionalProperties": false,
+      "properties": {
+        "gold_answer_id": {
+          "minLength": 1,
+          "title": "Gold Answer Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/GoldAnswerKind"
+        },
+        "canonical": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical"
+        },
+        "accepted_values": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Accepted Values",
+          "type": "array"
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locale"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "tolerance": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tolerance"
+        }
+      },
+      "required": [
+        "gold_answer_id",
+        "kind"
+      ],
+      "title": "GoldAnswer",
+      "type": "object"
+    },
+    "GoldAnswerKind": {
+      "enum": [
+        "text",
+        "numeric",
+        "formula",
+        "set",
+        "abstain"
+      ],
+      "title": "GoldAnswerKind",
+      "type": "string"
+    },
+    "GoldEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "minLength": 1,
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "locator": {
+          "discriminator": {
+            "mapping": {
+              "object": "#/$defs/ObjectLocator",
+              "page_region": "#/$defs/PageRegionLocator",
+              "table_cell": "#/$defs/TableCellLocator",
+              "text_span": "#/$defs/TextSpanLocator"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TextSpanLocator"
+            },
+            {
+              "$ref": "#/$defs/ObjectLocator"
+            },
+            {
+              "$ref": "#/$defs/TableCellLocator"
+            },
+            {
+              "$ref": "#/$defs/PageRegionLocator"
+            }
+          ],
+          "title": "Locator"
+        },
+        "canonical_object_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Object Id"
+        },
+        "canonical_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Value"
+        },
+        "quote_anchor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quote Anchor"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "document_id",
+        "locator"
+      ],
+      "title": "GoldEvidence",
+      "type": "object"
+    },
+    "GoldEvidenceSet": {
+      "additionalProperties": false,
+      "properties": {
+        "gold_evidence_set_id": {
+          "minLength": 1,
+          "title": "Gold Evidence Set Id",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/GoldEvidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "required_groups": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Required Groups",
+          "type": "array"
+        },
+        "source_identities": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GoldSourceIdentity"
+          },
+          "title": "Source Identities",
+          "type": "array"
+        },
+        "mses_paths": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mses Paths"
+        }
+      },
+      "required": [
+        "gold_evidence_set_id",
+        "evidence",
+        "required_groups"
+      ],
+      "title": "GoldEvidenceSet",
+      "type": "object"
+    },
+    "GoldSourceIdentity": {
+      "additionalProperties": false,
+      "description": "Canonical Benchmark source pin required by Unified Evaluation v2.",
+      "properties": {
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "source_coordinate_schema": {
+          "minLength": 1,
+          "title": "Source Coordinate Schema",
+          "type": "string"
+        },
+        "canonical_catalog_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Catalog Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "source_coordinate_schema",
+        "canonical_catalog_sha256"
+      ],
+      "title": "GoldSourceIdentity",
+      "type": "object"
+    },
+    "IngestionCatalogObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "observation_status": {
+          "$ref": "#/$defs/ObservationStatus"
+        },
+        "completeness": {
+          "$ref": "#/$defs/ObservationCompleteness"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/RuntimeChunkRecord"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "diagnostics": {
+          "additionalProperties": true,
+          "title": "Diagnostics",
+          "type": "object"
+        }
+      },
+      "required": [
+        "observation_status",
+        "completeness",
+        "items"
+      ],
+      "title": "IngestionCatalogObservation",
+      "type": "object"
+    },
+    "LegacyRunCaseView": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "minLength": 1,
+          "title": "Case Id",
+          "type": "string"
+        },
+        "repetition": {
+          "minimum": 1,
+          "title": "Repetition",
+          "type": "integer"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed"
+        },
+        "status": {
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "required": [
+        "case_id",
+        "repetition",
+        "status",
+        "question"
+      ],
+      "title": "LegacyRunCaseView",
+      "type": "object"
+    },
+    "LineageIntegrityStatus": {
+      "enum": [
+        "verified",
+        "failed",
+        "unknown"
+      ],
+      "title": "LineageIntegrityStatus",
+      "type": "string"
+    },
+    "MappingDiagnostic": {
+      "additionalProperties": false,
+      "description": "A negative or unusable mapping result; never a coverage claim.",
+      "properties": {
+        "native_chunk_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Native Chunk Id"
+        },
+        "canonical_object_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Object Id"
+        },
+        "status": {
+          "$ref": "#/$defs/MappingDiagnosticStatus"
+        },
+        "mapping_tier_attempted": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MappingTier"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reason_code": {
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "diagnostics": {
+          "additionalProperties": true,
+          "title": "Diagnostics",
+          "type": "object"
+        }
+      },
+      "required": [
+        "status",
+        "reason_code"
+      ],
+      "title": "MappingDiagnostic",
+      "type": "object"
+    },
+    "MappingDiagnosticStatus": {
+      "enum": [
+        "missing",
+        "corrupted",
+        "unsupported"
+      ],
+      "title": "MappingDiagnosticStatus",
+      "type": "string"
+    },
+    "MappingTier": {
+      "enum": [
+        "native_lineage",
+        "deterministic_crosswalk",
+        "text_unique_exact"
+      ],
+      "title": "MappingTier",
+      "type": "string"
+    },
+    "MetricDescriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_id": {
+          "minLength": 1,
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "scorer_id": {
+          "const": "canonical-unified-evidence",
+          "default": "canonical-unified-evidence",
+          "title": "Scorer Id",
+          "type": "string"
+        },
+        "scorer_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Scorer Version",
+          "type": "string"
+        },
+        "scorer_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Scorer Digest",
+          "type": "string"
+        },
+        "aggregation": {
+          "enum": [
+            "mses_clause_equal_weight",
+            "canonical_extent_union"
+          ],
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageName"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cutoff": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cutoff"
+        },
+        "candidate_cutoff": {
+          "minimum": 1,
+          "title": "Candidate Cutoff",
+          "type": "integer"
+        },
+        "ranked_cutoff": {
+          "minimum": 1,
+          "title": "Ranked Cutoff",
+          "type": "integer"
+        },
+        "context_budget": {
+          "minimum": 1,
+          "title": "Context Budget",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "metric_id",
+        "scorer_digest",
+        "aggregation",
+        "candidate_cutoff",
+        "ranked_cutoff",
+        "context_budget"
+      ],
+      "title": "MetricDescriptor",
+      "type": "object"
+    },
+    "NativeLineage": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "minLength": 1,
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "lineage_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Lineage Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "source_sha256",
+        "payload",
+        "lineage_sha256"
+      ],
+      "title": "NativeLineage",
+      "type": "object"
+    },
+    "NativeSpan": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "minLength": 1,
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "coordinate_system": {
+          "minLength": 1,
+          "title": "Coordinate System",
+          "type": "string"
+        },
+        "coordinates": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "minProperties": 1,
+          "title": "Coordinates",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "coordinate_system",
+        "coordinates"
+      ],
+      "title": "NativeSpan",
+      "type": "object"
+    },
+    "ObjectExtentDelta": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_object_id": {
+          "minLength": 1,
+          "title": "Canonical Object Id",
+          "type": "string"
+        },
+        "lost_fraction": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Lost Fraction",
+          "type": "number"
+        },
+        "gained_fraction": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Gained Fraction",
+          "type": "number"
+        }
+      },
+      "required": [
+        "canonical_object_id",
+        "lost_fraction",
+        "gained_fraction"
+      ],
+      "title": "ObjectExtentDelta",
+      "type": "object"
+    },
+    "ObjectLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "object",
+          "default": "object",
+          "title": "Type",
+          "type": "string"
+        },
+        "object_type": {
+          "minLength": 1,
+          "title": "Object Type",
+          "type": "string"
+        },
+        "object_id": {
+          "minLength": 1,
+          "title": "Object Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "object_type",
+        "object_id"
+      ],
+      "title": "ObjectLocator",
+      "type": "object"
+    },
+    "ObservationCompleteness": {
+      "enum": [
+        "complete",
+        "truncated",
+        "partial",
+        "unknown"
+      ],
+      "title": "ObservationCompleteness",
+      "type": "string"
+    },
+    "ObservationProfileIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_version": {
+          "minLength": 1,
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/AdapterCapabilitiesV2"
+        },
+        "profile_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Profile Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id",
+        "adapter_id",
+        "adapter_version",
+        "capabilities",
+        "profile_digest"
+      ],
+      "title": "ObservationProfileIdentity",
+      "type": "object"
+    },
+    "ObservationStatus": {
+      "enum": [
+        "observed",
+        "unsupported",
+        "unobserved",
+        "failed",
+        "corrupted"
+      ],
+      "title": "ObservationStatus",
+      "type": "string"
+    },
+    "ObservedStageItem": {
+      "additionalProperties": false,
+      "properties": {
+        "native_chunk_id": {
+          "minLength": 1,
+          "title": "Native Chunk Id",
+          "type": "string"
+        },
+        "native_rank": {
+          "minimum": 1,
+          "title": "Native Rank",
+          "type": "integer"
+        },
+        "runtime_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Score"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "provenance_edge_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Provenance Edge Ids",
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "native_chunk_id",
+        "native_rank",
+        "content_sha256"
+      ],
+      "title": "ObservedStageItem",
+      "type": "object"
+    },
+    "PageRegionLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "page_region",
+          "default": "page_region",
+          "title": "Type",
+          "type": "string"
+        },
+        "page": {
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "x0": {
+          "title": "X0",
+          "type": "number"
+        },
+        "y0": {
+          "title": "Y0",
+          "type": "number"
+        },
+        "x1": {
+          "title": "X1",
+          "type": "number"
+        },
+        "y1": {
+          "title": "Y1",
+          "type": "number"
+        }
+      },
+      "required": [
+        "page",
+        "x0",
+        "y0",
+        "x1",
+        "y1"
+      ],
+      "title": "PageRegionLocator",
+      "type": "object"
+    },
+    "PersistedEvaluationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scorer_id": {
+          "const": "canonical-unified-evidence",
+          "default": "canonical-unified-evidence",
+          "title": "Scorer Id",
+          "type": "string"
+        },
+        "scorer_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Scorer Version",
+          "type": "string"
+        },
+        "scorer_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Scorer Digest",
+          "type": "string"
+        },
+        "trace_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trace Digest"
+        },
+        "gold_evidence_set_id": {
+          "minLength": 1,
+          "title": "Gold Evidence Set Id",
+          "type": "string"
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/EvaluationMetric"
+          },
+          "title": "Metrics",
+          "type": "array"
+        },
+        "localizations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/StageLocalization"
+          },
+          "title": "Localizations",
+          "type": "array"
+        },
+        "pipeline_deltas": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PipelineDelta"
+          },
+          "title": "Pipeline Deltas",
+          "type": "array"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProofGatedFailure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "scorer_digest",
+        "gold_evidence_set_id",
+        "metrics"
+      ],
+      "title": "PersistedEvaluationV2",
+      "type": "object"
+    },
+    "PhysicalCellFootprint": {
+      "additionalProperties": false,
+      "properties": {
+        "physical_cell_id": {
+          "minLength": 1,
+          "title": "Physical Cell Id",
+          "type": "string"
+        },
+        "table_id": {
+          "minLength": 1,
+          "title": "Table Id",
+          "type": "string"
+        },
+        "row": {
+          "minimum": 1,
+          "title": "Row",
+          "type": "integer"
+        },
+        "column": {
+          "minimum": 1,
+          "title": "Column",
+          "type": "integer"
+        },
+        "grid_span": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Grid Span",
+          "type": "integer"
+        },
+        "v_merge": {
+          "default": "none",
+          "enum": [
+            "none",
+            "restart",
+            "continue"
+          ],
+          "title": "V Merge",
+          "type": "string"
+        },
+        "merge_origin_physical_cell_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Merge Origin Physical Cell Id"
+        }
+      },
+      "required": [
+        "physical_cell_id",
+        "table_id",
+        "row",
+        "column"
+      ],
+      "title": "PhysicalCellFootprint",
+      "type": "object"
+    },
+    "PipelineDelta": {
+      "additionalProperties": false,
+      "properties": {
+        "transition": {
+          "enum": [
+            "candidate_to_ranked",
+            "ranked_to_context"
+          ],
+          "title": "Transition",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/EvaluationMetricStatus"
+        },
+        "loss_fraction": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Loss Fraction"
+        },
+        "gain_fraction": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gain Fraction"
+        },
+        "object_deltas": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ObjectExtentDelta"
+          },
+          "title": "Object Deltas",
+          "type": "array"
+        },
+        "candidate_cutoff": {
+          "minimum": 1,
+          "title": "Candidate Cutoff",
+          "type": "integer"
+        },
+        "ranked_cutoff": {
+          "minimum": 1,
+          "title": "Ranked Cutoff",
+          "type": "integer"
+        },
+        "context_budget": {
+          "minimum": 1,
+          "title": "Context Budget",
+          "type": "integer"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "transition",
+        "status",
+        "candidate_cutoff",
+        "ranked_cutoff",
+        "context_budget"
+      ],
+      "title": "PipelineDelta",
+      "type": "object"
+    },
+    "ProofGatedFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/FailureKind"
+        },
+        "cutoff": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cutoff"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "proof_subjects": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Proof Subjects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "reason"
+      ],
+      "title": "ProofGatedFailure",
+      "type": "object"
+    },
+    "ProvenanceCoverageStatus": {
+      "enum": [
+        "complete",
+        "partial"
+      ],
+      "title": "ProvenanceCoverageStatus",
+      "type": "string"
+    },
+    "ProvenanceEdge": {
+      "additionalProperties": false,
+      "description": "A receipt-backed, positive runtime-to-canonical coverage claim.",
+      "properties": {
+        "edge_id": {
+          "minLength": 1,
+          "title": "Edge Id",
+          "type": "string"
+        },
+        "native_chunk_id": {
+          "minLength": 1,
+          "title": "Native Chunk Id",
+          "type": "string"
+        },
+        "canonical_object_id": {
+          "minLength": 1,
+          "title": "Canonical Object Id",
+          "type": "string"
+        },
+        "canonical_locator": {
+          "$ref": "#/$defs/SourceSpan"
+        },
+        "mapping_tier": {
+          "$ref": "#/$defs/MappingTier"
+        },
+        "coverage_status": {
+          "$ref": "#/$defs/ProvenanceCoverageStatus"
+        },
+        "expected_extent": {
+          "$ref": "#/$defs/CanonicalExtent"
+        },
+        "covered_extent": {
+          "$ref": "#/$defs/CanonicalExtent"
+        },
+        "physical_cell_footprint": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PhysicalCellFootprint"
+          },
+          "title": "Physical Cell Footprint",
+          "type": "array"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "native_content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Native Content Sha256",
+          "type": "string"
+        },
+        "native_lineage_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Native Lineage Sha256"
+        },
+        "canonical_value_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Value Sha256",
+          "type": "string"
+        },
+        "reason_code": {
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "receipt_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Receipt Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "edge_id",
+        "native_chunk_id",
+        "canonical_object_id",
+        "canonical_locator",
+        "mapping_tier",
+        "coverage_status",
+        "expected_extent",
+        "covered_extent",
+        "source_sha256",
+        "native_content_sha256",
+        "canonical_value_sha256",
+        "reason_code",
+        "receipt_sha256"
+      ],
+      "title": "ProvenanceEdge",
+      "type": "object"
+    },
+    "ReceiptStatus": {
+      "enum": [
+        "verified",
+        "failed"
+      ],
+      "title": "ReceiptStatus",
+      "type": "string"
+    },
+    "ReverseMappingStatus": {
+      "enum": [
+        "complete",
+        "partial",
+        "missing",
+        "unsupported"
+      ],
+      "title": "ReverseMappingStatus",
+      "type": "string"
+    },
+    "RunArtifactCaseV2": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "case_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "repetition": {
+          "minimum": 1,
+          "title": "Repetition",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "timeout",
+            "system_error",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "gold_answer": {
+          "$ref": "#/$defs/GoldAnswer"
+        },
+        "gold_evidence_set": {
+          "$ref": "#/$defs/GoldEvidenceSet"
+        },
+        "trace_validation": {
+          "$ref": "#/$defs/TraceValidationRecordV2"
+        },
+        "adapter_result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterRunResultV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evaluation": {
+          "$ref": "#/$defs/PersistedEvaluationV2"
+        },
+        "answer_judgment": {
+          "$ref": "#/$defs/ArtifactAnswerJudgment"
+        },
+        "evidence_judgment": {
+          "$ref": "#/$defs/ArtifactEvidenceJudgment"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactCaseErrorV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "completed_at": {
+          "format": "date-time",
+          "title": "Completed At",
+          "type": "string"
+        },
+        "case_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Case Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "repetition",
+        "seed",
+        "status",
+        "question",
+        "gold_answer",
+        "gold_evidence_set",
+        "trace_validation",
+        "evaluation",
+        "answer_judgment",
+        "evidence_judgment",
+        "started_at",
+        "completed_at",
+        "case_digest"
+      ],
+      "title": "RunArtifactCaseV2",
+      "type": "object"
+    },
+    "RuntimeChunkRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "native_document_id": {
+          "minLength": 1,
+          "title": "Native Document Id",
+          "type": "string"
+        },
+        "native_chunk_id": {
+          "minLength": 1,
+          "title": "Native Chunk Id",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "native_span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NativeSpan"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "native_lineage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NativeLineage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "parser_identity": {
+          "minLength": 1,
+          "title": "Parser Identity",
+          "type": "string"
+        },
+        "chunker_identity": {
+          "minLength": 1,
+          "title": "Chunker Identity",
+          "type": "string"
+        },
+        "persisted_metadata_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Persisted Metadata Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_document_id",
+        "native_chunk_id",
+        "content_sha256",
+        "parser_identity",
+        "chunker_identity",
+        "persisted_metadata_digest"
+      ],
+      "title": "RuntimeChunkRecord",
+      "type": "object"
+    },
+    "RuntimeProfileIdentity": {
+      "additionalProperties": false,
+      "description": "Opaque RAG-owned runtime configuration identity.",
+      "properties": {
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "system_id": {
+          "minLength": 1,
+          "title": "System Id",
+          "type": "string"
+        },
+        "system_version": {
+          "minLength": 1,
+          "title": "System Version",
+          "type": "string"
+        },
+        "configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id",
+        "system_id",
+        "system_version",
+        "configuration_digest"
+      ],
+      "title": "RuntimeProfileIdentity",
+      "type": "object"
+    },
+    "SourceIdentity": {
+      "additionalProperties": false,
+      "description": "Identity of the original document and its Canonical Catalog.",
+      "properties": {
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "source_coordinate_schema": {
+          "minLength": 1,
+          "title": "Source Coordinate Schema",
+          "type": "string"
+        },
+        "canonical_catalog_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Catalog Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "media_type",
+        "source_coordinate_schema",
+        "canonical_catalog_sha256"
+      ],
+      "title": "SourceIdentity",
+      "type": "object"
+    },
+    "SourceSpan": {
+      "additionalProperties": false,
+      "description": "One directly observed source location in ``ooxml-structural-v1``.",
+      "properties": {
+        "coordinate_system": {
+          "const": "ooxml-structural-v1",
+          "default": "ooxml-structural-v1",
+          "title": "Coordinate System",
+          "type": "string"
+        },
+        "part": {
+          "minLength": 1,
+          "title": "Part",
+          "type": "string"
+        },
+        "coordinates": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "minProperties": 1,
+          "title": "Coordinates",
+          "type": "object"
+        },
+        "text_start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text Start"
+        },
+        "text_end": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text End"
+        }
+      },
+      "required": [
+        "part",
+        "coordinates"
+      ],
+      "title": "SourceSpan",
+      "type": "object"
+    },
+    "StageItemReference": {
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "native_chunk_id": {
+          "minLength": 1,
+          "title": "Native Chunk Id",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stage",
+        "native_chunk_id",
+        "content_sha256"
+      ],
+      "title": "StageItemReference",
+      "type": "object"
+    },
+    "StageLocalization": {
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageName"
+            },
+            {
+              "const": "ingestion",
+              "type": "string"
+            }
+          ],
+          "title": "Stage"
+        },
+        "cutoff": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cutoff"
+        },
+        "status": {
+          "$ref": "#/$defs/EvaluationMetricStatus"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceLocalization"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "coverage_lower": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Coverage Lower",
+          "type": "number"
+        },
+        "coverage_upper": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Coverage Upper",
+          "type": "number"
+        },
+        "complete_recall_lower": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Complete Recall Lower",
+          "type": "number"
+        },
+        "complete_recall_upper": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Complete Recall Upper",
+          "type": "number"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "stage",
+        "status",
+        "evidence",
+        "coverage_lower",
+        "coverage_upper",
+        "complete_recall_lower",
+        "complete_recall_upper"
+      ],
+      "title": "StageLocalization",
+      "type": "object"
+    },
+    "StageName": {
+      "enum": [
+        "candidate",
+        "ranked",
+        "context"
+      ],
+      "title": "StageName",
+      "type": "string"
+    },
+    "StageObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "observation_status": {
+          "$ref": "#/$defs/ObservationStatus"
+        },
+        "completeness": {
+          "$ref": "#/$defs/ObservationCompleteness"
+        },
+        "configured_cutoff": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Configured Cutoff"
+        },
+        "proven_prefix_depth": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proven Prefix Depth"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ObservedStageItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "diagnostics": {
+          "additionalProperties": true,
+          "title": "Diagnostics",
+          "type": "object"
+        }
+      },
+      "required": [
+        "stage",
+        "observation_status",
+        "completeness",
+        "items"
+      ],
+      "title": "StageObservation",
+      "type": "object"
+    },
+    "StageTransitionDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "source_stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "target_stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "mode": {
+          "$ref": "#/$defs/StageTransitionMode"
+        }
+      },
+      "required": [
+        "source_stage",
+        "target_stage",
+        "mode"
+      ],
+      "title": "StageTransitionDeclaration",
+      "type": "object"
+    },
+    "StageTransitionMode": {
+      "enum": [
+        "identity_subset",
+        "verified_derivation",
+        "unobservable"
+      ],
+      "title": "StageTransitionMode",
+      "type": "string"
+    },
+    "TableCellLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "table_cell",
+          "default": "table_cell",
+          "title": "Type",
+          "type": "string"
+        },
+        "table_id": {
+          "minLength": 1,
+          "title": "Table Id",
+          "type": "string"
+        },
+        "row": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Row"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Column"
+        }
+      },
+      "required": [
+        "table_id",
+        "row",
+        "column"
+      ],
+      "title": "TableCellLocator",
+      "type": "object"
+    },
+    "TextSpanLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "text_span",
+          "default": "text_span",
+          "title": "Type",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "exclusiveMinimum": 0,
+          "title": "End",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "TextSpanLocator",
+      "type": "object"
+    },
+    "TraceValidationRecordV2": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/ObservationStatus"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "adapter_result_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adapter Result Digest"
+        },
+        "wire_shadow_verified": {
+          "default": false,
+          "title": "Wire Shadow Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "TraceValidationRecordV2",
+      "type": "object"
+    },
+    "TransformationRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "transformation_id": {
+          "minLength": 1,
+          "title": "Transformation Id",
+          "type": "string"
+        },
+        "source_stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "target_stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "source_item_references": {
+          "items": {
+            "$ref": "#/$defs/StageItemReference"
+          },
+          "minItems": 1,
+          "title": "Source Item References",
+          "type": "array"
+        },
+        "transformation_kind": {
+          "minLength": 1,
+          "title": "Transformation Kind",
+          "type": "string"
+        },
+        "output_native_chunk_id": {
+          "minLength": 1,
+          "title": "Output Native Chunk Id",
+          "type": "string"
+        },
+        "output_identity_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Output Identity Sha256",
+          "type": "string"
+        },
+        "output_content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Output Content Sha256",
+          "type": "string"
+        },
+        "lineage_integrity_status": {
+          "$ref": "#/$defs/LineageIntegrityStatus"
+        },
+        "transformation_receipt_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Transformation Receipt Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transformation_id",
+        "source_stage",
+        "target_stage",
+        "source_item_references",
+        "transformation_kind",
+        "output_native_chunk_id",
+        "output_identity_sha256",
+        "output_content_sha256",
+        "lineage_integrity_status",
+        "transformation_receipt_sha256"
+      ],
+      "title": "TransformationRecord",
+      "type": "object"
+    },
+    "UnifiedTrace": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "case_id": {
+          "minLength": 1,
+          "title": "Case Id",
+          "type": "string"
+        },
+        "source_identity": {
+          "$ref": "#/$defs/SourceIdentity"
+        },
+        "runtime_profile": {
+          "$ref": "#/$defs/RuntimeProfileIdentity"
+        },
+        "observation_profile": {
+          "$ref": "#/$defs/ObservationProfileIdentity"
+        },
+        "ingestion_catalog": {
+          "$ref": "#/$defs/IngestionCatalogObservation"
+        },
+        "provenance_edges": {
+          "items": {
+            "$ref": "#/$defs/ProvenanceEdge"
+          },
+          "title": "Provenance Edges",
+          "type": "array"
+        },
+        "canonical_mapping_records": {
+          "items": {
+            "$ref": "#/$defs/CanonicalMappingRecord"
+          },
+          "title": "Canonical Mapping Records",
+          "type": "array"
+        },
+        "mapping_diagnostics": {
+          "items": {
+            "$ref": "#/$defs/MappingDiagnostic"
+          },
+          "title": "Mapping Diagnostics",
+          "type": "array"
+        },
+        "provenance_map_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Provenance Map Digest",
+          "type": "string"
+        },
+        "raw_retrieval": {
+          "$ref": "#/$defs/StageObservation"
+        },
+        "ranked_retrieval": {
+          "$ref": "#/$defs/StageObservation"
+        },
+        "final_context": {
+          "$ref": "#/$defs/StageObservation"
+        },
+        "transformations": {
+          "items": {
+            "$ref": "#/$defs/TransformationRecord"
+          },
+          "title": "Transformations",
+          "type": "array"
+        },
+        "prompt_trace": {
+          "$ref": "#/$defs/ContentObservation"
+        },
+        "answer": {
+          "$ref": "#/$defs/ContentObservation"
+        },
+        "validation_receipts": {
+          "items": {
+            "$ref": "#/$defs/ValidationReceipt"
+          },
+          "title": "Validation Receipts",
+          "type": "array"
+        },
+        "trace_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Trace Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "source_identity",
+        "runtime_profile",
+        "observation_profile",
+        "ingestion_catalog",
+        "provenance_edges",
+        "canonical_mapping_records",
+        "mapping_diagnostics",
+        "provenance_map_digest",
+        "raw_retrieval",
+        "ranked_retrieval",
+        "final_context",
+        "transformations",
+        "prompt_trace",
+        "answer",
+        "validation_receipts",
+        "trace_digest"
+      ],
+      "title": "UnifiedTrace",
+      "type": "object"
+    },
+    "ValidationReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "receipt_kind": {
+          "minLength": 1,
+          "title": "Receipt Kind",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ReceiptStatus"
+        },
+        "subject_id": {
+          "minLength": 1,
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "receipt_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Receipt Sha256",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        }
+      },
+      "required": [
+        "receipt_kind",
+        "status",
+        "subject_id",
+        "receipt_sha256"
+      ],
+      "title": "ValidationReceipt",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "artifact_contract_version": {
+      "enum": [
+        "2.0",
+        "1.2"
+      ],
+      "title": "Artifact Contract Version",
+      "type": "string"
+    },
+    "availability": {
+      "$ref": "#/$defs/ArtifactViewAvailability"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    },
+    "verification": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArtifactVerificationView"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "artifact_case": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunArtifactCaseV2"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "legacy_case": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LegacyRunCaseView"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "run_id",
+    "artifact_contract_version",
+    "availability"
+  ],
+  "title": "RunArtifactCaseView",
+  "type": "object"
+}

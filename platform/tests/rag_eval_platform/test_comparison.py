@@ -236,3 +236,42 @@ def test_comparison_rejects_metric_scorer_drift() -> None:
 
     assert not decision.compatible
     assert "task contract differs: metric_scorers" in decision.reasons
+
+
+def test_artifact_v2_comparison_requires_identical_metric_descriptors() -> None:
+    first = manifest("run-1")
+    second = manifest("run-2", experiment_id="experiment-enhanced")
+    shared = {
+        "status": "observed",
+        "value": 1.0,
+        "coverage": 1.0,
+    }
+
+    decision = validate_comparison(
+        [first, second],
+        ComparisonTier.TASK_COMPARABLE,
+        summaries={
+            "run-1": {
+                "artifact_contract_version": "2.0",
+                "metrics": {
+                    "ranked_evidence_coverage@5": {
+                        **shared,
+                        "descriptor_digests": ["sha256:first"],
+                    }
+                },
+            },
+            "run-2": {
+                "artifact_contract_version": "2.0",
+                "metrics": {
+                    "ranked_evidence_coverage@5": {
+                        **shared,
+                        "descriptor_digests": ["sha256:second"],
+                    }
+                },
+            },
+        },
+    )
+
+    metric = decision.metric_decisions[0]
+    assert not metric.comparable
+    assert "metric descriptor differs across Runs" in metric.reasons

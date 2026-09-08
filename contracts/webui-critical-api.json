@@ -155,7 +155,7 @@
       "method": "GET",
       "server_path": "/api/v1/runs/{run_id}/cases",
       "success_status": "200",
-      "response_type": "array",
+      "response_type": "object",
       "client": {"method": "cases", "args": ["run-1"], "path": "/runs/run-1/cases"}
     },
     {

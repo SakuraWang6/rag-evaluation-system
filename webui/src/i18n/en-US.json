@@ -613,7 +613,7 @@
   "product.wizard.contextK": "Final context chunks",
   "product.wizard.tokenBudget": "Context token budget",
   "product.wizard.queryTimeout": "Query / LLM timeout (seconds)",
-  "product.wizard.queryTimeoutHelp": "One deadline is used for the LightRAG query and answer model; the adapter retains only a short result-return grace period.",
+  "product.wizard.queryTimeoutHelp": "The selected system profile declares this query deadline and its supported lower bound.",
   "product.wizard.answerGeneration": "Answer generation",
   "product.wizard.answerGenerationOn": "Generate and evaluate answer plus evidence",
   "product.wizard.answerGenerationOff": "Evaluate retrieval evidence only",

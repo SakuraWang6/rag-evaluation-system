@@ -46,6 +46,8 @@ class SystemProfile(ProductModel):
     defaults: dict[str, dict[str, Any]]
     default_logical_endpoint: str = "ollama.local"
     docker_image: str | None = None
+    query_modes: tuple[str, ...] = Field(min_length=1)
+    query_timeout_min_seconds: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def validate_defaults(self) -> SystemProfile:
@@ -85,6 +87,8 @@ def builtin_profiles() -> tuple[SystemProfile, ...]:
                 "metric_config": common_metrics,
             },
             docker_image="rag-eval-adapter-lightrag:0.1.0",
+            query_modes=("naive", "local", "global", "hybrid", "mix"),
+            query_timeout_min_seconds=30,
         ),
         # Retain 1.0.0 for already-saved connections and drafts.  New Basic
         # configurations bind model identities through this immutable profile
@@ -121,6 +125,8 @@ def builtin_profiles() -> tuple[SystemProfile, ...]:
                 "metric_config": common_metrics,
             },
             docker_image="rag-eval-adapter-lightrag:0.1.0",
+            query_modes=("naive", "local", "global", "hybrid", "mix"),
+            query_timeout_min_seconds=30,
         ),
         SystemProfile(
             profile_id="rag-anything",
@@ -153,6 +159,7 @@ def builtin_profiles() -> tuple[SystemProfile, ...]:
                 "metric_config": common_metrics,
             },
             docker_image="rag-eval-adapter-rag-anything:0.1.0",
+            query_modes=("naive", "mix"),
         ),
         # The product dataset authoring path is UTF-8 text/Markdown only in
         # this release.  Keep the historical multimedia-capable profile, and
@@ -196,6 +203,7 @@ def builtin_profiles() -> tuple[SystemProfile, ...]:
                 "metric_config": common_metrics,
             },
             docker_image="rag-eval-adapter-rag-anything:0.1.0",
+            query_modes=("naive", "mix"),
         ),
     )
 

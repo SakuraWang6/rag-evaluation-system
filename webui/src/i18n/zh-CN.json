@@ -613,7 +613,7 @@
   "product.wizard.contextK": "最终上下文片段数",
   "product.wizard.tokenBudget": "上下文 Token 预算",
   "product.wizard.queryTimeout": "查询 / LLM 超时（秒）",
-  "product.wizard.queryTimeoutHelp": "一个截止时间同时用于 LightRAG 查询和答案模型；适配器仅保留短暂的结果回传缓冲。",
+  "product.wizard.queryTimeoutHelp": "所选系统 Profile 声明该查询截止时间及其支持的最小值。",
   "product.wizard.answerGeneration": "生成答案",
   "product.wizard.answerGenerationOn": "生成答案并评估答案与证据",
   "product.wizard.answerGenerationOff": "只评估检索证据",

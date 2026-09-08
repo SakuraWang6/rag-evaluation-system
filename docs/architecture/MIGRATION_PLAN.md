@@ -70,7 +70,7 @@ No phase may opportunistically implement work assigned to a later phase.
 | 4 | LightRAG Native Observation | Complete in this phase | Verified native catalog, provenance receipts, Unified Trace, and Wire 1.0 shadow |
 | 5 | Unified Evaluation | Complete in this phase | Availability bounds, extent union, explicit MRR@5, pipeline deltas, and proof-gated failures |
 | 6 | Run / Artifact 2.0 | Complete in this phase | Immutable case artifacts, persisted views, metric-driven eligibility, and checksum graph |
-| 7 | Platform API / WebUI | Not started | Requires Phase 6 acceptance |
+| 7 | Platform API / WebUI | Complete in this phase | Persisted-only views, descriptor-driven rendering, and fail-closed legacy access |
 | 8 | Native formal cutover | Not started | Requires Phase 7 acceptance |
 | 9 | RAG-Anything full observation | Not started | Independent after shared v2 boundaries |
 
@@ -374,6 +374,25 @@ feat(runs): persist immutable artifact v2
 - WebUI logic recognizes neither RAG names nor corpus modes.
 - Every observation, completeness, metric, and corruption state renders from
   persisted descriptors.
+
+### Phase 7 implementation
+
+- The normal Run summary, case collection, case index, case detail, artifact
+  verification, and comparison read paths consume the persisted-only
+  `ArtifactPresentationReader`.
+- Verified Artifact 2.0 data is returned through versioned
+  `run-artifact-*-view-v1` schemas. Corrupted data is withheld from result
+  presentation while its verification diagnostics remain available.
+- Artifact 1.2 Runs expose only persisted execution facts and the explicit
+  `legacy_unavailable` state. The API does not invoke current provenance or
+  scoring code to synthesize missing v2 fields.
+- Core metric selection comes from persisted leaderboard descriptors; metric
+  stage, cutoff, evaluation windows, and scorer identity come from persisted
+  `MetricDescriptor` values.
+- System-specific query controls are declared by the selected System Profile.
+  The WebUI contains no concrete RAG-name or corpus-mode branches.
+- Phase 8 still owns removal of live `evaluation_corpus` compatibility and the
+  formal native-DOCX-only creation cutover.
 
 ### Commit
 

@@ -121,23 +121,44 @@ def test_archive_run_is_visible_from_api_runs_and_cases(tmp_path: Path, monkeypa
     assert runs.json()[0]["run_id"] == "archive-run-1"
     cases = client.get("/api/v1/runs/archive-run-1/cases")
     assert cases.status_code == 200
-    assert cases.json()[0]["case_id"] == "case-1"
+    assert cases.json()["availability"] == "legacy_unavailable"
+    assert cases.json()["cases"][0]["legacy_case"]["case_id"] == "case-1"
     index = client.get("/api/v1/runs/archive-run-1/cases/index")
     assert index.status_code == 200
-    assert index.json() == [
+    assert index.json()["availability"] == "legacy_unavailable"
+    assert index.json()["cases"] == [
         {
             "case_id": "case-1",
             "question": "Which value is recorded?",
             "status": "completed",
             "repetition": 1,
-            "seed": 20260830,
-            "answer_judgment": "correct",
-            "evidence_judgment": "unavailable",
+            "seed": None,
+            "answer_judgment": {
+                "status": "unavailable",
+                "value": None,
+                "reason": (
+                    "Artifact 2.0 observations, metric descriptors, and scores "
+                    "were not persisted for this Run; legacy execution facts are "
+                    "available without read-time rescoring."
+                ),
+            },
+            "evidence_judgment": {
+                "status": "unavailable",
+                "value": None,
+                "reason": (
+                    "Artifact 2.0 observations, metric descriptors, and scores "
+                    "were not persisted for this Run; legacy execution facts are "
+                    "available without read-time rescoring."
+                ),
+            },
+            "core_metrics_available": False,
+            "failure_kind": None,
         }
     ]
     detail = client.get("/api/v1/runs/archive-run-1/cases/case-1")
     assert detail.status_code == 200
-    assert detail.json()["case_id"] == "case-1"
+    assert detail.json()["availability"] == "legacy_unavailable"
+    assert detail.json()["legacy_case"]["case_id"] == "case-1"
 
 
 def test_run_presentation_is_an_append_only_overlay_not_a_run_mutation(

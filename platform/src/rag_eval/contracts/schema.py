@@ -42,6 +42,12 @@ from rag_eval.runs.models import (
     RunArtifactManifestV2,
     RunArtifactSummaryV2,
 )
+from rag_eval.runs.views import (
+    RunArtifactCaseCollectionView,
+    RunArtifactCaseIndexView,
+    RunArtifactCaseView,
+    RunArtifactOverviewView,
+)
 
 PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "canonical-document": CanonicalDocument,
@@ -66,6 +72,10 @@ PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "run-artifact-case-v2": RunArtifactCaseV2,
     "run-artifact-summary-v2": RunArtifactSummaryV2,
     "run-artifact-case-index-v2": ArtifactCaseIndexV2,
+    "run-artifact-overview-view-v1": RunArtifactOverviewView,
+    "run-artifact-case-index-view-v1": RunArtifactCaseIndexView,
+    "run-artifact-case-view-v1": RunArtifactCaseView,
+    "run-artifact-case-collection-view-v1": RunArtifactCaseCollectionView,
     "comparison-spec": ComparisonSpec,
     "analysis-contract": AnalysisContract,
     "blind-protocol": BlindProtocol,

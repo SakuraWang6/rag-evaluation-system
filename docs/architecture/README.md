@@ -16,6 +16,7 @@ remaining native gap, the destination, and the executable phase plan.
 | [`LIGHTRAG_NATIVE_OBSERVATION.md`](LIGHTRAG_NATIVE_OBSERVATION.md) | Phase 4 native runtime catalog, provenance receipts, and Wire 2.0 shadow |
 | [`UNIFIED_EVALUATION_V2.md`](UNIFIED_EVALUATION_V2.md) | Phase 5 availability-driven extent scoring and proof-gated attribution |
 | [`RUN_ARTIFACT_V2.md`](RUN_ARTIFACT_V2.md) | Phase 6 immutable Run artifact, checksum graph, and persisted-only eligibility |
+| [`ARTIFACT_V2_PRESENTATION.md`](ARTIFACT_V2_PRESENTATION.md) | Phase 7 persisted-only Platform API and descriptor-driven WebUI |
 | [`../decisions/0003-native-document-evaluation-v2.md`](../decisions/0003-native-document-evaluation-v2.md) | Accepted architecture decision |
 
 The Phase 1 executable baseline is

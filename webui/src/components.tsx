@@ -1,6 +1,15 @@
 import { AlertTriangle } from 'lucide-react'
-import type { EvidenceItem, MetricResult, SummaryMetric } from './types'
+import type {
+  AggregateMetricV2,
+  EvidenceItem,
+  EvaluationMetricV2,
+  MetricDescriptorV2,
+  MetricResult,
+  StageObservationV2,
+  SummaryMetric,
+} from './types'
 import { evidenceState, metricLabel, presentMetric, stageOfMetric } from './semantics'
+import { metricDescriptorSummary, observationPresentation } from './artifactPresentation'
 import { useLocale } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n'
 import { StatusBadge } from './components/primitives'
@@ -54,6 +63,75 @@ export function MetricCell({ id, metric }: { id: string; metric: MetricResult | 
       {statusSummary && <small>{statusSummary}</small>}
       {reason && <small>{reason}</small>}
     </div>
+  )
+}
+
+export function ArtifactMetricCell({
+  metric,
+  descriptor,
+  descriptorConflict = false,
+}: {
+  metric: AggregateMetricV2 | EvaluationMetricV2
+  descriptor: MetricDescriptorV2 | null
+  descriptorConflict?: boolean
+}) {
+  const { formatPercent } = useLocale()
+  const aggregate = 'case_count' in metric
+  const observed = metric.status === 'observed' && metric.value !== null
+  return (
+    <div className={`metric metric--${observed ? 'value' : 'unavailable'}`}>
+      <div className="metric__head">
+        <span className={`stage stage--${descriptor?.stage ?? 'derived'}`}>{descriptor?.stage ?? 'derived'}</span>
+        <span>{metric.metric_id}</span>
+      </div>
+      <strong>{observed ? formatPercent(metric.value as number) : 'UNAVAILABLE'}</strong>
+      {aggregate
+        ? <small>{metric.observed_case_count}/{metric.case_count} cases observed</small>
+        : <small>proved bounds {metric.lower_bound.toFixed(3)}–{metric.upper_bound.toFixed(3)}</small>}
+      <small>{metricDescriptorSummary(descriptor)}</small>
+      {descriptorConflict && <small>Persisted descriptor digests are missing or inconsistent.</small>}
+      {metric.reason && <small>{metric.reason}</small>}
+    </div>
+  )
+}
+
+export function StageObservationPanel({
+  title,
+  observation,
+}: {
+  title: string
+  observation: StageObservationV2
+}) {
+  const presentation = observationPresentation(observation)
+  return (
+    <section className={`evidence evidence--${observation.observation_status}`}>
+      <header>
+        <h4>{title}</h4>
+        <span>{presentation.status} · {presentation.scope}</span>
+      </header>
+      <p className="semantic-note">
+        completeness={observation.completeness}
+        {observation.configured_cutoff === null ? '' : ` · configured cutoff=${observation.configured_cutoff}`}
+        {observation.proven_prefix_depth === null ? '' : ` · proven prefix=${observation.proven_prefix_depth}`}
+      </p>
+      {observation.reason && <p className="semantic-note">{observation.reason}</p>}
+      {observation.observation_status === 'observed' && observation.items.length === 0 && (
+        <p className="semantic-note">Observed empty result.</p>
+      )}
+      {observation.items.map((item) => (
+        <article className="evidence__item" key={`${item.native_rank}:${item.native_chunk_id}`}>
+          <div className="evidence__rank">#{item.native_rank}</div>
+          <div>
+            <div className="evidence__meta">
+              <code>{item.native_chunk_id}</code>
+              <span>{item.runtime_score === null ? 'score —' : `score ${item.runtime_score.toFixed(4)}`}</span>
+              <span>{item.provenance_edge_ids.length} provenance edge(s)</span>
+            </div>
+            <p>{item.content ?? 'Content was not persisted for this item.'}</p>
+          </div>
+        </article>
+      ))}
+    </section>
   )
 }
 

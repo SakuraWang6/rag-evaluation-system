@@ -53,6 +53,12 @@ from rag_eval.reviews import (
     CaseReviewVerdict,
     SemanticReviewError,
 )
+from rag_eval.runs.views import (
+    RunArtifactCaseCollectionView,
+    RunArtifactCaseIndexView,
+    RunArtifactCaseView,
+    RunArtifactOverviewView,
+)
 
 
 class APIModel(BaseModel):
@@ -1281,36 +1287,44 @@ def create_app(
         }
 
     @app.get("/api/v1/runs/{run_id}/cases")
-    async def run_cases(run_id: str) -> list[dict[str, Any]]:
+    async def run_cases(run_id: str) -> RunArtifactCaseCollectionView:
         try:
             return await run_in_threadpool(
-                lambda: [
-                    service.run_history.case_view(
-                        run_id, item.case_id, repetition=item.repetition
-                    )
-                    for item in service.run_history.cases(run_id)
-                ]
+                service.run_history.artifact_cases, run_id
             )
-        except (OSError, ValueError) as exc:
+        except (OSError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/v1/runs/{run_id}/cases/index")
-    async def run_case_index(run_id: str) -> list[dict[str, object]]:
+    async def run_case_index(run_id: str) -> RunArtifactCaseIndexView:
         try:
-            return await run_in_threadpool(service.run_history.case_index, run_id)
-        except (OSError, ValueError) as exc:
+            return await run_in_threadpool(
+                service.run_history.artifact_case_index, run_id
+            )
+        except (OSError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/v1/runs/{run_id}/summary")
-    async def run_summary(run_id: str) -> dict[str, Any]:
+    async def run_summary(run_id: str) -> RunArtifactOverviewView:
         try:
-            return await run_in_threadpool(service.run_history.summary, run_id)
+            return await run_in_threadpool(
+                service.run_history.artifact_overview, run_id
+            )
         except (OSError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/v1/runs/{run_id}/artifacts/verify")
     async def verify_run_artifacts(run_id: str) -> dict[str, Any]:
         try:
+            presentation = await run_in_threadpool(
+                service.run_history.artifact_presentation, run_id
+            )
+            if presentation.has_artifact_v2:
+                verification = await run_in_threadpool(
+                    lambda: presentation.overview().verification
+                )
+                assert verification is not None
+                return verification.model_dump(mode="json")
             return await run_in_threadpool(
                 lambda: asdict(service.run_history.verify_artifacts(run_id))
             )
@@ -1442,14 +1456,14 @@ def create_app(
     @app.get("/api/v1/runs/{run_id}/cases/{case_id}")
     async def run_case(
         run_id: str, case_id: str, repetition: int = 1
-    ) -> dict[str, Any]:
+    ) -> RunArtifactCaseView:
         try:
             return await run_in_threadpool(
-                lambda: service.run_history.case_view(
+                lambda: service.run_history.artifact_case(
                     run_id, case_id, repetition=repetition
                 )
             )
-        except (OSError, ValueError) as exc:
+        except (OSError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=404, detail="case not found") from exc
 
     @app.get("/api/v1/runs/{run_id}/report", response_class=PlainTextResponse)
@@ -1466,7 +1480,9 @@ def create_app(
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         summaries = {
-            manifest.run_id: service.run_history.summary(manifest.run_id)
+            manifest.run_id: service.run_history.artifact_comparison_summary(
+                manifest.run_id
+            )
             for manifest in manifests
         }
         decision = validate_comparison(
@@ -1496,7 +1512,9 @@ def create_app(
                     # preserve the raw manifest for comparison validation but
                     # return the readable label to the UI.
                     "run": service.run_history.run_view(manifest.run_id),
-                    "summary": summaries[manifest.run_id],
+                    "summary": service.run_history.artifact_overview(
+                        manifest.run_id
+                    ).model_dump(mode="json"),
                 }
                 for manifest in manifests
             ],
@@ -1617,6 +1635,8 @@ def create_app(
                 "adapter_id": item.adapter_id,
                 "default_logical_endpoint": item.default_logical_endpoint,
                 "docker_available": item.docker_image is not None,
+                "query_modes": item.query_modes,
+                "query_timeout_min_seconds": item.query_timeout_min_seconds,
             }
             for item in service.products.profiles.list()
         ]
