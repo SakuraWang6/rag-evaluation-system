@@ -35,6 +35,7 @@ from rag_eval.evaluation.evidence import (
     localize_stage,
     match_evidence,
 )
+from rag_eval.evaluation.metrics import evaluate_retrieval_stages
 from rag_eval.execution import (
     NativeProvenanceContractError,
     _gold_has_deterministic_canonical_mapping,
@@ -1197,6 +1198,82 @@ def test_partial_object_mapping_of_other_object_does_not_prove_gold_miss() -> No
     )
     localized = localize_gold_evidence([item], gold, index)
     assert localized.status == LocalizationStatus.PROVENANCE_MISSING
+
+
+def test_catalogued_unmapped_gold_is_not_scored_as_retrieval_missed() -> None:
+    """A catalog entry without a complete reverse map cannot prove absence."""
+
+    source = "GOLDOTHER"
+    gold_locator = ObjectLocator(object_type="paragraph", object_id="gold")
+    other_locator = ObjectLocator(object_type="paragraph", object_id="other")
+    objects = {
+        "gold": _object_record("gold", gold_locator, _extent(0, 4)),
+        "other": _object_record("other", other_locator, _extent(4, 9)),
+    }
+    objects["gold"]["mapping_status"] = "unmapped"
+    _set_object_source_hash(source, objects)
+    payload = _formal_map(
+        source,
+        objects,
+        {
+            "other-chunk": (
+                4,
+                9,
+                [_edge("other", "paragraph", other_locator, _extent(4, 9))],
+            )
+        },
+    )
+    index = _index(source, payload)
+    gold = GoldEvidence(
+        evidence_id="gold",
+        document_id=DOC_ID,
+        locator=gold_locator,
+        canonical_value="GOLD",
+    )
+
+    assert index.catalog_verified is True
+    assert index.has_verified_object(DOC_ID, "gold") is True
+    assert index.prove_true_miss(DOC_ID, "gold", ()) is False
+
+    unrelated_item = _formal_item(
+        source,
+        "other-chunk",
+        4,
+        9,
+        object_id="other",
+        object_type="paragraph",
+        object_start=4,
+        object_end=9,
+        locator=other_locator,
+    )
+    for selected in ([], [unrelated_item]):
+        localized = localize_gold_evidence(selected, gold, index)
+        assert localized.status == LocalizationStatus.PROVENANCE_MISSING
+        assert localized.reason == (
+            "canonical evidence absence is not proven by a complete runtime mapping"
+        )
+
+    evidence_set = GoldEvidenceSet(
+        gold_evidence_set_id="unmapped-gold-set",
+        evidence=[gold],
+        required_groups=[[gold.evidence_id]],
+    )
+    metrics = evaluate_retrieval_stages(
+        RAGResult(
+            answer="",
+            raw_retrieval=[],
+            ranked_retrieval=[],
+            final_context=[],
+        ),
+        evidence_set,
+        index,
+        k_values=(1,),
+    )
+    raw_recall = next(metric for metric in metrics if metric.metric_id == "raw_recall@1")
+    assert raw_recall.status == MetricStatus.UNAVAILABLE
+    assert raw_recall.reason == (
+        "runtime provenance mapping is unavailable for required Gold Evidence"
+    )
 
 
 def test_executor_map_loader_keeps_rep_boundary_and_native_stream_separate(tmp_path: Path) -> None:

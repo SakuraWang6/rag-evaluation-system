@@ -1211,10 +1211,31 @@ def localize_gold_evidence(
             reason=reason,
         )
 
+    formal_provenance_present = bool(
+        corpus.provenance_map is not None
+        or corpus.runtime_chunks
+        or corpus.object_catalog
+        or corpus.reverse_index
+        or corpus.catalog_diagnostics
+    )
+    if formal_provenance_present:
+        # No selected item could be tied to the Gold object, but the formal
+        # run-level provenance also could not prove a complete object-to-runtime
+        # mapping.  That is an observability gap, not evidence that retrieval
+        # missed the object.  Keep the decision fail-closed so recall is
+        # unavailable instead of being recorded as an observed zero.
+        return GoldLocalization(
+            evidence_id=gold.evidence_id,
+            status=LocalizationStatus.PROVENANCE_MISSING,
+            reason="canonical evidence absence is not proven by a complete runtime mapping",
+        )
+
+    # Plain source-only indexes are the legacy evaluation contract.  They have
+    # no formal provenance envelope to validate and retain their historical
+    # unmatched-result behavior until that contract is versioned or retired.
     return GoldLocalization(
         evidence_id=gold.evidence_id,
         status=LocalizationStatus.RETRIEVAL_MISSED,
-        reason=true_miss_reason,
     )
 
 
@@ -1229,8 +1250,9 @@ def localize_stage(
     """Return per-Gold status for one stage.
 
     ``items is None`` is an unobservable stage and is deliberately represented
-    by ``observable=False`` with no fabricated empty list.  ``items == []`` is
-    observable and yields retrieval misses.
+    by ``observable=False`` with no fabricated empty list. ``items == []`` is
+    observable, but yields a retrieval miss only when the formal reverse map
+    proves absence; otherwise its Gold localization is provenance-missing.
     """
 
     if items is None:

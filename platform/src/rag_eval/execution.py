@@ -1476,9 +1476,10 @@ def validate_native_provenance_contract(
     query is issued.
 
     This deliberately validates catalog availability and typed Gold locator
-    presence, not whether every Gold object has already been retrieved.  An
+    presence, not whether every Gold object has a complete runtime mapping. An
     unmapped but catalogued Gold object is a legitimate later
-    ``retrieval_missed`` outcome; an absent catalog is an ingestion failure.
+    ``provenance_missing`` outcome. Only a complete reverse map can prove
+    ``retrieval_missed``; an absent catalog is an ingestion failure.
     """
 
     native_document_ids = {
