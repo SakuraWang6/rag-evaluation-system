@@ -471,7 +471,9 @@ def test_explicit_development_secret_store_encrypts_without_serializing_value(tm
     store.delete(reference)
 
 
-def test_wizard_draft_compiles_to_existing_experiment_and_job_store(tmp_path: Path) -> None:
+def test_wizard_rejects_a_legacy_bundle_as_a_new_evaluation_source(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "bundle"
     source.mkdir()
     write_bundle(source)
@@ -509,15 +511,8 @@ def test_wizard_draft_compiles_to_existing_experiment_and_job_store(tmp_path: Pa
             "formal": False,
         },
     )
-    assert created.status_code == 200
-    draft_id = created.json()["draft_id"]
-    preview = client.get(f"/api/v1/product/evaluation-drafts/{draft_id}/preview")
-    assert preview.status_code == 200
-    assert preview.json()["query_config"]["retrieval_candidate_k"] == 20
-    finalized = client.post(f"/api/v1/product/evaluation-drafts/{draft_id}/finalize")
-    assert finalized.status_code == 200
-    assert finalized.json()["job"]["execution_provider"] == "local"
-    assert service.jobs.list()[0].experiment.experiment_id == finalized.json()["experiment"]["experiment_id"]
+    assert created.status_code == 422
+    assert service.jobs.list() == []
 
 
 def test_wizard_draft_uses_a_lossless_formal_release_without_an_authoring_workspace(tmp_path: Path) -> None:
@@ -549,7 +544,6 @@ def test_wizard_draft_uses_a_lossless_formal_release_without_an_authoring_worksp
         "/api/v1/product/evaluation-drafts",
         json={
             "mode": "basic",
-            "bundle_id": None,
             "dataset_release_id": release.release_id,
             "system_id": "lightrag",
             "profile_id": "lightrag",
@@ -561,13 +555,13 @@ def test_wizard_draft_uses_a_lossless_formal_release_without_an_authoring_worksp
             "case_ids": None,
             "seed": 0,
             "repetitions": 1,
-            "formal": False,
         },
     )
     assert created.status_code == 200
     preview = client.get(f"/api/v1/product/evaluation-drafts/{created.json()['draft_id']}/preview")
     assert preview.status_code == 200
     assert preview.json()["dataset_release_id"] == release.release_id
+    assert "evaluation_corpus" not in preview.json()["adapter_config"]
     runtime_bundle = next(
         item
         for item in client.get("/api/v1/datasets").json()
@@ -576,3 +570,12 @@ def test_wizard_draft_uses_a_lossless_formal_release_without_an_authoring_worksp
     # The compatibility Bundle 2.0 view inherits the formal release's
     # product-facing label rather than exposing ``formal-<dataset-id>``.
     assert runtime_bundle["name"] == "private"
+    finalized = client.post(
+        f"/api/v1/product/evaluation-drafts/{created.json()['draft_id']}/finalize"
+    )
+    assert finalized.status_code == 200
+    assert finalized.json()["job"]["execution_provider"] == "local"
+    assert (
+        service.jobs.list()[0].experiment.experiment_id
+        == finalized.json()["experiment"]["experiment_id"]
+    )

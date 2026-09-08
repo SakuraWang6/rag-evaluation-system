@@ -105,7 +105,7 @@
       "method": "POST",
       "server_path": "/api/v1/product/evaluation-drafts",
       "success_status": "200",
-      "request_schema": "EvaluationDraft",
+      "request_schema": "NativeEvaluationDraftRequest",
       "response_type": "object",
       "client": {"method": "saveEvaluationDraft", "args": [{"draft_id": "draft-1"}], "path": "/product/evaluation-drafts"}
     },
@@ -125,14 +125,6 @@
       "request_schema": "EvaluationFinalizeRequest",
       "response_type": "object",
       "client": {"method": "finalizeEvaluationDraft", "args": ["draft-1"], "path": "/product/evaluation-drafts/draft-1/finalize"}
-    },
-    {
-      "id": "run-queue",
-      "method": "POST",
-      "server_path": "/api/v1/experiments/{experiment_id}/runs",
-      "success_status": "200",
-      "response_type": "object",
-      "client": {"method": "queueRun", "args": ["experiment-1"], "path": "/experiments/experiment-1/runs"}
     },
     {
       "id": "job-list",

@@ -71,7 +71,7 @@ No phase may opportunistically implement work assigned to a later phase.
 | 5 | Unified Evaluation | Complete in this phase | Availability bounds, extent union, explicit MRR@5, pipeline deltas, and proof-gated failures |
 | 6 | Run / Artifact 2.0 | Complete in this phase | Immutable case artifacts, persisted views, metric-driven eligibility, and checksum graph |
 | 7 | Platform API / WebUI | Complete in this phase | Persisted-only views, descriptor-driven rendering, and fail-closed legacy access |
-| 8 | Native formal cutover | Not started | Requires Phase 7 acceptance |
+| 8 | Native formal cutover | Complete in this phase | Release-only creation, native-DOCX admission, and legacy oracle compatibility |
 | 9 | RAG-Anything full observation | Not started | Independent after shared v2 boundaries |
 
 ## Phase 0 — Isolate the P0 provenance fix
@@ -419,6 +419,32 @@ feat(webui): render artifact v2 generically
 - Native Run eligibility is entirely metric-driven.
 - Benchmark content never branches or filters by Adapter support.
 - Adding another RAG requires only an Adapter and the shared TCK.
+
+### Phase 8 implementation
+
+- Normal product creation accepts a Benchmark Release, System Profile, and
+  query/runtime configuration through `NativeEvaluationDraftRequest`; it no
+  longer accepts a Bundle ID, formal toggle, or corpus selector.
+- Formal runtime projection version 4 submits exactly the release-pinned DOCX
+  for ingestion and keeps the Canonical Catalog adjacent for observation and
+  provenance proof only.
+- The shared public admission policy rejects corpus selectors, pre-segmented
+  Benchmark Contracts, pre-segmented Bundle metadata, and non-DOCX formal
+  projections at Experiment creation and queue time. It also rebuilds the
+  selected Release's deterministic projection and requires the exact same
+  content-addressed Bundle identity, preventing a Release ID from being paired
+  with modified Benchmark content. CLI create/run uses the same policy.
+- WebUI creation lists only runnable Benchmark Releases. The old raw
+  Experiment editor and queue action are read-only history now.
+- Verified Artifact 2.0 runs are not rejected by legacy native-diagnostic
+  route labels; persisted core metric availability and descriptor consistency
+  remain the leaderboard authority.
+- Direct pre-segmented execution helpers, tests, readers, and published
+  oracles remain intact for the compatibility window. Their live branches are
+  not deleted in this Phase.
+
+Detailed admission and rollback rules are in
+`docs/architecture/NATIVE_FORMAL_CUTOVER.md`.
 
 ### Commit
 

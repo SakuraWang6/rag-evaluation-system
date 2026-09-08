@@ -6,7 +6,6 @@ import {
   Beaker,
   BrainCircuit,
   Boxes,
-  Braces,
   Database,
   ExternalLink,
   FileSearch,
@@ -190,12 +189,12 @@ export default function App() {
   >
     {data.error && <ErrorBanner message={t('common.platformApi', { message: data.error })} />}
     {data.loading ? <Loading /> : <div className="page-content">
-      {route.page === 'overview' && data.productEnabled && <OverviewPage datasets={data.datasets} formalDatasets={data.formalDatasets} systems={productSystems} runs={data.runs.length} onNewEvaluation={() => route.go('new-evaluation')} onAddDataset={() => route.go('datasets')} onAddSystem={() => route.go('systems')} />}
-      {route.page === 'new-evaluation' && data.productEnabled && <NewEvaluationPage datasets={data.datasets} formalDatasets={data.formalDatasets} onQueued={() => { void data.refresh(); route.go('runs') }} />}
+      {route.page === 'overview' && data.productEnabled && <OverviewPage formalDatasets={data.formalDatasets} systems={productSystems} runs={data.runs.length} onNewEvaluation={() => route.go('new-evaluation')} onAddDataset={() => route.go('datasets')} onAddSystem={() => route.go('systems')} />}
+      {route.page === 'new-evaluation' && data.productEnabled && <NewEvaluationPage formalDatasets={data.formalDatasets} onQueued={() => { void data.refresh(); route.go('runs') }} />}
       {route.page === 'datasets' && (data.productEnabled ? <ProductDatasetsPage datasets={data.datasets} formalDatasets={data.formalDatasets} refresh={data.refresh} /> : <DatasetsPage datasets={data.datasets} refresh={data.refresh} />)}
       {route.page === 'systems' && (data.productEnabled ? <ProductSystemsPage legacy={data.systems} /> : <SystemsPage systems={data.systems} />)}
       {route.page === 'llm' && data.productEnabled && <LLMConfigurationPage />}
-      {route.page === 'experiments' && <ExperimentsPage experiments={data.experiments} refresh={data.refresh} />}
+      {route.page === 'experiments' && <ExperimentsPage experiments={data.experiments} />}
       {route.page === 'runs' && <RunsPage runs={data.runs} jobs={data.jobs} go={route.go} />}
       {route.page === 'run-detail' && <RunDetailPage runId={route.params.get('run') || ''} runs={data.runs} go={route.go} />}
       {route.page === 'cases' && <CasesPage runs={data.runs} initialRun={route.params.get('run') || ''} go={route.go} />}
@@ -251,20 +250,9 @@ function SystemsPage({ systems }: { systems: SystemSummary[] }) {
   return <><PageIntro titleKey="page.systems.title" descriptionKey="page.systems.description" /><div className="system-grid">{systems.map((system) => <Surface className="system-card" key={system.system_id}><div className="system-card__mark"><ServerCog size={17} /><span>{system.adapter_id}</span></div><h3>{system.system_id}</h3><p>{system.description || t('page.systems.defaultDescription')}</p><dl><dt>{t('page.systems.factory')}</dt><dd>{system.adapter_factory}</dd><dt>{t('page.systems.python')}</dt><dd>{system.python_executable}</dd><dt>{t('page.systems.timeout')}</dt><dd>{t('page.systems.seconds', { value: system.request_timeout_seconds })}</dd><dt>{t('page.systems.environmentKeys')}</dt><dd>{system.environment_keys.join(', ') || t('page.systems.none')}</dd></dl></Surface>)}</div>{!systems.length && <Empty>{t('page.systems.empty')}</Empty>}</>
 }
 
-function ExperimentsPage({ experiments, refresh }: { experiments: ExperimentSpec[]; refresh: () => Promise<void> }) {
+function ExperimentsPage({ experiments }: { experiments: ExperimentSpec[] }) {
   const { t } = useLocale()
-  const [showEditor, setShowEditor] = useState(false)
-  const [draft, setDraft] = useState('{\n  "experiment_id": "",\n  "bundle_id": "",\n  "system_id": "",\n  "adapter_id": "",\n  "adapter_config": {},\n  "query_config": {"generate_answer": true},\n  "metric_config": {"k_values": [1, 3, 5]},\n  "case_ids": null,\n  "case_selection_id": "",\n  "seed": 0,\n  "repetitions": 1\n}')
-  const [message, setMessage] = useState('')
-  const create = async () => {
-    try { await api.createExperiment(JSON.parse(draft)); setMessage(t('page.experiments.frozen')); setShowEditor(false); await refresh() }
-    catch (cause) { setMessage(cause instanceof Error ? cause.message : String(cause)) }
-  }
-  const queue = async (id: string) => {
-    try { await api.queueRun(id); setMessage(t('page.experiments.queued', { id })); await refresh() }
-    catch (cause) { setMessage(cause instanceof Error ? cause.message : String(cause)) }
-  }
-  return <><PageIntro titleKey="page.experiments.title" descriptionKey="page.experiments.description" /><div className="section-tools"><Button variant="primary" onClick={() => setShowEditor(!showEditor)}><Braces size={16} /> {t('page.experiments.new')}</Button><span>{message}</span></div>{showEditor && <Surface className="json-editor" tone="inset"><textarea value={draft} onChange={(event) => setDraft(event.target.value)} spellCheck={false} /><Button variant="primary" onClick={() => void create()}>{t('page.experiments.validate')}</Button></Surface>}<div className="experiment-list">{experiments.map((experiment) => { const repetitions = experiment.repetitions === 1 ? t('page.experiments.repetitions', { count: experiment.repetitions }) : t('page.experiments.repetitionsPlural', { count: experiment.repetitions }); return <Surface key={experiment.experiment_id}><div><span className="eyebrow">{experiment.adapter_id} / {t('page.experiments.seed', { value: experiment.seed })}</span><h3>{experiment.display_name?.trim() || experiment.experiment_id}</h3><p>{t('page.experiments.bundleSummary', { id: experiment.bundle_id.slice(0, 12), repetitions })}</p></div><code>{JSON.stringify({ query: experiment.query_config, metrics: experiment.metric_config }, null, 2)}</code><Button onClick={() => void queue(experiment.experiment_id)}><Play size={16} /> {t('page.experiments.queue')}</Button></Surface> })}</div>{!experiments.length && <Empty>{t('page.experiments.empty')}</Empty>}</>
+  return <><PageIntro titleKey="page.experiments.title" descriptionKey="page.experiments.description" /><Surface tone="inset"><p>{t('page.experiments.readOnly')}</p></Surface><div className="experiment-list">{experiments.map((experiment) => { const repetitions = experiment.repetitions === 1 ? t('page.experiments.repetitions', { count: experiment.repetitions }) : t('page.experiments.repetitionsPlural', { count: experiment.repetitions }); return <Surface key={experiment.experiment_id}><div><span className="eyebrow">{experiment.adapter_id} / {t('page.experiments.seed', { value: experiment.seed })}</span><h3>{experiment.display_name?.trim() || experiment.experiment_id}</h3><p>{t('page.experiments.bundleSummary', { id: experiment.bundle_id.slice(0, 12), repetitions })}</p></div><code>{JSON.stringify({ query: experiment.query_config, metrics: experiment.metric_config }, null, 2)}</code></Surface> })}</div>{!experiments.length && <Empty>{t('page.experiments.empty')}</Empty>}</>
 }
 
 function runTitle(run: Pick<RunManifest, 'display_name' | 'experiment_id'>): string {

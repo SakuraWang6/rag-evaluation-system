@@ -1,5 +1,11 @@
 # Native DOCX Compatibility Contract
 
+> Historical scope: this contract governs pre-v2 authoring runs labeled
+> `native-docx`. It does not govern the release-pinned `native-document/v2`
+> formal route introduced by Phase 8. See
+> `../../docs/architecture/NATIVE_FORMAL_CUTOVER.md` for current admission and
+> eligibility rules.
+
 ## Scope
 
 Native DOCX execution is a bounded parser-compatibility diagnostic. It is not

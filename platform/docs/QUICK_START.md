@@ -18,24 +18,27 @@ Python path in its canonical ExperimentSpec.
 
 1. On **Overview**, choose **Create from document** and upload the private
    DOCX. Inspect analysis and canonical evidence, discover targets, resolve
-   candidates, and complete reviewer decisions before exporting/registering the
-   approved canonical-text Bundle. The dataset page also accepts an existing
-   Bundle ZIP or lets you create a small TXT/Markdown dataset by selecting the
-   supporting source text and entering its question and answer.
+   candidates, and complete reviewer decisions before creating an immutable
+   Benchmark Release. Existing Bundle ZIP and small TXT/Markdown flows remain
+   visible as legacy/development resources, but cannot start a new formal run.
 2. Choose **Add RAG system**. In Basic mode select LightRAG or RAG-Anything,
    give it a friendly name, keep **Local process** selected, save, then choose
    **Test connection**. The Overview runtime check becomes ready only after a
    successful worker handshake.
-3. Choose **New evaluation**. Select the Dataset and RAG system, then choose
-   both a generation model and an embedding model. Query mode is optional.
-   Review the fully expanded canonical configuration and choose **Confirm and
-   run**. A missing model identity is rejected before a run can be queued.
+3. Choose **New evaluation**. Select a runnable Benchmark Release and RAG
+   system, then choose both a generation model and an embedding model. Query
+   mode is optional. Review the fully expanded configuration and choose
+   **Confirm and run**. The Platform submits the Release-pinned Original DOCX;
+   a missing model identity or non-native runtime projection is rejected before
+   a run can be queued.
 4. Open **Runs** and select the run. Inspect integrity, metrics, Cases, and
    the question → retrieval → context → answer → evaluation evidence flow.
 
 Basic mode uses immutable versioned SystemProfile defaults. Even values not
 shown in Basic are fully expanded and frozen in the generated
-`ExperimentSpec` before the existing RunExecutor starts.
+`ExperimentSpec` before the existing RunExecutor starts. The RAG owns native
+parsing, chunking, indexing, retrieval, and context construction; the adjacent
+Canonical Catalog is used only for observation and evidence localization.
 
 ## If something fails
 
@@ -49,13 +52,15 @@ shown in Basic are fully expanded and frozen in the generated
   RAG-Anything's parser health check.
 - **Dataset Bundle cannot be imported**: upload one ZIP containing a valid
   Bundle root and intact checksums. ZIP paths and symlinks that are unsafe are
-  rejected.
+  rejected. Imported Bundles are inspection/compatibility resources and do not
+  replace the Benchmark Release required by **New evaluation**.
 - **Connection test fails**: use the technical details only for diagnosis;
   correct the local RAG runtime or adapter installation, then retest.
 
 ## Advanced
 
 Local filesystem path registration is available through the CLI/CI workflow;
-legacy/custom adapters, Replay, and hand-authored `ExperimentSpec` are also
-Advanced workflows. They do not change the Dataset Bundle, Wire Protocol 1.0,
-Artifact Contract 1.2, replay, metric, or comparison semantics.
+legacy/custom adapters and explicit historical Replay are Advanced workflows.
+Historical `ExperimentSpec` and Artifact 1.2 records remain readable, but new
+public creation cannot select a pre-segmented corpus. New formal runs use the
+same Wire 2.0, Unified Evaluation, and Artifact 2.0 contracts regardless of RAG.

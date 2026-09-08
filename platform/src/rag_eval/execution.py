@@ -112,6 +112,7 @@ from rag_eval.execution_provider import (
 )
 from rag_eval.report import markdown_report
 from rag_eval.reproducibility import capture_reproducibility
+from rag_eval.runtime_admission import NATIVE_DOCUMENT_EXECUTION_CONTRACT
 from rag_eval.runs import (
     AdapterSession,
     ArtifactCaseErrorV2,
@@ -172,10 +173,12 @@ class RunExecutor:
             else requested_primary_corpus(experiment, bundle)
         )
         resolved_adapter_config = dict(experiment.adapter_config)
-        # The selected corpus is part of the observed runtime configuration.
-        # Keep a legacy Experiment readable while ensuring a metadata-defaulted
-        # formal release does not silently look like a source-DOCX run.
-        resolved_adapter_config.setdefault("evaluation_corpus", primary_corpus)
+        # Pre-segmented compatibility runs still need their historical Adapter
+        # selector.  Native runs omit it entirely: the Adapter receives the
+        # original source and its own default/native ingestion behavior owns
+        # parsing and chunking.
+        if primary_corpus != "source_document":
+            resolved_adapter_config.setdefault("evaluation_corpus", primary_corpus)
         question_orders = {
             repetition_seed: order_questions(questions, repetition_seed)
             for repetition_seed in (
@@ -602,11 +605,25 @@ class RunExecutor:
         if self.dataset_release_store is None:
             raise ValueError("Dataset Release references are unavailable in this Platform mode")
         release = self.dataset_release_store.get(experiment.dataset_release_id)
+        runtime_projection = bundle.manifest.metadata.get("formal_runtime_projection")
+        if (
+            isinstance(runtime_projection, Mapping)
+            and runtime_projection.get("release_id") == release.release_id
+            and runtime_projection.get("release_digest") == release.release_digest
+            and runtime_projection.get("validation_report_digest")
+            == release.validation_report_digest
+            and runtime_projection.get("projection_version") == "4"
+            and runtime_projection.get("execution_contract")
+            == NATIVE_DOCUMENT_EXECUTION_CONTRACT
+        ):
+            # New formal runs resolve a content-addressed projection whose
+            # ingestion input is the pinned DOCX. An older release's Bundle
+            # projection identity must not override this native route.
+            return
         if release.bundle_projection.status == BundleProjectionStatus.LOSSLESS_RUNNABLE:
             if release.bundle_projection.bundle_id != bundle.bundle_id:
                 raise ValueError("experiment Bundle does not match selected formal Dataset Release")
             return
-        runtime_projection = bundle.manifest.metadata.get("formal_runtime_projection")
         if (
             release.bundle_projection.projections
             and isinstance(runtime_projection, dict)
@@ -747,17 +764,24 @@ def initial_manifest(
 def execution_view_identity(
     experiment: ExperimentSpec, bundle: DatasetBundle
 ) -> tuple[str, bool]:
-    """Freeze whether a run is a comparable canonical path or a native diagnostic.
+    """Freeze the declared execution view without rewriting historical runs.
 
-    The native DOCX adapter path remains useful for parser compatibility, but
-    it cannot declare a Retrieval winner against segment-native or canonical
-    text runs.  The identity lives in the new manifest only; old manifests are
-    left untouched and retain an unknown/legacy view.
+    A release-pinned ``native-document/v2`` projection is the formal route.
+    Older authoring-native inputs retain their historical diagnostic identity,
+    while persisted Artifact 2.0 availability decides modern eligibility.
     """
 
     if experiment.benchmark_contract_digest is not None:
         return "benchmark-contract/v1", False
     metadata = bundle.manifest.metadata
+    formal_projection = metadata.get("formal_runtime_projection")
+    if (
+        isinstance(formal_projection, dict)
+        and formal_projection.get("projection_version") == "4"
+        and formal_projection.get("execution_contract")
+        == NATIVE_DOCUMENT_EXECUTION_CONTRACT
+    ):
+        return NATIVE_DOCUMENT_EXECUTION_CONTRACT, False
     authoring = metadata.get("authoring") if isinstance(metadata, dict) else None
     raw_view = authoring.get("execution_view") if isinstance(authoring, dict) else None
     if raw_view == "native-docx" or (

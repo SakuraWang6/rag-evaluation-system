@@ -1,5 +1,11 @@
 # Native Document Gap Analysis
 
+> Historical baseline note (Phase 1): this file records the gaps that drove
+> the migration. Native observation, unified scoring, Artifact 2.0, and the
+> public native-DOCX cutover are now implemented through Phase 8. See
+> `MIGRATION_PLAN.md` and `NATIVE_FORMAL_CUTOVER.md` for current status; keep
+> the analysis below as the retirement checklist for legacy branches.
+
 - Target: `Original DOCX → RAG-native parse/chunk/index/retrieve → Unified Trace → Unified Scoring`
 - Current reference implementation: LightRAG `source_document`
 - Required safety rule: an unverifiable relation is `missing` or `partial`, never an inferred hit or miss

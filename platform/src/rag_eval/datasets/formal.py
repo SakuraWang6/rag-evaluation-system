@@ -1816,21 +1816,20 @@ class FormalDatasetReleaseService:
                         "canonical_path": "canonical/evidence.jsonl",
                         "sha256": release.document.source_digest,
                         "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        "metadata": {"execution_view": "formal-release-canonical"},
+                        "metadata": {"execution_view": "native-document/v2"},
                     }
                 ],
                 "metadata": {
                     "validation_profile": "formal",
-                    # The immutable canonical object graph is the primary
-                    # retrieval corpus.  The adjacent DOCX stays only as the
-                    # source/presentation artifact; a worker must materialize
-                    # and verify canonical segments before querying.
-                    "primary_evaluation_corpus": "canonical_segments",
                     "formal_runtime_projection": {
                         "release_id": release.release_id,
                         "release_digest": release.release_digest,
                         "validation_report_digest": release.validation_report_digest,
-                        "projection_version": "3",
+                        "projection_version": "4",
+                        # The original DOCX is the only ingestion input.  The
+                        # canonical catalog remains an adjacent Platform-owned
+                        # coordinate/proof artifact, never a replacement corpus.
+                        "execution_contract": "native-document/v2",
                         "evidence_semantics": "OR(paths) of AND(clauses) of OR(evidence alternatives)",
                     },
                 },

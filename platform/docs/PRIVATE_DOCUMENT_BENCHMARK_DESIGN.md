@@ -1,5 +1,11 @@
 # Private DOCX → RAG Benchmark Dataset MVP Design
 
+> Historical MVP design: the two execution views described below predate the
+> native evaluation v2 migration. New formal runs use one release-pinned
+> `native-document/v2` route; canonical-text/segment outputs remain only
+> compatibility and characterization assets. See
+> `../../docs/architecture/NATIVE_FORMAL_CUTOVER.md`.
+
 ## Purpose and non-goals
 
 This MVP turns one private DOCX into a reviewable RAG benchmark dataset without changing Evaluation Core or importing the legacy data service. It is not an automatic benchmark factory: human approval is required before any candidate becomes Gold or is exported.

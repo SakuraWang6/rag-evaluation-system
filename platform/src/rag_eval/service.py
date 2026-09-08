@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 
-from rag_eval.datasets.bundle import DatasetBundleStore
+from rag_eval.contracts.run import ExperimentSpec
+from rag_eval.datasets.bundle import DatasetBundle, DatasetBundleStore
 from rag_eval.datasets.bundle_v3 import BundleV3Store
 from rag_eval.datasets.registry import DatasetRegistry
 from rag_eval.execution import RunExecutor
@@ -32,6 +33,10 @@ from rag_eval.reviews import (
     SemanticAnswerReviewer,
     SemanticAnswerSupportReviewer,
     SemanticReviewCoordinator,
+)
+from rag_eval.runtime_admission import (
+    NewRunAdmissionError,
+    admit_new_public_experiment,
 )
 
 
@@ -183,6 +188,39 @@ class PlatformService:
                 or self.semantic_support_review_coordinator is not None
                 else None
             ),
+        )
+
+    def admit_new_public_experiment(
+        self,
+        experiment: ExperimentSpec,
+        bundle: DatasetBundle,
+    ) -> None:
+        """Resolve immutable Release authority, then apply public admission."""
+
+        release_store = None
+        expected_runtime_bundle_id = None
+        if (
+            experiment.dataset_release_id is not None
+            and self.formal_datasets is not None
+        ):
+            release_store = self.formal_datasets.releases
+            try:
+                expected_runtime_bundle_id = (
+                    self.formal_datasets.materialize_runtime_bundle(
+                        experiment.dataset_release_id,
+                        self.datasets,
+                    ).bundle_id
+                )
+            except (OSError, ValueError) as exc:
+                raise NewRunAdmissionError(
+                    "selected Benchmark Release cannot produce its verified "
+                    "native runtime projection"
+                ) from exc
+        admit_new_public_experiment(
+            experiment,
+            bundle,
+            release_store=release_store,
+            expected_runtime_bundle_id=expected_runtime_bundle_id,
         )
 
     def _schedule_post_run_reviews(self, run_id: str) -> None:

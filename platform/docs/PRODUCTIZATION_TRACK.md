@@ -1,57 +1,66 @@
 # Productization Track
 
-This track is independent of the research `Phase` sequence. It provides a
-WebUI-first path without changing Artifact Contract 1.2, Worker Protocol 1.0,
-Bundle integrity, metric semantics, replay, or comparison rules.
+This track provides the WebUI-first product surface for the versioned native
+evaluation architecture. Wire 1.0, Artifact 1.2, Bundle integrity, and replay
+remain readable compatibility contracts; new formal runs use Unified Trace and
+Artifact 2.0.
 
 ## Product flow
 
 ```text
-Basic / Advanced → EvaluationDraft → canonical ExperimentSpec → RunExecutor
-                 → ExecutionProvider → authenticated Adapter Worker → RAG
+Benchmark Release → NativeEvaluationDraftRequest → ExperimentSpec
+                  → RunExecutor → ExecutionProvider → Adapter Worker
+                  → RAG-native DOCX pipeline → Unified Trace → Artifact 2.0
 ```
 
-`EvaluationDraft`, System Connections, temporary manual-text staging records,
+Evaluation drafts, System Connections, temporary manual-text staging records,
 and development secret storage live under `RAG_EVAL_HOME/product/`. They are
 product state, not Run Artifacts. The WebUI uses the manual-text staging record
-only to create one sealed dataset; it does not expose a separate draft list or
-draft editor. A generated `ExperimentSpec` expands every versioned profile
-default before a run is queued.
+only to create a legacy/development dataset; it does not expose a separate draft
+list or draft editor. A generated `ExperimentSpec` expands every versioned
+profile default before a run is queued. The normal write contract accepts a
+Benchmark Release ID and has no Bundle ID, formal toggle, or corpus-mode field.
 
 ## Basic and Advanced
 
-Basic exposes only LightRAG and RAG-Anything, Dataset/System/Model/Embedding/
-Query Mode, and Local or Docker execution. The profile owns versioned defaults
-such as `candidate_k=20` and `context_k=5`; they are shown in the canonical
-Spec preview and never looked up again at run time.
+Basic exposes only LightRAG and RAG-Anything, Benchmark Release/System/Model/
+Embedding/Query Mode, and Local or Docker execution. The profile owns versioned
+defaults such as `candidate_k=20` and `context_k=5`; they are shown in the
+canonical Spec preview and never looked up again at run time.
 
 Advanced contains legacy/custom adapter registration through the existing CLI,
-runtime/factory/environment settings, formal artifacts, and direct
-ExperimentSpec authoring. Local-path Bundle registration remains a CLI/CI
-operation rather than a browser action. Custom RAG is not a Basic option.
+runtime/factory/environment settings, formal artifacts, and explicit historical
+replay. Local-path Bundle registration remains a CLI/CI compatibility operation
+rather than a browser action. New public Experiment creation and queueing still
+enforce the release-pinned native DOCX admission policy. Custom RAG is not a
+Basic option.
 
 ## Dataset lifecycle
 
 The primary lifecycle is **Private DOCX → Authoring → reviewer-approved
-Dataset → RAG Evaluation**. The Authoring workspace is the only current
-product path for private documents. `memory_data_service` and synthetic
-generation are legacy/diagnostic assets outside this flow; they are not
-invoked by the Platform.
+Benchmark Release → RAG-native Evaluation**. The Authoring workspace is the
+only current product path for private documents. `memory_data_service` and
+synthetic generation are legacy/diagnostic assets outside this flow; they are
+not invoked by the Platform.
 
 - **Upload Bundle** accepts one Bundle ZIP over the browser API. Platform
   rejects unsafe ZIP paths and validates it in a staging directory before
-  copying it into the immutable Bundle Store.
+  copying it into the immutable Bundle Store. It is a compatibility/inspection
+  resource and cannot start a new formal evaluation.
 - **Create from Document** accepts a private DOCX and runs the Authoring flow:
   deterministic canonicalization, structure-first targets, separate
   question/answer/evidence resolution, validation gates, reviewer decisions,
-  and export/register of an immutable Bundle ID.
+  and sealing of an immutable Benchmark Release. Compatibility Bundle views
+  are not the Benchmark authority or a selectable formal corpus.
 - **Create Dataset** supports UTF-8 TXT/Markdown as a small manual flow:
   select source text, enter one Question and Gold Answer, then create the
-  sealed dataset. It is not the private-document Authoring mainline.
+  sealed dataset. It is a development resource, not the private-document
+  formal mainline.
 
 Gold generation, automatic amendment, PDF, OCR, and non-DOCX Office-document
-import are not part of this track. Native-DOCX execution is diagnostic only;
-the normal evaluation view is canonical-text.
+import are not part of this track. Native DOCX is the only formal execution
+route: the RAG owns its parser/chunker/index, while Platform canonical data is
+kept outside ingestion for provenance and scoring.
 
 ## Credentials and endpoints
 
@@ -107,6 +116,7 @@ values or secrets.
 ## Compatibility gate
 
 Set `RAG_EVAL_PRODUCT_LAYER_ENABLED=0` to disable product endpoints and the
-product UI entrypoints. Existing CLI commands, SystemRegistration records,
-ExperimentSpec files, schema-v2 artifacts, checksum verification, and replay
-continue unchanged. This mode is part of the Product Track regression suite.
+product UI entrypoints. Existing SystemRegistration records, ExperimentSpec
+files, schema-v2 artifacts, checksum verification, and explicit replay remain
+readable. CLI create/run applies the same native admission policy as the public
+API. This mode is part of the Product Track regression suite.

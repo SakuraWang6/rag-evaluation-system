@@ -23,12 +23,12 @@ function yieldToBrowserPaint(): Promise<void> {
   })
 }
 
-export function OverviewPage({ datasets, formalDatasets, systems, runs, onNewEvaluation, onAddDataset, onAddSystem }: { datasets: DatasetSummary[]; formalDatasets: FormalDatasetsResponse; systems: ProductSystemSummary[]; runs: number; onNewEvaluation: () => void; onAddDataset: () => void; onAddSystem: () => void }) {
+export function OverviewPage({ formalDatasets, systems, runs, onNewEvaluation, onAddDataset, onAddSystem }: { formalDatasets: FormalDatasetsResponse; systems: ProductSystemSummary[]; runs: number; onNewEvaluation: () => void; onAddDataset: () => void; onAddSystem: () => void }) {
   const { t } = useLocale()
-  // A formal release is a usable dataset. Bundle 3.0 is only its runtime
-  // projection, so it must not make the overview look configured by itself.
-  const datasetCount = datasets.length + formalDatasets.releases.length
-  const datasetReady = datasetCount > 0
+  // Only an immutable, runnable Benchmark Release can start a formal native
+  // evaluation. Legacy Bundles remain visible under Resources for forensics.
+  const datasetCount = formalDatasets.releases.length
+  const datasetReady = formalDatasets.releases.some((release) => release.runnable)
   const systemReady = systems.length > 0
   const runtimeReady = systems.some((system) => system.connection_test_status === 'passed')
   const ready = datasetReady && systemReady && runtimeReady
@@ -1400,7 +1400,7 @@ const evaluationModels = (providers: LLMProviderConfig[], use: ModelUse): Evalua
   return values.filter((item, index) => values.findIndex((candidate) => candidate.value === item.value) === index)
 }
 
-export function NewEvaluationPage({ datasets, formalDatasets, onQueued }: { datasets: DatasetSummary[]; formalDatasets: FormalDatasetsResponse; onQueued: () => void }) {
+export function NewEvaluationPage({ formalDatasets, onQueued }: { formalDatasets: FormalDatasetsResponse; onQueued: () => void }) {
   const { t } = useLocale()
   const [profiles, setProfiles] = useState<SystemProfile[]>([])
   const [systems, setSystems] = useState<ProductSystemSummary[]>([])
@@ -1440,14 +1440,13 @@ export function NewEvaluationPage({ datasets, formalDatasets, onQueued }: { data
     }).catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
   }, [])
 
-  const selectedLegacyBundle = datasetValue.startsWith('bundle:') ? datasetValue.slice('bundle:'.length) : null
   const selectedReleaseId = datasetValue.startsWith('release:') ? datasetValue.slice('release:'.length) : null
   const selectedRelease = formalDatasets.releases.find((item) => item.release_id === selectedReleaseId)
   const system = systems.find((item) => item.system_id === systemId)
   const profile = profiles.find((item) => item.profile_id === system?.profile_id && item.profile_version === system?.profile_version)
   const queryModes = profile?.query_modes ?? []
   const queryTimeoutMinimum = profile?.query_timeout_min_seconds ?? null
-  const validDataset = Boolean(selectedLegacyBundle || selectedRelease?.runnable)
+  const validDataset = Boolean(selectedRelease?.runnable)
 
   const clearPreview = () => { setPreview(null); setDraft(null); setMessage('') }
   const buildDraft = (): EvaluationDraft | null => {
@@ -1481,8 +1480,7 @@ export function NewEvaluationPage({ datasets, formalDatasets, onQueued }: { data
     }
     return {
       mode,
-      bundle_id: selectedLegacyBundle,
-      dataset_release_id: selectedReleaseId,
+      dataset_release_id: selectedRelease!.release_id,
       system_id: system.system_id,
       profile_id: profile.profile_id,
       profile_version: profile.profile_version,
@@ -1501,7 +1499,6 @@ export function NewEvaluationPage({ datasets, formalDatasets, onQueued }: { data
       case_ids: null,
       seed: selectedSeed,
       repetitions: selectedRepetitions,
-      formal: false,
     }
   }
   const previewSpec = async () => {
@@ -1537,7 +1534,7 @@ export function NewEvaluationPage({ datasets, formalDatasets, onQueued }: { data
       <div className="authoring-actions"><span className="field-note">{t('product.wizard.mode')}</span><SegmentedControl label={t('product.wizard.mode')} value={mode} onChange={(value) => { setMode(value); clearPreview() }} options={[{ value: 'basic', label: t('product.wizard.basicMode') }, { value: 'advanced', label: t('product.wizard.advancedMode') }]} /></div>
       <div className="authoring-grid">
         <label><span>运行名称（可选）</span><input value={runName} maxLength={160} placeholder="例如：供应商审计 v1" onChange={(event) => { setRunName(event.target.value); clearPreview() }} /><small className="field-note">留空时会生成包含系统、时间和短 Run ID 的默认名称。</small></label>
-        <label><span>{t('product.wizard.dataset')}</span><select value={datasetValue} onChange={(event) => { setDatasetValue(event.target.value); clearPreview() }}><option value="">{t('product.wizard.selectDataset')}</option>{formalDatasets.releases.map((item) => <option value={`release:${item.release_id}`} disabled={!item.runnable} key={item.release_id}>{item.name}{item.name === item.version ? '' : ` · ${item.version}`} · {t('product.datasets.caseCount', { count: item.case_count })}{item.runnable ? '' : ` · ${t('product.wizard.datasetUnavailable')}`}</option>)}{datasets.map((item) => <option value={`bundle:${item.bundle_id}`} key={item.bundle_id}>{item.name}{item.name === item.version ? '' : ` · ${item.version}`}</option>)}</select>{selectedRelease && !selectedRelease.runnable && <small className="field-note">{t('product.wizard.datasetUnavailableReason', { reason: selectedRelease.runtime_reason || t('product.wizard.datasetUnavailable') })}</small>}{selectedRelease?.runnable && <small className="field-note">{t('product.wizard.formalDatasetNote')}</small>}</label>
+        <label><span>{t('product.wizard.dataset')}</span><select value={datasetValue} onChange={(event) => { setDatasetValue(event.target.value); clearPreview() }}><option value="">{t('product.wizard.selectDataset')}</option>{formalDatasets.releases.map((item) => <option value={`release:${item.release_id}`} disabled={!item.runnable} key={item.release_id}>{item.name}{item.name === item.version ? '' : ` · ${item.version}`} · {t('product.datasets.caseCount', { count: item.case_count })}{item.runnable ? '' : ` · ${t('product.wizard.datasetUnavailable')}`}</option>)}</select>{selectedRelease && !selectedRelease.runnable && <small className="field-note">{t('product.wizard.datasetUnavailableReason', { reason: selectedRelease.runtime_reason || t('product.wizard.datasetUnavailable') })}</small>}{selectedRelease?.runnable && <small className="field-note">{t('product.wizard.formalDatasetNote')}</small>}</label>
         <label><span>{t('product.wizard.system')}</span><select value={systemId} onChange={(event) => { setSystemId(event.target.value); setQueryMode(''); clearPreview() }}><option value="">{t('product.wizard.selectSystem')}</option>{systems.map((item) => <option value={item.system_id} key={item.system_id}>{item.display_name}</option>)}</select></label>
         <label><span>{t('product.wizard.model')}</span><select value={model} onChange={(event) => { setModel(event.target.value); clearPreview() }} disabled={!modelChoices.length}><option value="">{modelChoices.length ? t('product.wizard.selectModel') : t('product.wizard.detectModelsFirst')}</option>{modelChoices.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select><small className="field-note">{t('product.wizard.modelSource')}</small></label>
         <label><span>{t('product.wizard.embedding')}</span><select value={embedding} onChange={(event) => { setEmbedding(event.target.value); clearPreview() }} disabled={!embeddingChoices.length}><option value="">{embeddingChoices.length ? t('product.wizard.selectEmbedding') : t('product.wizard.detectModelsFirst')}</option>{embeddingChoices.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select><small className="field-note">{t('product.wizard.embeddingSource')}</small></label>

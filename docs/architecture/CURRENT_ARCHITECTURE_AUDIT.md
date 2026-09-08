@@ -1,5 +1,10 @@
 # Current Architecture Audit
 
+> Historical baseline note (Phase 1): implementation-status claims in this
+> audit describe the pre-migration system. Phases 2–8 are now implemented; use
+> `MIGRATION_PLAN.md` and `NATIVE_FORMAL_CUTOVER.md` for current status. The
+> evidence and history below remain the characterization baseline.
+
 - Audit date: 2026-09-08
 - Audited revision: `db7af4e`
 - Scope: `evaluation-system/{platform,adapters,webui}` and the LightRAG/RAG-Anything runtime boundaries referenced by the adapters

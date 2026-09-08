@@ -44,7 +44,8 @@ contract version change:
 | Path | Executable authority |
 | --- | --- |
 | Authoring → formal release | `test_authoring_api_publishes_and_removes_formal_catalog_version_without_erasing_history` |
-| Product draft → queued evaluation job | `test_wizard_draft_compiles_to_existing_experiment_and_job_store` |
+| Product draft → queued evaluation job | `test_wizard_draft_uses_a_lossless_formal_release_without_an_authoring_workspace` |
+| New public Run → exact native DOCX projection | `test_formal_release_preview_materializes_only_the_original_docx_for_ingestion`, `test_public_experiment_create_and_queue_reject_presegmented_routes`, and `test_release_bound_public_experiment_rejects_modified_benchmark_content` |
 | Runtime evidence → canonical Gold | ADR 0001's three required Adapter contract nodes |
 | Supervisor process lifecycle | `test_supervisor_can_start_stop_and_start_again` and timeout single-writer test |
 | Platform routes ↔ WebUI client | `contracts/webui-critical-api.json` tested from both packages |

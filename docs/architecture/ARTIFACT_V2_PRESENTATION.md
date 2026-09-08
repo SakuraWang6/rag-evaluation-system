@@ -77,6 +77,7 @@ Artifact 1.2 files and their internal readers are unchanged for offline
 forensics. Their old dynamic product projection is no longer the normal API or
 WebUI result authority.
 
-Phase 7 does not remove live pre-segmented execution compatibility. Removing
-`evaluation_corpus` from new formal Run creation and making Original DOCX the
-only formal route remains the separate Phase 8 cutover.
+Phase 8 now prevents new public pre-segmented Runs and makes Original DOCX the
+only formal creation route. The legacy execution implementations remain in
+their documented compatibility window; Artifact presentation remains
+persisted-only for both old and new Runs.

@@ -899,11 +899,10 @@ export interface AuthoringExport {
 export interface EvaluationDraft {
   draft_id?: string
   mode: 'basic' | 'advanced'
-  bundle_id: string | null
-  dataset_release_id?: string | null
-  system_id: string | null
-  profile_id: string | null
-  profile_version: string | null
+  dataset_release_id: string
+  system_id: string
+  profile_id: string
+  profile_version: string
   display_name: string
   adapter_overrides: Record<string, unknown>
   query_overrides: Record<string, unknown>
@@ -911,7 +910,6 @@ export interface EvaluationDraft {
   case_ids: string[] | null
   seed: number
   repetitions: number
-  formal: boolean
 }
 
 export interface SystemSummary {

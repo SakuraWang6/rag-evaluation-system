@@ -133,9 +133,15 @@ def main(argv: list[str] | None = None) -> int:
         print(service.systems.register(registration))
     elif args.command == "create-experiment":
         experiment = ExperimentSpec.model_validate_json(args.spec.read_text(encoding="utf-8"))
+        service.admit_new_public_experiment(
+            experiment, service.datasets.get(experiment.bundle_id)
+        )
         print(service.experiments.create(experiment))
     elif args.command == "run":
         experiment = service.experiments.get(args.experiment_id)
+        service.admit_new_public_experiment(
+            experiment, service.datasets.get(experiment.bundle_id)
+        )
         job = service.jobs.create(experiment)
         service.supervisor.run_once()
         print(service.jobs.get(job.job_id).model_dump_json(indent=2))

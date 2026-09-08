@@ -1,10 +1,10 @@
 # Run / Artifact 2.0
 
-- Status: implemented as the Phase 6 compatibility path
+- Status: implemented in Phase 6 and promoted to the formal native route through Phase 8
 - Write authority: Run / Orchestration
 - Evaluation authority: the persisted Phase 5 result
 - Read authority: immutable Artifact 2.0 files
-- Legacy authority during Phase 6: `RAGResult`, CaseResult, and Artifact 1.2 remain unchanged
+- Legacy authority: `RAGResult`, CaseResult, and Artifact 1.2 remain read-only compatibility records
 
 ## Owned boundary
 
@@ -120,8 +120,8 @@ existing checksum inventory also pins the new directory.
 
 Runs without a formal release pin or without a deterministic evaluation
 profile continue to produce only Artifact 1.2. Pre-segmented and Benchmark
-contract execution branches remain compatibility behavior until the Phase 8
-native cutover; they are not promoted to new formal routes by this phase.
+contract execution branches remain compatibility behavior after the Phase 8
+cutover; they are not available to new public formal Runs.
 
 ## Phase boundary
 
@@ -133,4 +133,7 @@ Phase 6 deliberately does not:
 - rescore historical artifacts;
 - implement derivative re-scoring or human-review artifacts.
 
-Those changes remain assigned to Phases 7 and 8.
+This list records the original Phase 6 scope boundary. Phase 7 subsequently
+made Artifact 2.0 the persisted-only API/WebUI authority, and Phase 8 closed
+new public pre-segmented Run creation without deleting historical readers or
+execution oracles.

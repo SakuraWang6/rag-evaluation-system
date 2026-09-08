@@ -73,10 +73,6 @@ export const api = {
   }),
   systems: () => request<SystemSummary[]>('/systems'),
   experiments: () => request<ExperimentSpec[]>('/experiments'),
-  createExperiment: (spec: ExperimentSpec) => request<ExperimentSpec>('/experiments', {
-    method: 'POST', body: JSON.stringify(spec),
-  }),
-  queueRun: (experimentId: string) => request<JobRecord>(`/experiments/${encodeURIComponent(experimentId)}/runs`, { method: 'POST' }),
   jobs: () => request<JobRecord[]>('/jobs'),
   cancelJob: (jobId: string) => request<JobRecord>(`/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }),
   runs: () => request<RunManifest[]>('/runs'),

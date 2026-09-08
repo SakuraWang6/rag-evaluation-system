@@ -44,7 +44,7 @@ def validate_comparison(
 
     if len(runs) < 2:
         return ComparisonDecision(requested, False, ("at least two runs are required",), False)
-    reasons = _base_reasons(runs)
+    reasons = _base_reasons(runs, summaries)
     if spec is not None:
         reasons.extend(_spec_reasons(runs, requested, spec))
     elif requested == ComparisonTier.STRICT_CONTROLLED:
@@ -72,14 +72,27 @@ def validate_comparison(
     )
 
 
-def _base_reasons(runs: list[RunManifest]) -> list[str]:
+def _base_reasons(
+    runs: list[RunManifest],
+    summaries: dict[str, dict[str, Any]] | None,
+) -> list[str]:
     reasons: list[str] = []
     for run in runs:
         if run.schema_version != 2 or run.producer != "rag_eval_platform":
             reasons.append(f"{run.run_id} is not a schema-v2 platform run")
         if run.status != RunStatus.COMPLETED:
             reasons.append(f"{run.run_id} is not a completed run")
-        if run.diagnostic_only or run.execution_view == "native-docx":
+        summary = summaries.get(run.run_id, {}) if summaries is not None else {}
+        declares_artifact_v2 = summary.get("artifact_contract_version") == "2.0"
+        artifact_v2 = (
+            declares_artifact_v2
+            and summary.get("availability") == "available"
+        )
+        if declares_artifact_v2 and not artifact_v2:
+            reasons.append(f"{run.run_id} Artifact 2.0 is not verified and available")
+        if not artifact_v2 and (
+            run.diagnostic_only or run.execution_view == "native-docx"
+        ):
             reasons.append(
                 f"{run.run_id} uses native DOCX diagnostic execution and cannot declare a comparison winner"
             )

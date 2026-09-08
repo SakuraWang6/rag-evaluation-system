@@ -16,7 +16,7 @@ from urllib.parse import unquote_to_bytes
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from rag_eval.authoring.models import (
@@ -36,7 +36,16 @@ from rag_eval.datasets.docx_render import render_docx_html
 from rag_eval.datasets.formal import FormalDatasetError
 from rag_eval.execution_provider import ExecutionRequest, cleanup_managed_run
 from rag_eval.jobs import TERMINAL_JOB_STATUSES
-from rag_eval.products import EvaluationDraft, SystemConnection, canonical_experiment
+from rag_eval.products import (
+    EvaluationDraft,
+    ProductMode,
+    SystemConnection,
+    canonical_experiment,
+)
+from rag_eval.runtime_admission import (
+    NewRunAdmissionError,
+    require_no_public_corpus_selector,
+)
 from rag_eval.service import PlatformService
 from rag_eval.storage.runs import safe_id
 from rag_eval.llm import (
@@ -73,6 +82,11 @@ class SystemConnectionRequest(APIModel):
     connection: SystemConnection
     secrets: dict[str, str] = {}
 
+    @model_validator(mode="after")
+    def validate_native_route(self) -> SystemConnectionRequest:
+        require_no_public_corpus_selector(self.connection.adapter_overrides)
+        return self
+
 
 class LLMProviderRequest(APIModel):
     provider_id: str
@@ -104,6 +118,35 @@ class LLMConfigurationRequest(APIModel):
 
 class EvaluationFinalizeRequest(APIModel):
     queue: bool = True
+
+
+class NativeEvaluationDraftRequest(APIModel):
+    """Normal product write contract for one release-bound native DOCX run."""
+
+    draft_id: str | None = None
+    mode: ProductMode = ProductMode.BASIC
+    dataset_release_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    system_id: str = Field(min_length=1)
+    profile_id: str = Field(min_length=1)
+    profile_version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+$")
+    display_name: str = ""
+    adapter_overrides: dict[str, Any] = Field(default_factory=dict)
+    query_overrides: dict[str, Any] = Field(default_factory=dict)
+    metric_overrides: dict[str, Any] = Field(default_factory=dict)
+    case_ids: list[str] | None = None
+    seed: int = 0
+    repetitions: int = Field(default=1, ge=1)
+
+    @model_validator(mode="after")
+    def validate_native_route(self) -> NativeEvaluationDraftRequest:
+        require_no_public_corpus_selector(self.adapter_overrides)
+        return self
+
+    def to_stored_draft(self) -> EvaluationDraft:
+        values = self.model_dump(mode="python")
+        if self.draft_id is None:
+            values.pop("draft_id")
+        return EvaluationDraft(**values, bundle_id=None, formal=False)
 
 
 class ComparisonRequest(APIModel):
@@ -1184,7 +1227,8 @@ def create_app(
     @app.post("/api/v1/experiments")
     async def create_experiment(experiment: ExperimentSpec) -> dict[str, Any]:
         try:
-            service.datasets.get(experiment.bundle_id)
+            bundle = service.datasets.get(experiment.bundle_id)
+            service.admit_new_public_experiment(experiment, bundle)
             if not service.system_resolver.exists(experiment.system_id):
                 raise FileNotFoundError(experiment.system_id)
             service.experiments.create(experiment)
@@ -1196,7 +1240,11 @@ def create_app(
     async def queue_run(experiment_id: str) -> dict[str, Any]:
         try:
             experiment = service.experiments.get(experiment_id)
+            bundle = service.datasets.get(experiment.bundle_id)
+            service.admit_new_public_experiment(experiment, bundle)
             job = service.jobs.create(experiment)
+        except NewRunAdmissionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         service.supervisor.notify()
@@ -1892,10 +1940,14 @@ def create_app(
         return [item.model_dump(mode="json") for item in service.products.drafts.list()]
 
     @app.post("/api/v1/product/evaluation-drafts")
-    async def save_evaluation_draft(draft: EvaluationDraft) -> dict[str, Any]:
+    async def save_evaluation_draft(
+        draft: NativeEvaluationDraftRequest,
+    ) -> dict[str, Any]:
         require_product()
         assert service.products is not None
-        return service.products.save_draft(draft).model_dump(mode="json")
+        return service.products.save_draft(draft.to_stored_draft()).model_dump(
+            mode="json"
+        )
 
     @app.get("/api/v1/product/evaluation-drafts/{draft_id}/preview")
     async def preview_evaluation_draft(draft_id: str) -> dict[str, Any]:
@@ -1933,43 +1985,38 @@ def _canonical_draft(service: PlatformService, draft_id: str) -> ExperimentSpec:
         raise ValueError("product layer is disabled")
     draft = service.products.get_draft(draft_id)
     if (
-        not (draft.bundle_id or draft.dataset_release_id)
+        not draft.dataset_release_id
         or not draft.system_id
         or not draft.profile_id
         or not draft.profile_version
     ):
-        raise ValueError("Dataset, System, and profile version are required before creating an evaluation")
-    if draft.dataset_release_id:
-        if service.formal_datasets is None:
-            raise ValueError("formal Dataset Releases are unavailable in this Platform mode")
-        bundle = service.formal_datasets.materialize_runtime_bundle(
-            draft.dataset_release_id, service.datasets
+        raise ValueError(
+            "Benchmark Release, System, and profile version are required "
+            "before creating an evaluation"
         )
-        # A formal Dataset Release is evaluated only through its immutable
-        # canonical-segment corpus.  Keeping this explicit in the frozen
-        # ExperimentSpec (rather than relying solely on the Bundle metadata)
-        # makes the LightRAG chunk -> segment acceptance contract visible and
-        # reproducible for every newly created evaluation.
-        draft = draft.model_copy(
-            update={
-                "adapter_overrides": {
-                    **draft.adapter_overrides,
-                    "evaluation_corpus": "canonical_segments",
-                }
-            }
+    if draft.bundle_id is not None:
+        raise ValueError(
+            "legacy Bundle drafts cannot create new evaluations; select a "
+            "Benchmark Release"
         )
-    else:
-        assert draft.bundle_id is not None
-        bundle = service.datasets.get(draft.bundle_id)
+    if service.formal_datasets is None:
+        raise ValueError(
+            "formal Dataset Releases are unavailable in this Platform mode"
+        )
+    bundle = service.formal_datasets.materialize_runtime_bundle(
+        draft.dataset_release_id, service.datasets
+    )
     connection = service.products.get_connection(draft.system_id)
     profile = service.products.profiles.get(draft.profile_id, draft.profile_version)
-    return canonical_experiment(
+    experiment = canonical_experiment(
         draft,
         connection,
         profile,
         case_ids=[item.case_id for item in bundle.questions],
         bundle_id=bundle.bundle_id,
     )
+    service.admit_new_public_experiment(experiment, bundle)
+    return experiment
 
 
 def _safe_extract_zip(archive: Path, target: Path) -> None:

@@ -17,6 +17,7 @@ remaining native gap, the destination, and the executable phase plan.
 | [`UNIFIED_EVALUATION_V2.md`](UNIFIED_EVALUATION_V2.md) | Phase 5 availability-driven extent scoring and proof-gated attribution |
 | [`RUN_ARTIFACT_V2.md`](RUN_ARTIFACT_V2.md) | Phase 6 immutable Run artifact, checksum graph, and persisted-only eligibility |
 | [`ARTIFACT_V2_PRESENTATION.md`](ARTIFACT_V2_PRESENTATION.md) | Phase 7 persisted-only Platform API and descriptor-driven WebUI |
+| [`NATIVE_FORMAL_CUTOVER.md`](NATIVE_FORMAL_CUTOVER.md) | Phase 8 native-DOCX public admission and compatibility window |
 | [`../decisions/0003-native-document-evaluation-v2.md`](../decisions/0003-native-document-evaluation-v2.md) | Accepted architecture decision |
 
 The Phase 1 executable baseline is

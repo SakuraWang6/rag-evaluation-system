@@ -134,6 +134,63 @@ def test_exploratory_never_declares_a_winner() -> None:
     assert decision.may_declare_winner is False
 
 
+def test_artifact_v2_native_runs_are_not_disqualified_by_legacy_route_labels() -> None:
+    first = manifest(
+        "run-1", execution_view="native-docx", diagnostic_only=True
+    )
+    second = manifest(
+        "run-2",
+        experiment_id="experiment-enhanced",
+        execution_view="native-docx",
+        diagnostic_only=True,
+    )
+    persisted = {
+        run.run_id: {
+            "artifact_contract_version": "2.0",
+            "availability": "available",
+            "metrics": {},
+            "leaderboard_eligibility": {
+                "eligible": True,
+                "reasons": [],
+            },
+        }
+        for run in (first, second)
+    }
+
+    decision = validate_comparison(
+        [first, second], ComparisonTier.TASK_COMPARABLE, summaries=persisted
+    )
+
+    assert decision.compatible is True
+    assert not any("native DOCX diagnostic" in reason for reason in decision.reasons)
+
+
+def test_corrupted_artifact_v2_cannot_bypass_legacy_route_restriction() -> None:
+    first = manifest("run-1", execution_view="native-docx", diagnostic_only=True)
+    second = manifest(
+        "run-2",
+        experiment_id="experiment-enhanced",
+        execution_view="native-docx",
+        diagnostic_only=True,
+    )
+    persisted = {
+        run.run_id: {
+            "artifact_contract_version": "2.0",
+            "availability": "corrupted",
+            "metrics": {},
+        }
+        for run in (first, second)
+    }
+
+    decision = validate_comparison(
+        [first, second], ComparisonTier.TASK_COMPARABLE, summaries=persisted
+    )
+
+    assert decision.compatible is False
+    assert any("Artifact 2.0 is not verified" in reason for reason in decision.reasons)
+    assert any("native DOCX diagnostic" in reason for reason in decision.reasons)
+
+
 def test_native_docx_diagnostic_is_never_winner_eligible() -> None:
     first = manifest("run-1")
     native = manifest(
@@ -253,6 +310,7 @@ def test_artifact_v2_comparison_requires_identical_metric_descriptors() -> None:
         summaries={
             "run-1": {
                 "artifact_contract_version": "2.0",
+                "availability": "available",
                 "metrics": {
                     "ranked_evidence_coverage@5": {
                         **shared,
@@ -262,6 +320,7 @@ def test_artifact_v2_comparison_requires_identical_metric_descriptors() -> None:
             },
             "run-2": {
                 "artifact_contract_version": "2.0",
+                "availability": "available",
                 "metrics": {
                     "ranked_evidence_coverage@5": {
                         **shared,

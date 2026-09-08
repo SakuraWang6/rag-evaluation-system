@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rag_eval.contracts.run import ExperimentSpec
 from rag_eval.datasets.bundle import case_selection_id
+from rag_eval.runtime_admission import require_no_public_corpus_selector
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.runs import safe_id
 
@@ -293,6 +294,7 @@ def canonical_experiment(
         raise ValueError("formal experiments must be created in Advanced with frozen research artifacts")
     adapter = deep_merge(profile.defaults["adapter_config"], connection.adapter_overrides)
     adapter = deep_merge(adapter, draft.adapter_overrides)
+    require_no_public_corpus_selector(adapter)
     query = deep_merge(profile.defaults["query_config"], connection.query_overrides)
     query = deep_merge(query, draft.query_overrides)
     metrics = deep_merge(profile.defaults["metric_config"], connection.metric_overrides)

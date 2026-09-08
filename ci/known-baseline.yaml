@@ -70,7 +70,11 @@ platform_pytest:
     - platform/tests/rag_eval_platform/test_jobs_and_api.py::test_api_keeps_system_registration_local_and_legacy_out
     - platform/tests/rag_eval_platform/test_authoring.py::test_authoring_api_publishes_and_removes_formal_catalog_version_without_erasing_history
     - platform/tests/rag_eval_platform/test_formal_release_lineage.py::test_lossless_release_materializes_a_release_pinned_runtime_bundle
-    - platform/tests/rag_eval_platform/test_product_layer.py::test_wizard_draft_compiles_to_existing_experiment_and_job_store
+    - platform/tests/rag_eval_platform/test_product_layer.py::test_wizard_draft_uses_a_lossless_formal_release_without_an_authoring_workspace
+    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_formal_release_preview_materializes_only_the_original_docx_for_ingestion
+    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_public_experiment_create_and_queue_reject_presegmented_routes
+    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_release_bound_public_experiment_rejects_modified_benchmark_content
+    - platform/tests/rag_eval_platform/test_comparison.py::test_artifact_v2_native_runs_are_not_disqualified_by_legacy_route_labels
   required_passed_node_ids_ci:
     - platform/tests/rag_eval_platform/test_worker_process.py::test_fake_adapter_runs_over_real_loopback_process
     - platform/tests/rag_eval_platform/test_worker_process.py::test_process_group_cancellation_ends_parser_descendants
