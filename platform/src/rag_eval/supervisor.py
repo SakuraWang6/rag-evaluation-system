@@ -13,6 +13,7 @@ from rag_eval.systems import SystemResolver
 from rag_eval.execution_provider import ExecutionProviderRegistry
 
 logger = logging.getLogger(__name__)
+_STOP_TIMEOUT_SECONDS = 5.0
 
 
 class JobSupervisor:
@@ -32,22 +33,36 @@ class JobSupervisor:
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
+        self._lifecycle_lock = threading.Lock()
 
     def start(self) -> None:
-        if self._thread is not None:
-            raise RuntimeError("supervisor is already running")
-        self.jobs.recover()
-        self._thread = threading.Thread(
-            target=self._loop, name="rag-eval-supervisor", daemon=True
-        )
-        self._thread.start()
+        with self._lifecycle_lock:
+            if self._thread is not None:
+                raise RuntimeError("supervisor is already running")
+            self._stop.clear()
+            self._wake.clear()
+            self.jobs.recover()
+            thread = threading.Thread(
+                target=self._loop, name="rag-eval-supervisor", daemon=True
+            )
+            self._thread = thread
+            thread.start()
 
     def stop(self) -> None:
-        self._stop.set()
-        self._wake.set()
-        if self._thread is not None:
-            self._thread.join(timeout=5)
-        self._thread = None
+        with self._lifecycle_lock:
+            thread = self._thread
+            if thread is None:
+                return
+            self._stop.set()
+            self._wake.set()
+        thread.join(timeout=_STOP_TIMEOUT_SECONDS)
+        with self._lifecycle_lock:
+            if thread.is_alive():
+                # Retain the thread reference so start() cannot create a
+                # second single-writer dispatcher while this one still runs.
+                raise RuntimeError("supervisor did not stop within the timeout")
+            if self._thread is thread:
+                self._thread = None
 
     def notify(self) -> None:
         self._wake.set()

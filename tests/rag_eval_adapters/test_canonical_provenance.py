@@ -6,6 +6,7 @@ from pathlib import Path
 
 from rag_eval.contracts.adapter import RAGEvidenceItem
 from rag_eval.contracts.dataset import GoldEvidence, ObjectLocator
+from rag_eval.evaluation import evidence as evidence_module
 from rag_eval.evaluation.evidence import CorpusEvidenceIndex, match_evidence
 from rag_eval_lightrag_adapter.adapter import LightRAGAdapter
 from rag_eval_lightrag_adapter.canonical_provenance import (
@@ -160,7 +161,13 @@ def test_gold_matches_projected_full_object_without_gold_aware_mapping(
     adapter = LightRAGAdapter()
     adapter._source_by_file = {"source.txt": "doc-1"}
     adapter._runtime_provenance_by_chunk = manifest["runtime_chunks"]
-    adapter._provenance_map_digest = "map-digest"
+    map_digest = evidence_module._mapping_digest(manifest)
+    adapter._provenance_map_digest = map_digest
+    assert manifest["object_catalog"]["doc-1:block:00002"]["mapping_status"] == "mapped"
+    assert manifest["object_catalog"]["doc-1:block:00002"]["expected_extent"] == {
+        "start": SOURCE.index("Beta"),
+        "end": SOURCE.index("Beta") + len("Beta statement is deliberately long."),
+    }
 
     items = adapter._evidence_items(
         [
@@ -177,22 +184,31 @@ def test_gold_matches_projected_full_object_without_gold_aware_mapping(
         "raw",
     )
 
-    assert len(items) == 2
-    assert {item.rank for item in items} == {1}
+    assert len(items) == 1
+    item = items[0]
+    assert item.rank == 1
+    assert item.native_id == "runtime-all"
+    assert item.locator is None
+    assert item.metadata["canonical_object_ids"] == [
+        "doc-1:block:00001",
+        "doc-1:block:00002",
+    ]
     gold = GoldEvidence(
         evidence_id="gold-beta",
         document_id="doc-1",
         locator=ObjectLocator(object_type="block", object_id="doc-1:block:00002"),
         canonical_value="Beta statement is deliberately long.",
     )
-    match = next(
-        (
-            match_evidence(item, gold, CorpusEvidenceIndex({"doc-1": SOURCE}))
-            for item in items
-            if item.locator == gold.locator
-        ),
-        None,
+    corpus = CorpusEvidenceIndex.from_provenance_map(
+        manifest,
+        documents={"doc-1": SOURCE},
+        source_digests={
+            "doc-1": hashlib.sha256(SOURCE.encode("utf-8")).hexdigest()
+        },
+        expected_map_digest=map_digest,
     )
+    assert corpus.has_provenance_catalog
+    match = match_evidence(item, gold, corpus)
     assert match is not None
     assert match.kind == "exact_provenance"
 
@@ -384,11 +400,13 @@ def test_structure_bridge_preserves_hierarchy_table_topology_and_round_trips(
         ],
         "raw",
     )
-    cell_item = next(
-        item
-        for item in items
-        if item.metadata["canonical_object_id"] == "doc-1:cell:0000200001"
+    assert len(items) == 1
+    item = items[0]
+    cell_edge = next(
+        edge
+        for edge in item.metadata["canonical_edges"]
+        if edge["object_id"] == "doc-1:cell:0000200001"
     )
-    assert cell_item.metadata["runtime_structure"]["heading_path"] == "Alpha"
-    assert cell_item.metadata["canonical_structure"]["row_id"] == row_2
-    assert RAGEvidenceItem.model_validate(cell_item.model_dump()).metadata == cell_item.metadata
+    assert item.metadata["runtime_structure"]["heading_path"] == "Alpha"
+    assert cell_edge["structure"]["row_id"] == row_2
+    assert RAGEvidenceItem.model_validate(item.model_dump()).metadata == item.metadata

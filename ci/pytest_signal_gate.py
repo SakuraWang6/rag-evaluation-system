@@ -57,6 +57,23 @@ def _expected_failed(config: Mapping[str, Any]) -> set[str]:
     }
 
 
+def _require_named_passes(
+    config: Mapping[str, Any], recorder: OutcomeRecorder, *, profile: str
+) -> list[str]:
+    required = {str(value) for value in config.get("required_passed_node_ids", [])}
+    if profile == "ci":
+        required.update(
+            str(value)
+            for value in config.get("required_passed_node_ids_ci", [])
+        )
+    not_passed = {
+        node_id: recorder.outcomes.get(node_id, "missing")
+        for node_id in required
+        if recorder.outcomes.get(node_id) != "passed"
+    }
+    return [f"required nodes did not pass: {not_passed}"] if not_passed else []
+
+
 def validate_outcomes(
     section: str,
     config: Mapping[str, Any],
@@ -98,6 +115,7 @@ def validate_outcomes(
                 errors.append(
                     f"forbidden {forbidden} outcomes: {sorted(by_outcome[forbidden])}"
                 )
+        errors.extend(_require_named_passes(config, recorder, profile=profile))
     elif section == "adapter_dirty_tests":
         passed = len(by_outcome.get("passed", set()))
         if passed != int(config["expected_passed"]):
@@ -109,20 +127,14 @@ def validate_outcomes(
         }
         if non_passed:
             errors.append(f"non-passing outcomes: {non_passed}")
+        errors.extend(_require_named_passes(config, recorder, profile=profile))
     elif section == "platform_pytest":
         minimum_key = "minimum_passed_ci" if profile == "ci" else "minimum_passed_local"
         minimum_passed = int(config[minimum_key])
         passed = len(by_outcome.get("passed", set()))
         if passed < minimum_passed:
             errors.append(f"passed count {passed} < {minimum_passed}")
-        required = {str(value) for value in config["required_passed_node_ids"]}
-        not_passed = {
-            node_id: recorder.outcomes.get(node_id, "missing")
-            for node_id in required
-            if recorder.outcomes.get(node_id) != "passed"
-        }
-        if not_passed:
-            errors.append(f"required nodes did not pass: {not_passed}")
+        errors.extend(_require_named_passes(config, recorder, profile=profile))
         allowed_skips = (
             set()
             if profile == "ci"

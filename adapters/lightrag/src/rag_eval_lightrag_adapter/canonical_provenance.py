@@ -559,6 +559,7 @@ def runtime_chunk_mapping(
     base: dict[str, Any] = {
         "runtime_chunk_id": chunk_id,
         "document_id": document.document_id,
+        "source_sha256": document.source_sha256,
         "content_sha256": sha256_text(content),
         "provenance_status": "missing",
         "canonical_objects": [],
@@ -643,6 +644,11 @@ def build_provenance_manifest(
         item.object_id: {
             **item.as_dict(),
             "document_id": document_id,
+            # Authoring support status and runtime mapping completeness are
+            # separate facts.  The evaluator accepts this catalog as a
+            # trusted full-object witness only when the latter is explicit.
+            "mapping_status": "mapped",
+            "expected_extent": {"start": item.start, "end": item.end},
         }
         for document_id, document in documents.items()
         for item in document.objects
