@@ -1,50 +1,44 @@
-# RAG Evaluation Web UI
+# RAG Evaluation WebUI
 
-Standalone React UI for `rag_eval_platform`. It reads only schema-v2 runs
-produced by `rag_eval_platform`; legacy LightRAG evaluation directories are
-never discovered or compared.
+This React application is the browser client for `rag_eval_platform`. It
+creates DOCX-backed Benchmark workflows and renders persisted Artifact 2.0
+results.
 
 ```bash
 npm ci
 npm run dev -- --host 127.0.0.1 --port 4178
 ```
 
-The API root defaults to `http://127.0.0.1:8765/api/v1` and can be changed at
-build time with `VITE_RAG_EVAL_API`. LightRAG's WebUI links here through
-`VITE_RAG_EVAL_UI_URL` but does not embed this application.
+The API root defaults to `http://127.0.0.1:8765/api/v1`; set it at build time
+with `VITE_RAG_EVAL_API`.
 
-The interface deliberately distinguishes `unavailable`, `not_applicable`,
-`error`, observed-empty output, and an observed numeric zero. Retrieval metrics
-always name their stage. V1 exposes deterministic groundedness and unsupported
-answer rate; it does not expose a hallucination-rate label.
+## Product workflow
 
-## Current product workflow
+1. Upload an Original DOCX and complete Canonical target, question, answer and
+   Gold review.
+2. Seal an immutable Benchmark Release.
+3. Add and test a LightRAG or RAG-Anything system.
+4. Create an evaluation from the Release and a fully resolved system/query
+   profile.
+5. Inspect the Run, cases, evidence flow, metrics, failure attribution and
+   integrity result.
 
-The single current mainline is:
+The RAG owns native parsing, chunking, indexing and retrieval. The WebUI never
+submits Platform-generated chunks as an evaluation corpus.
 
-```text
-Private DOCX → Platform Authoring → reviewer-approved Dataset Bundle
-             → RAG Evaluation
+## Presentation boundary
+
+Result components consume schema-`2.0` Artifact views. They distinguish an
+observed numeric zero from `unavailable`, `not_applicable`, execution error,
+observed-empty output and corrupted evidence. Stage status and completeness
+are rendered independently.
+
+The WebUI does not import RAG-specific logic, infer provenance, execute a
+scorer, reconstruct failure attribution, or calculate leaderboard eligibility.
+Missing Run IDs return the Platform's normal `404`; corrupted artifacts remain
+diagnostic-only.
+
+```bash
+npm test
+npm run build
 ```
-
-Use **Create from document** to upload the private DOCX, inspect analysis and
-canonical evidence, review candidates, and export/register the approved
-canonical-text Bundle. The WebUI displays the workflow; the Platform remains
-the owner of Authoring state, Gold, metrics, and run semantics. Native-DOCX is
-diagnostic only. The historical UI audit documents are retained under
-`docs/archive/reports/`.
-
-With Product Layer enabled (the default), use **Overview → New Evaluation**:
-
-1. Create a dataset from a document and complete the private DOCX
-   Authoring/review flow, then export/register the canonical-text Bundle. The
-   dataset page also supports importing an already sealed Bundle ZIP and
-   creating a small dataset from pasted TXT/Markdown.
-2. Add a standard LightRAG or RAG-Anything system and test its Worker handshake.
-3. Select Dataset, System, Model, Embedding, and Query Mode.
-4. Review the fully expanded canonical ExperimentSpec, then queue the run.
-
-Basic mode does not expose adapter factories, Python paths, environment files,
-or Worker lifecycle. Advanced retains ExperimentSpec and legacy/custom-adapter
-workflows. All visible product text is supplied by the shared zh-CN/en-US i18n
-layer.

@@ -79,7 +79,7 @@ platform_pytest:
   pytest: "9.1.1"
   test_paths:
     - platform/tests
-  expected_collected: 316
+  expected_collected: 318
   required_passed_node_ids:
     - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_verified_derivation_and_truncated_prefix
     - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_observed_partial_stages_with_rank_gaps
@@ -103,6 +103,8 @@ platform_pytest:
     - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_public_experiment_create_and_queue_reject_presegmented_routes
     - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_release_bound_public_experiment_rejects_modified_benchmark_content
     - platform/tests/rag_eval_platform/test_comparison.py::test_artifact_v2_runs_compare_without_any_legacy_route_projection
+    - platform/tests/rag_eval_platform/test_documentation_authority.py::test_long_term_documentation_has_one_native_v2_authority
+    - platform/tests/rag_eval_platform/test_documentation_authority.py::test_maintained_documentation_links_are_portable_and_resolve
   required_passed_node_ids_ci:
     - platform/tests/rag_eval_platform/test_worker_process.py::test_fake_adapter_runs_over_real_loopback_process
     - platform/tests/rag_eval_platform/test_worker_process.py::test_process_group_cancellation_ends_parser_descendants

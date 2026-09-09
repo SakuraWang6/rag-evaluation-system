@@ -147,17 +147,10 @@ comparison, review, and WebUI read paths switch in one accepted change. No
 committed state may route readers exclusively to Artifact 2.0 while successful
 runs are still allowed to omit it.
 
-## Executable characterization boundary
+## Executable conformance boundary
 
-Before production changes, the existing correct Native v2 behaviors are
-grouped under the permanent pytest marker `native_v2_characterization`:
-
-```bash
-uv run --project platform --extra test --frozen --python 3.12.12 \
-  pytest -q -m native_v2_characterization platform/tests
-```
-
-The marked suite protects:
+The required workflow runs the exact Platform collection and shared Adapter
+conformance gates. The maintained tests protect:
 
 - immutable-release projection of exactly one original DOCX;
 - rejection of new pre-segmented public runs;
@@ -168,9 +161,10 @@ The marked suite protects:
 - `UNAVAILABLE` rather than guessed zero or failure;
 - WebUI and core scoring independence from RAG names and corpus modes.
 
-These are target-v2 characterization tests, not a promise to retain the legacy
-setup currently used by some fixtures. Fixtures may be rewritten as contracts
-are retired, but the marked observable assertions remain required.
+The CI baseline pins exact collection plus named critical nodes, and rejects
+unlisted test removal. Adapter suites validate Direct Worker 2.0 and the shared
+observation TCK. Schema export, package installation, model-free Worker
+lifecycle and Node 22 WebUI checks are also required.
 
 ## Consequences
 

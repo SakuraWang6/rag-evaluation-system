@@ -1,6 +1,6 @@
 # ADR 0002: Architecture Change Envelope
 
-- Status: Accepted
+- Status: Superseded in part by ADR 0004
 - Date: 2026-09-08
 - Scope: Evaluation System architecture changes after signal recovery
 
@@ -14,11 +14,11 @@ evaluation semantics while still looking structurally successful.
 
 ## Stable boundaries
 
-The following remain authoritative unless a separate versioned decision and
-compatibility plan explicitly change them:
+The following remain authoritative unless a separate versioned decision
+explicitly changes them:
 
-- Wire Protocol 1.0 and its lifecycle/error semantics.
-- Artifact Contract 1.2, immutable run artifacts, and verification behavior.
+- Direct Worker 2.0 and its lifecycle/error semantics.
+- Artifact 2.0, immutable Run artifacts, and verification behavior.
 - Gold/scorer data never enters a Worker source sandbox.
 - Runtime evidence-item cardinality and rank are not expanded by canonical
   provenance mappings (ADR 0001).
@@ -64,8 +64,8 @@ changes before moving implementation.
 3. Move one ownership surface at a time without changing public outputs.
 4. Run the aggregate required gate and compare the exact Adapter/Platform
    baselines.
-5. If semantics must change, stop the refactor and create a separate ADR,
-   schema/version decision, and migration plan.
+5. If semantics must change, stop the refactor and create a separate ADR and
+   schema/version decision.
 
 ## Non-goals
 

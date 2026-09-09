@@ -1,66 +1,58 @@
-# WebUI Quick Start
+# Native v2 Quick Start
 
-This route does not require the CLI, an adapter factory, a Python path, or a
-hand-authored `ExperimentSpec`.
+## Start the local application
 
-## Start
+Install the Platform and WebUI dependencies. From `platform/`, run:
 
-From the Platform checkout, run `./scripts/start-local.sh`, then open
-`http://127.0.0.1:4178`.
+```bash
+./scripts/start-local.sh
+```
 
-The local administrator starts Platform with the standard Adapter runtime
-already selected (for example,
-`RAG_EVAL_LIGHTRAG_WORKER_PYTHON=/path/to/worker-python`). This is a service
-configuration, not a Basic user input: the WebUI neither shows nor stores the
-Python path in its canonical ExperimentSpec.
+Open `http://127.0.0.1:4178`. The API defaults to
+`http://127.0.0.1:8765/api/v1`.
 
-## Complete the first run
+## Create and evaluate a Benchmark
 
-1. On **Overview**, choose **Create from document** and upload the private
-   DOCX. Inspect analysis and canonical evidence, discover targets, resolve
-   candidates, and complete reviewer decisions before creating an immutable
-   Benchmark Release. Existing Bundle ZIP and small TXT/Markdown flows remain
-   visible as legacy/development resources, but cannot start a new formal run.
-2. Choose **Add RAG system**. In Basic mode select LightRAG or RAG-Anything,
-   give it a friendly name, keep **Local process** selected, save, then choose
-   **Test connection**. The Overview runtime check becomes ready only after a
-   successful worker handshake.
-3. Choose **New evaluation**. Select a runnable Benchmark Release and RAG
-   system, then choose both a generation model and an embedding model. Query
-   mode is optional. Review the fully expanded configuration and choose
-   **Confirm and run**. The Platform submits the Release-pinned Original DOCX;
-   a missing model identity or non-native runtime projection is rejected before
-   a run can be queued.
-4. Open **Runs** and select the run. Inspect integrity, metrics, Cases, and
-   the question → retrieval → context → answer → evaluation evidence flow.
+1. Choose **Create from document** and upload one DOCX.
+2. Inspect Canonical analysis and discovered targets. Resolve candidate
+   questions, answers and evidence, then complete the required reviews.
+3. Seal an immutable Benchmark Release.
+4. Choose **Add RAG system**, select LightRAG or RAG-Anything, save it and run
+   **Test connection**.
+5. Choose **New evaluation**, select the Release and RAG system, then resolve
+   the generation model, embedding model and query settings.
+6. Review the expanded configuration and choose **Confirm and run**.
+7. Open the Run to inspect Artifact integrity, metric availability, cases,
+   evidence flow and proof-gated failure attribution.
 
-Basic mode uses immutable versioned SystemProfile defaults. Even values not
-shown in Basic are fully expanded and frozen in the generated
-`ExperimentSpec` before the existing RunExecutor starts. The RAG owns native
-parsing, chunking, indexing, retrieval, and context construction; the adjacent
-Canonical Catalog is used only for observation and evidence localization.
+The Platform rejects the request before queueing if the Release does not bind
+one Original DOCX, the System/Worker profile is unresolved, query or resource
+configuration is incomplete, or a non-native input route is requested.
 
-## If something fails
+## Interpret results
 
-- **Docker service is not running**: select Local process for the first run,
-  or start Docker Desktop/OrbStack before testing the Docker connection.
-- **Model runtime is unavailable**: start the configured local model service
-  and make sure the selected model is installed, then test the system again.
-- **RAG-Anything Docker is unavailable**: build the standard
-  `rag-eval-adapter-rag-anything:0.1.0` image from the workspace root before
-  testing the Docker system. Its image includes the MinerU runtime required by
-  RAG-Anything's parser health check.
-- **Dataset Bundle cannot be imported**: upload one ZIP containing a valid
-  Bundle root and intact checksums. ZIP paths and symlinks that are unsafe are
-  rejected. Imported Bundles are inspection/compatibility resources and do not
-  replace the Benchmark Release required by **New evaluation**.
-- **Connection test fails**: use the technical details only for diagnosis;
-  correct the local RAG runtime or adapter installation, then retest.
+- `observed` and numeric zero mean the metric was proved and its value is zero.
+- `unavailable` means the exact value could not be proved; it is not zero.
+- `truncated` may still support an `@K` metric when the verified prefix reaches
+  K.
+- `partial`, `unsupported`, `unobserved`, `failed` and `corrupted` preserve
+  different observation meanings.
+- Comparison requires equal persisted metric descriptor digests.
 
-## Advanced
+The WebUI reads these facts from Artifact 2.0 and does not rescore a Run.
 
-Local filesystem path registration is available through the CLI/CI workflow;
-legacy/custom adapters and explicit historical Replay are Advanced workflows.
-Historical `ExperimentSpec` and Artifact 1.2 records remain readable, but new
-public creation cannot select a pre-segmented corpus. New formal runs use the
-same Wire 2.0, Unified Evaluation, and Artifact 2.0 contracts regardless of RAG.
+## Common failures
+
+- **Connection test fails:** verify the selected Worker environment contains
+  the Adapter, Platform package and pinned RAG runtime.
+- **Model identity is rejected:** resolve an immutable model/revision digest;
+  a display name or mutable tag is not a formal identity.
+- **A metric is unavailable:** inspect the stage status, proved prefix and
+  provenance diagnostics. Do not increase a displayed value manually.
+- **Artifact is corrupted:** use `rag-eval verify-run RUN_ID`; repair the
+  execution source and create another Run rather than rewriting the Artifact.
+- **Run is not leaderboard eligible:** ensure every case proves every formal
+  metric under identical descriptors.
+
+For authoring policy, see [Benchmark Authoring](BENCHMARK_AUTHORING.md). For
+system boundaries, see the [Current Architecture](../../docs/architecture/CURRENT_ARCHITECTURE.md).

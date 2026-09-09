@@ -1,9 +1,12 @@
 # ADR 0003: Native Document Evaluation v2
 
-- Status: Accepted
+- Status: Superseded in part by ADR 0004
 - Date: 2026-09-08
 - Scope: Native-DOCX evaluation architecture, Wire 2.0, Artifact 2.0, and migration policy
 - Baseline revision: `3cfcb64`
+- Current authority: ADR 0004 supersedes this ADR's compatibility-reader,
+  migration-window and retained-format decisions. The four-layer ownership,
+  Canonical Gold, observation and evaluation semantics remain authoritative.
 
 ## Context
 
@@ -197,10 +200,10 @@ a separately versioned derivative artifact.
 
 ### Migration and retirement
 
-Migration follows the phase protocol in
-`docs/architecture/MIGRATION_PLAN.md`: characterization first, compatibility or
-shadow path, old system kept runnable, focused and aggregate tests, an explicit
-exit gate, one commit, then acceptance before the next phase.
+The original migration sequence is preserved in Git history at this ADR's
+baseline revision. It used characterization, compatibility/shadow paths,
+focused and aggregate tests, explicit exit gates and one accepted commit per
+phase. ADR 0004 supersedes the compatibility and retirement policy below.
 
 `canonical_segments` and `benchmark_segments` remain characterization oracles
 and historical readers during migration. After native cutover they stop

@@ -1,6 +1,6 @@
 # ADR 0001: Runtime Evidence Cardinality and Prompt Trace
 
-- Status: Accepted
+- Status: Accepted; current types updated by ADR 0003 and ADR 0004
 - Date: 2026-09-08
 - Owners: Platform contracts and LightRAG Adapter
 
@@ -19,14 +19,11 @@ workspace migration could not silently choose a semantic authority.
 ## Decision
 
 1. Runtime retrieval output owns evidence-item identity, cardinality, and rank.
-   One runtime item remains one `RAGEvidenceItem` at each observable stage.
-2. A runtime item may carry zero, one, or many verified canonical provenance
-   edges. Multiple edges are represented by `canonical_object_ids`,
-   `canonical_edges`, and related plural metadata; they are not separately
-   ranked retrieval items.
-3. `RAGEvidenceItem.locator` is set only for exactly one unambiguous, fully
-   covered canonical object. Matchers use verified plural IDs when the locator
-   is intentionally absent.
+   One runtime item remains one `ObservedStageItem` at each observable stage.
+2. A runtime item may carry zero, one, or many verified `ProvenanceEdge`
+   references. Multiple edges are not separately ranked retrieval items.
+3. Canonical identity and extent live on receipt-backed provenance edges, not
+   on a best-effort locator attached to the runtime item.
 4. LightRAG declares `prompt_trace = true` because it returns the rendered
    generation prompt observed on the actual query path. This capability does
    not include chain-of-thought or private model state.
@@ -37,14 +34,12 @@ workspace migration could not silently choose a semantic authority.
 
 ## Evidence
 
-- `adapters/lightrag/src/rag_eval_lightrag_adapter/adapter.py` explicitly keeps
-  canonical edges on one runtime item to preserve top-k/rank semantics.
-- `platform/src/rag_eval/evaluation/evidence.py` matches plural
-  `canonical_object_ids`.
-- `platform/src/rag_eval/evaluation/metrics.py` applies cutoffs to runtime item
-  ranks.
-- `adapters/lightrag/tests/test_runtime_docx_and_trace.py` characterizes both
-  one-item/many-edge behavior and the rendered prompt trace.
+- `rag_eval.contracts.observation.ObservedStageItem` keeps native identity and
+  rank separate from plural provenance-edge references.
+- `rag_eval.evaluation.unified` applies cutoffs to native ranks and unions
+  verified canonical extents.
+- LightRAG native-observation tests cover one-item/many-edge behavior and the
+  rendered prompt trace.
 
 ## Consequences
 
@@ -53,10 +48,10 @@ workspace migration could not silently choose a semantic authority.
 - Canonical provenance can improve exact matching without inflating retrieval
   counts or changing ranks.
 - Any future per-canonical-object ranking requires an explicit versioned
-  contract decision, metric migration, and compatibility plan.
+  contract and metric decision.
 
 ## Non-goals
 
-This decision does not redesign provenance, lineage, SegmentTrace, Gold
-matching, ranking, or evaluation metrics. It records the existing observable
-behavior as the single authority.
+This decision does not authorize an Adapter to change runtime rank or make
+provenance part of Gold authoring. ADR 0003 and ADR 0004 own the current
+Unified Trace and evaluation contracts.

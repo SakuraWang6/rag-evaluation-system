@@ -1,35 +1,50 @@
-# Evaluation Architecture v2
+# Evaluation Architecture
 
-ADR 0004 is the current decision authority for the Native v2-only convergence.
-ADR 0003 remains the architectural foundation and migration history, but its
-Wire 1, Artifact 1.2, compatibility-reader, and retirement-window decisions
-are superseded. These documents separate the audited current state, historical
-explanation, destination, and executable phase plan.
+This directory contains the maintained Native v2 architecture. The current
+policy authority is [ADR 0004](../decisions/0004-native-v2-only-convergence.md);
+[ADR 0003](../decisions/0003-native-document-evaluation-v2.md) defines the
+four-layer foundation but its migration and compatibility decisions are
+superseded.
 
-| Document | Role |
+## Current authority
+
+| Document | Owner and scope |
 | --- | --- |
-| [`CURRENT_ARCHITECTURE_AUDIT.md`](CURRENT_ARCHITECTURE_AUDIT.md) | Evidence-backed current implementation audit |
-| [`UNIFIED_OBSERVATION_CONTRACT.md`](UNIFIED_OBSERVATION_CONTRACT.md) | Wire 2.0 observation, provenance, and transformation contract |
-| [`MULTI_CORPUS_HISTORY.md`](MULTI_CORPUS_HISTORY.md) | Why the three corpus modes appeared and what each preserved |
-| [`NATIVE_DOCUMENT_GAP_ANALYSIS.md`](NATIVE_DOCUMENT_GAP_ANALYSIS.md) | Remaining native provenance and observability gaps |
-| [`TARGET_ARCHITECTURE.md`](TARGET_ARCHITECTURE.md) | Normative four-layer destination and semantic rules |
-| [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md) | Phase-by-phase implementation, gates, commits, and rollback |
-| [`CANONICAL_CONFORMANCE.md`](CANONICAL_CONFORMANCE.md) | Phase 2 Snapshot identity and Platform-owned Gold admission |
-| [`LIGHTRAG_NATIVE_OBSERVATION.md`](LIGHTRAG_NATIVE_OBSERVATION.md) | Phase 4 native runtime catalog, provenance receipts, and Wire 2.0 shadow |
-| [`UNIFIED_EVALUATION_V2.md`](UNIFIED_EVALUATION_V2.md) | Phase 5 availability-driven extent scoring and proof-gated attribution |
-| [`RUN_ARTIFACT_V2.md`](RUN_ARTIFACT_V2.md) | Phase 6 immutable Run artifact, checksum graph, and persisted-only eligibility |
-| [`ARTIFACT_V2_PRESENTATION.md`](ARTIFACT_V2_PRESENTATION.md) | Phase 7 persisted-only Platform API and descriptor-driven WebUI |
-| [`NATIVE_FORMAL_CUTOVER.md`](NATIVE_FORMAL_CUTOVER.md) | Phase 8 native-DOCX public admission and compatibility window |
-| [`../decisions/0004-native-v2-only-convergence.md`](../decisions/0004-native-v2-only-convergence.md) | Current accepted convergence and compatibility decision |
-| [`../decisions/0003-native-document-evaluation-v2.md`](../decisions/0003-native-document-evaluation-v2.md) | Architectural foundation and migration-era decision history |
+| [Current Architecture](CURRENT_ARCHITECTURE.md) | End-to-end control flow, ownership and supported boundaries |
+| [Canonical Conformance](CANONICAL_CONFORMANCE.md) | Canonical identity, Gold eligibility and evidence coordinates |
+| [Unified Observation Contract](UNIFIED_OBSERVATION_CONTRACT.md) | Direct Worker 2.0, stage observation, provenance and transformations |
+| [Unified Evaluation](UNIFIED_EVALUATION_V2.md) | Evidence aggregation, metric availability and proof-gated failure attribution |
+| [Run / Artifact 2.0](RUN_ARTIFACT_V2.md) | Resolved plan, orchestration state, publication and integrity |
+| [Artifact Presentation](ARTIFACT_V2_PRESENTATION.md) | Persisted-only result API, report, comparison, review and WebUI |
+| [LightRAG Observation](LIGHTRAG_NATIVE_OBSERVATION.md) | LightRAG-specific runtime observation proof boundary |
+| [RAG-Anything Observation](RAG_ANYTHING_NATIVE_OBSERVATION.md) | RAG-Anything-specific runtime observation proof boundary |
 
-The current convergence characterization gate is:
+Benchmark authoring and operation are documented separately in the
+[Benchmark Authoring Guide](../../platform/docs/BENCHMARK_AUTHORING.md) and
+[Quick Start](../../platform/docs/QUICK_START.md).
 
-```bash
-uv run --project platform --extra test --frozen --python 3.12.12 \
-  pytest -q -m native_v2_characterization platform/tests
-```
+## Supported contracts
 
-The earlier `tests/fixtures/native_evaluation_v2/behavior-baseline.json` and
-its Adapter test remain migration-era evidence until the test-retirement phase;
-they do not define the supported post-convergence contract.
+The supported execution and presentation contracts are Direct Worker 2.0,
+`ResolvedRunPlanV2`, `RunRecordV2`, `UnifiedTrace`, Unified Evaluation,
+Artifact 2.0 and presentation schema 2.0. There is no runtime negotiation,
+pre-segmented execution, historical replay/rescore, or reader for earlier Run
+formats.
+
+Version numbers used by active Canonical, research or Benchmark data models
+are owned by those contracts. A `1.x` internal version is not evidence of an
+earlier Worker or Run format.
+
+## Decision record
+
+- [ADR 0001](../decisions/0001-runtime-evidence-cardinality-and-prompt-trace.md)
+  records runtime evidence cardinality and prompt-trace ownership.
+- [ADR 0002](../decisions/0002-architecture-change-envelope.md) records the
+  original change envelope; its format-stability clauses are superseded.
+- [ADR 0003](../decisions/0003-native-document-evaluation-v2.md) establishes
+  Native DOCX, Platform-owned Gold and proof-driven evaluation.
+- [ADR 0004](../decisions/0004-native-v2-only-convergence.md) makes Native v2
+  the exclusive runtime, persistence and presentation authority.
+
+Git history preserves completed plans, audits and phase reports. They are not
+maintained as a second documentation authority.

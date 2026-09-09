@@ -1,37 +1,32 @@
-# LightRAG evaluation adapter
+# LightRAG Evaluation Adapter
 
-This package runs inside an Adapter Worker process. It owns a run-scoped
-LightRAG API child process and translates Wire Protocol 1.0 requests into
-LightRAG ingestion and query calls.
-
-It is downstream of Platform Authoring: a private DOCX is authored and
-reviewed in the Platform, exported as a sealed Dataset Bundle, and only then
-provided to this Worker. Authoring, Gold, metrics, and comparison remain
-outside this package.
-
-The platform never imports this package or `lightrag`. Register the factory as:
+This package runs LightRAG behind the direct Worker 2.0 protocol. Register its
+factory as:
 
 ```text
 rag_eval_lightrag_adapter:create_worker_definition
 ```
 
-Version 0.1 intentionally supports the `naive` query mode only. That is the
-first LightRAG mode whose native vector, post-ranking, and final-context stages
-can all be observed without assigning false semantics to KG entity/relation
-retrieval.
+`prepare` uploads the checksum-pinned Original DOCX to a run-scoped LightRAG
+runtime, waits for native ingestion, validates the persisted chunk catalog and
+returns `PreparedSystemV2`. `query` calls the native query path once and
+returns `AdapterRunResultV2` with the answer and `UnifiedTrace`.
 
-For `source_document`, the Adapter also emits an additive Wire 2.0 native
-observation under `RAGResult.trace.wire_v2_native_observation`. It is built
-from the authoritative persisted chunk store and the same LightRAG query
-response used by Wire 1.0. Native IDs, ranks, content, scores, source pins,
-lineage, canonical coverage, and forward/reverse receipts are validated; a
-failure degrades only the shadow observation and never changes LightRAG's
-native answer. The Adapter does not read Gold or determine Gold Eligibility.
+The Adapter observes exact native chunk IDs, rank, content, score, source
+identity and lineage. It maps runtime content to the adjacent Canonical
+Catalog by verified native lineage or deterministic structural crosswalk.
+Duplicate witnesses, inconsistent spans, content drift and invalid receipts
+fail closed. The Adapter never reads Gold or changes Gold eligibility.
 
-`legacy` is the default profile: exact-ID, table augmentation, structured
-ranking and reranking are disabled. `structured` is an explicit experiment
-profile. Reranking requires an explicit `rerank_model`; the Worker never
-inherits it from a shell. Generation model, temperature, seed, prompt and
-response type are explicit config and cache use is disabled/reported for
-latency-controlled runs. These profiles are retained for reproducible
-diagnostics; no ranking optimization is part of the consolidation baseline.
+The supported query mode is `naive`. Runtime profiles such as `legacy` and
+`structured` are LightRAG configuration variants, not evaluation routes or
+result formats. The observation profile declares candidate-to-ranked lineage
+as `identity_subset` only when that relation can be proved; profiles with
+injected or hidden candidates declare the transition `unobservable`.
+
+One runtime chunk may prove several canonical objects, and several chunks may
+union to cover one paragraph, logical cell or table. Physical cells and merge
+topology remain proof material rather than separately ranked evidence.
+
+See the [LightRAG observation proof boundary](../../docs/architecture/LIGHTRAG_NATIVE_OBSERVATION.md)
+and the [shared Adapter contract](../README.md).

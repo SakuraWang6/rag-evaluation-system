@@ -1,14 +1,33 @@
-# Canonical Conformance v1
+# Canonical Benchmark and Conformance
 
-Phase 2 makes Gold eligibility a property of the Platform-owned Canonical
-Snapshot. It is not an Adapter admission result.
+## Authority
 
-## Authority and artifacts
+The Platform alone decides whether source evidence is stable enough to become
+Gold. `rag_eval.canonical.conformance.CANONICAL_GOLD_ELIGIBILITY_MATRIX` and
+`CanonicalConformanceSuite` are the policy authority. No Adapter capability,
+RAG name, runtime chunk or leaderboard requirement participates in this
+decision.
 
-The policy authority is
-`rag_eval.canonical.conformance.CANONICAL_GOLD_ELIGIBILITY_MATRIX`. The
-canonicalizer evaluates that matrix through `CanonicalConformanceSuite` and
-writes four content-addressed, immutable files under:
+An Adapter that cannot map an eligible Gold type produces unavailable metrics
+for that Run. It does not remove the Gold or create another Benchmark.
+
+## Snapshot identity
+
+The identity inputs are:
+
+```text
+DOCX bytes
++ parser identity
++ canonicalizer identity
++ configuration digest
+```
+
+Equal inputs must reproduce equal objects, relations, typed locators, witness
+hashes and Canonical digest. Changing any identity input creates a different
+Snapshot. Published Snapshots are immutable and are never regenerated in
+place.
+
+The content-addressed Snapshot contains:
 
 ```text
 canonical/snapshots/<canonical_digest>/
@@ -18,51 +37,66 @@ canonical/snapshots/<canonical_digest>/
   conformance.json
 ```
 
-`conformance.json` is bound to the Canonical manifest by source SHA-256,
-canonical digest, parser identity, canonicalizer identity, configuration
-digest, object IDs, typed locator digests, witness hashes, and a report digest.
-The formal Dataset loader verifies the file checksum and every binding before
-accepting current-policy Gold. A changed source or implementation identity
-creates a different snapshot directory; an existing snapshot file is never
-rewritten with different bytes.
+`object_id` is a Snapshot-local reference key. Identity validation also binds
+the DOCX SHA-256, coordinate-system version, typed structural locator,
+canonical witness hash, parser/canonicalizer/configuration identities and
+representation status.
 
-The legacy `canonical/objects.jsonl`, `canonical/evidence.jsonl`, and
-`canonical/execution.md` files remain mutable working projections for Wire 1.0
-and authoring compatibility. They are not the immutable Snapshot authority.
+## Gold eligibility
 
-## First-wave decisions
+The current candidate families are paragraph, text span, table and logical
+cell. A concrete type or subtype is eligible only after its object identity,
+locator, witness and required relations pass Conformance.
 
-The first policy admits conformant, non-empty paragraphs and text spans.
-Tables and logical cells are admitted only when the table has complete,
-unambiguous topology, an admitted header path, and data cells. Regular,
-inferred regular-grid, horizontal-merge, vertical-merge, and mixed-merge
-subtypes currently pass the suite.
+Current fail-closed cases include:
 
-The following fail closed:
+- empty or duplicate witnesses and non-unique typed locators;
+- partial, unsupported or missing source representation;
+- broken parent, table-topology, merge-origin or membership relations;
+- headerless, header-only, irregular/partial or nested tables;
+- logical cells whose parent table is not eligible;
+- physical cells as independent Gold; and
+- figures, equations or other types without an admitted Conformance policy.
 
-- headerless, header-only, irregular/partial, and nested tables;
-- logical cells whose parent table is missing or ineligible;
-- physical cells as independent Gold (they remain topology and merge proof);
-- every object with partial, unsupported, or missing representation;
-- candidate objects with missing/duplicate typed locators, empty witnesses, or
-  broken structural relations;
-- types outside the first-wave candidate set, including figures and equations.
+Physical cells and merge relations remain proof material for logical-cell and
+table extents. Unsupported objects remain in the Catalog for audit and future
+policy versions.
 
-Figure, equation, physical-cell, and unsupported object records remain in the
-Canonical Catalog for audit and future policy versions. Their exclusion from
-Gold does not remove or downgrade the source representation.
+Canonical and research contracts may retain their own active `1.x` schema
+versions. Those numbers do not denote a Worker or Run compatibility path.
 
-## Compatibility boundary
+## Case and Gold admission
 
-Snapshots carrying the v1 policy marker require an explicit eligibility
-decision on every canonical object and a valid conformance artifact. Historical
-Canonical 1.0–1.2 snapshots without that marker retain their frozen read
-semantics and are not regenerated or retroactively reclassified.
+A formal case is bound to a reviewed Portfolio slot and one immutable Release.
+Admission verifies:
 
-The authoring workflow now chooses logical cells for new table Gold. Physical
-cell targets already frozen in historical artifacts remain readable through
-the compatibility path.
+- source and Canonical identities;
+- question, answer and Gold revision lineage;
+- reachable Canonical evidence for every Gold alternative;
+- MSES clause/path structure and evidence necessity;
+- a dependency graph for declared multi-hop cases;
+- an evidence-backed negative scope for abstention cases;
+- answer leakage and duplicate/contamination checks; and
+- the required independent human review decisions.
 
-No module in Canonical Conformance, Benchmark admission, formal validation, or
-Bundle V3 imports Adapter capabilities. Adapter support begins affecting a Run
-only in later observation and metric-availability phases.
+Gold uses minimal-sufficient-evidence-set semantics. Evidence alternatives
+inside one clause are OR; clauses in one path are AND; alternative complete
+paths remain distinct. Gold is anchored to canonical source extents, never a
+RAG chunk ID.
+
+Models may propose questions, rewrites, answers, evidence or distractors, but
+their output is proposal-only. Programs verify objective structure and
+provenance. Humans decide naturalness, ambiguity, answer correctness,
+sufficiency and minimality. Unresolved review cannot be frozen into a Release.
+
+## Runtime boundary
+
+The formal runtime projection contains the Original DOCX required by the RAG
+and observer-only Canonical material required to prove provenance. Canonical
+content is not inserted as a second corpus and does not control native
+chunking.
+
+The [Benchmark Authoring Guide](../../platform/docs/BENCHMARK_AUTHORING.md)
+describes source admission, review, held-out isolation and blind operation.
+The [Unified Observation Contract](UNIFIED_OBSERVATION_CONTRACT.md) begins
+where runtime content is mapped back to these coordinates.
