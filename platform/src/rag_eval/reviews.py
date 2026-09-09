@@ -2,8 +2,8 @@
 
 Run artifacts are research records and therefore immutable.  A reviewer (or a
 configured semantic-review assistant) writes a separate, revisioned decision
-stream here; the read model can then present a final product verdict without
-rewriting the original CaseResult.
+stream here.  Every overlay is bound to the exact Artifact 2.0 case digest and
+never rewrites the persisted evaluation case.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING, Callable
 from pydantic import BaseModel, ConfigDict, Field
 
 from rag_eval.contracts.dataset import GoldAnswerKind
-from rag_eval.contracts.run import CaseResult, MetricStatus
-from rag_eval.evaluation.answers import AnswerVerdict, score_answer
+from rag_eval.contracts.observation import ObservationStatus
+from rag_eval.runs.models import ArtifactAnswerStatus, RunArtifactCaseV2
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.runs import safe_id
 
@@ -73,6 +73,7 @@ class CaseReviewRecord(ReviewModel):
     run_id: str = Field(min_length=1)
     case_id: str = Field(min_length=1)
     repetition: int = Field(ge=1)
+    artifact_case_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     decisions: list[CaseReviewDecision] = Field(default_factory=list)
 
     @property
@@ -103,6 +104,7 @@ class CaseReviewRecord(ReviewModel):
             "run_id": self.run_id,
             "case_id": self.case_id,
             "repetition": self.repetition,
+            "artifact_case_digest": self.artifact_case_digest,
             "latest": latest.model_dump(mode="json") if latest is not None else None,
             "history": [item.model_dump(mode="json") for item in self.decisions],
         }
@@ -139,6 +141,7 @@ class AnswerSupportReviewRecord(ReviewModel):
     run_id: str = Field(min_length=1)
     case_id: str = Field(min_length=1)
     repetition: int = Field(ge=1)
+    artifact_case_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     decisions: list[AnswerSupportReviewDecision] = Field(default_factory=list)
 
     @property
@@ -163,6 +166,7 @@ class AnswerSupportReviewRecord(ReviewModel):
             "run_id": self.run_id,
             "case_id": self.case_id,
             "repetition": self.repetition,
+            "artifact_case_digest": self.artifact_case_digest,
             "latest": latest.model_dump(mode="json") if latest is not None else None,
             "history": [item.model_dump(mode="json") for item in self.decisions],
         }
@@ -194,11 +198,26 @@ class CaseReviewStore:
         self.root = root
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def get(self, run_id: str, case_id: str, repetition: int) -> CaseReviewRecord:
+    def get(
+        self,
+        run_id: str,
+        case_id: str,
+        repetition: int,
+        *,
+        artifact_case_digest: str,
+    ) -> CaseReviewRecord:
         path = self._path(run_id, case_id, repetition)
         if not path.is_file():
-            return CaseReviewRecord(run_id=run_id, case_id=case_id, repetition=repetition)
-        return CaseReviewRecord.model_validate_json(path.read_text(encoding="utf-8"))
+            return CaseReviewRecord(
+                run_id=run_id,
+                case_id=case_id,
+                repetition=repetition,
+                artifact_case_digest=artifact_case_digest,
+            )
+        record = CaseReviewRecord.model_validate_json(path.read_text(encoding="utf-8"))
+        if record.artifact_case_digest != artifact_case_digest:
+            raise ValueError("review overlay is bound to another Artifact case")
+        return record
 
     def append(
         self,
@@ -206,6 +225,7 @@ class CaseReviewStore:
         run_id: str,
         case_id: str,
         repetition: int,
+        artifact_case_digest: str,
         verdict: CaseReviewVerdict,
         source: CaseReviewSource,
         reviewer: str,
@@ -213,7 +233,12 @@ class CaseReviewStore:
         model: str | None = None,
         prompt_digest: str | None = None,
     ) -> CaseReviewRecord:
-        record = self.get(run_id, case_id, repetition)
+        record = self.get(
+            run_id,
+            case_id,
+            repetition,
+            artifact_case_digest=artifact_case_digest,
+        )
         if source == CaseReviewSource.LLM and record.latest_human is not None:
             raise ValueError(
                 "a human adjudication already exists; automated review cannot replace it"
@@ -282,15 +307,28 @@ class AnswerSupportReviewStore:
         self.root = root
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def get(self, run_id: str, case_id: str, repetition: int) -> AnswerSupportReviewRecord:
+    def get(
+        self,
+        run_id: str,
+        case_id: str,
+        repetition: int,
+        *,
+        artifact_case_digest: str,
+    ) -> AnswerSupportReviewRecord:
         path = self._path(run_id, case_id, repetition)
         if not path.is_file():
             return AnswerSupportReviewRecord(
                 run_id=run_id,
                 case_id=case_id,
                 repetition=repetition,
+                artifact_case_digest=artifact_case_digest,
             )
-        return AnswerSupportReviewRecord.model_validate_json(path.read_text(encoding="utf-8"))
+        record = AnswerSupportReviewRecord.model_validate_json(
+            path.read_text(encoding="utf-8")
+        )
+        if record.artifact_case_digest != artifact_case_digest:
+            raise ValueError("support-review overlay is bound to another Artifact case")
+        return record
 
     def append(
         self,
@@ -298,6 +336,7 @@ class AnswerSupportReviewStore:
         run_id: str,
         case_id: str,
         repetition: int,
+        artifact_case_digest: str,
         verdict: AnswerSupportVerdict,
         source: CaseReviewSource,
         reviewer: str,
@@ -305,7 +344,12 @@ class AnswerSupportReviewStore:
         model: str | None = None,
         prompt_digest: str | None = None,
     ) -> AnswerSupportReviewRecord:
-        record = self.get(run_id, case_id, repetition)
+        record = self.get(
+            run_id,
+            case_id,
+            repetition,
+            artifact_case_digest=artifact_case_digest,
+        )
         if source == CaseReviewSource.LLM and record.latest_human is not None:
             raise ValueError(
                 "a human support adjudication already exists; automated review cannot replace it"
@@ -419,31 +463,43 @@ class SemanticAnswerReviewer:
             return False, "the semantic-review model is not selected"
         return True, "local semantic review is available"
 
-    def eligible(self, run_id: str, case: CaseResult) -> bool:
+    def eligible(self, run_id: str, case: RunArtifactCaseV2) -> bool:
         """Return whether one Case still needs a first semantic proposal."""
 
-        if case.status != "completed" or case.gold_answer is None:
+        if case.status != "completed":
             return False
         if case.gold_answer.kind not in {GoldAnswerKind.TEXT, GoldAnswerKind.FORMULA}:
             return False
-        if score_answer(
-            case.rag_result.answer if case.rag_result else None, case.gold_answer
-        ).verdict != AnswerVerdict.NEEDS_REVIEW:
+        if case.answer_judgment.status != ArtifactAnswerStatus.NEEDS_REVIEW:
             return False
-        record = self.store.get(run_id, case.case_id, case.repetition)
+        record = self.store.get(
+            run_id,
+            case.case_id,
+            case.repetition,
+            artifact_case_digest=case.case_digest,
+        )
         return record.latest_human is None and not any(
             decision.source == CaseReviewSource.LLM
             for decision in record.decisions
         )
 
     def review(
-        self, run_id: str, case: CaseResult, *, remote_consent: bool = False
+        self,
+        run_id: str,
+        case: RunArtifactCaseV2,
+        *,
+        remote_consent: bool = False,
     ) -> CaseReviewRecord:
-        if case.status != "completed" or case.gold_answer is None:
+        if case.status != "completed":
             raise SemanticReviewError("only completed Cases with a Gold answer can be semantically reviewed")
         if case.gold_answer.kind not in {GoldAnswerKind.TEXT, GoldAnswerKind.FORMULA}:
             raise SemanticReviewError("semantic review is limited to text and formula answers")
-        existing = self.store.get(run_id, case.case_id, case.repetition)
+        existing = self.store.get(
+            run_id,
+            case.case_id,
+            case.repetition,
+            artifact_case_digest=case.case_digest,
+        )
         if existing.latest_human is not None:
             raise SemanticReviewError(
                 "a human adjudication already exists; it remains the final verdict"
@@ -454,10 +510,9 @@ class SemanticAnswerReviewer:
         if any(decision.source == CaseReviewSource.LLM for decision in existing.decisions):
             return existing
 
-        score = score_answer(case.rag_result.answer if case.rag_result else None, case.gold_answer)
-        if score.verdict != AnswerVerdict.NEEDS_REVIEW:
+        if case.answer_judgment.status != ArtifactAnswerStatus.NEEDS_REVIEW:
             raise SemanticReviewError(
-                "the deterministic rule already produced a final answer verdict"
+                "the persisted Artifact already contains a final answer verdict"
             )
         if self.llm is None:
             raise SemanticReviewError("LLM review configuration is unavailable")
@@ -514,8 +569,12 @@ class SemanticAnswerReviewer:
                 "gold_answer": case.gold_answer.canonical,
                 "accepted_answers": case.gold_answer.accepted_values,
                 "answer_kind": case.gold_answer.kind.value,
-                "generated_answer": case.rag_result.answer if case.rag_result else None,
-                "deterministic_reason": score.reason,
+                "generated_answer": (
+                    case.adapter_result.trace.answer.content
+                    if case.adapter_result is not None
+                    else None
+                ),
+                "deterministic_reason": case.answer_judgment.reason,
             }
         ]
         try:
@@ -550,6 +609,7 @@ class SemanticAnswerReviewer:
             run_id=run_id,
             case_id=case.case_id,
             repetition=case.repetition,
+            artifact_case_digest=case.case_digest,
             verdict=verdict,
             source=CaseReviewSource.LLM,
             reviewer=f"{provider_config.provider_id}:{model}",
@@ -594,34 +654,51 @@ class SemanticAnswerSupportReviewer:
         return True, "local semantic review is available"
 
     @staticmethod
-    def _requires_review(case: CaseResult) -> bool:
-        return any(
-            metric.metric_id == "answer_hallucination"
-            and metric.status == MetricStatus.NEEDS_REVIEW
-            for metric in case.metrics
+    def _requires_review(case: RunArtifactCaseV2) -> bool:
+        if case.adapter_result is None:
+            return False
+        trace = case.adapter_result.trace
+        return (
+            trace.answer.observation_status == ObservationStatus.OBSERVED
+            and trace.final_context.observation_status
+            == ObservationStatus.OBSERVED
         )
 
-    def eligible(self, run_id: str, case: CaseResult) -> bool:
-        if case.status != "completed" or case.rag_result is None:
+    def eligible(self, run_id: str, case: RunArtifactCaseV2) -> bool:
+        if case.status != "completed" or case.adapter_result is None:
             return False
-        if not (case.rag_result.answer or "").strip() or not self._requires_review(case):
+        if not (case.adapter_result.trace.answer.content or "").strip() or not self._requires_review(case):
             return False
-        record = self.store.get(run_id, case.case_id, case.repetition)
+        record = self.store.get(
+            run_id,
+            case.case_id,
+            case.repetition,
+            artifact_case_digest=case.case_digest,
+        )
         return record.latest_human is None and not any(
             decision.source == CaseReviewSource.LLM
             for decision in record.decisions
         )
 
     def review(
-        self, run_id: str, case: CaseResult, *, remote_consent: bool = False
+        self,
+        run_id: str,
+        case: RunArtifactCaseV2,
+        *,
+        remote_consent: bool = False,
     ) -> AnswerSupportReviewRecord:
-        if case.status != "completed" or case.rag_result is None:
+        if case.status != "completed" or case.adapter_result is None:
             raise SemanticReviewError("only completed Cases with a generated answer can be support-reviewed")
-        if not (case.rag_result.answer or "").strip():
+        if not (case.adapter_result.trace.answer.content or "").strip():
             raise SemanticReviewError("an empty answer has no affirmative claim to support-review")
         if not self._requires_review(case):
             raise SemanticReviewError("the deterministic support rule already produced a final verdict")
-        existing = self.store.get(run_id, case.case_id, case.repetition)
+        existing = self.store.get(
+            run_id,
+            case.case_id,
+            case.repetition,
+            artifact_case_digest=case.case_digest,
+        )
         if existing.latest_human is not None:
             raise SemanticReviewError(
                 "a human support adjudication already exists; it remains the final verdict"
@@ -679,15 +756,16 @@ class SemanticAnswerSupportReviewer:
         source = [
             {
                 "question": case.question,
-                "generated_answer": case.rag_result.answer,
+                "generated_answer": case.adapter_result.trace.answer.content,
                 "final_context": [
                     {
-                        "rank": item.rank,
-                        "segment_id": item.document_id,
+                        "rank": item.native_rank,
+                        "native_chunk_id": item.native_chunk_id,
                         "content": item.content,
                     }
                     for item in sorted(
-                        case.rag_result.final_context or [], key=lambda item: item.rank
+                        case.adapter_result.trace.final_context.items,
+                        key=lambda item: item.native_rank,
                     )
                 ],
             }
@@ -724,6 +802,7 @@ class SemanticAnswerSupportReviewer:
             run_id=run_id,
             case_id=case.case_id,
             repetition=case.repetition,
+            artifact_case_digest=case.case_digest,
             verdict=verdict,
             source=CaseReviewSource.LLM,
             reviewer=f"{provider_config.provider_id}:{model}",
@@ -744,8 +823,8 @@ class SemanticReviewCoordinator:
 
     def __init__(
         self,
-        reviewer: SemanticAnswerReviewer,
-        cases_for_run: Callable[[str], list[CaseResult]],
+        reviewer: SemanticAnswerReviewer | SemanticAnswerSupportReviewer,
+        cases_for_run: Callable[[str], list[RunArtifactCaseV2]],
     ) -> None:
         self.reviewer = reviewer
         self.cases_for_run = cases_for_run
@@ -848,7 +927,7 @@ class SemanticReviewCoordinator:
         return resumed
 
     def review_cases(
-        self, run_id: str, cases: list[CaseResult]
+        self, run_id: str, cases: list[RunArtifactCaseV2]
     ) -> SemanticReviewRunStatus:
         """Perform one already-selected review batch; public for deterministic tests."""
 

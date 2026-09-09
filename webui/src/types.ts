@@ -85,6 +85,7 @@ export interface CaseReview {
   run_id: string
   case_id: string
   repetition: number
+  artifact_case_digest: string
   latest: CaseReviewDecision | null
   history: CaseReviewDecision[]
 }
@@ -106,6 +107,7 @@ export interface AnswerSupportReview {
   run_id: string
   case_id: string
   repetition: number
+  artifact_case_digest: string
   latest: AnswerSupportReviewDecision | null
   history: AnswerSupportReviewDecision[]
 }
@@ -121,32 +123,26 @@ export interface CaseListItem {
   review?: CaseReview | null
 }
 
-export interface RunManifest {
+export interface RunRecordViewV2 {
+  schema_version: '2.0'
   run_id: string
   experiment_id: string
-  display_name?: string | null
-  display_name_source?: 'manifest' | 'override' | 'generated' | string
-  execution_view?: string | null
-  diagnostic_only?: boolean
-  status: string
-  bundle_id: string
-  dataset_release_id?: string | null
-  case_selection_id: string
+  state: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  resolved_plan_path: string
+  resolved_plan_digest: string
+  benchmark_release_id: string
   adapter_id: string
-  adapter_version: string
   system_id: string
-  system_version: string
-  scorer_id: string
-  scorer_version: string
-  scorer_digest: string
-  started_at: string
+  worker_profile_id: string
+  worker_profile_version: string
+  created_at: string
+  started_at: string | null
   completed_at: string | null
-  repetitions: number
-  repetition_seeds: number[]
-  execution_counts: Record<string, number>
-  effective_config: Record<string, unknown>
-  replay_of_run_id: string | null
-  artifact_checksums: Record<string, string>
+  execution_error: string | null
+  artifact_path: 'artifact-v2/artifact.json' | null
+  artifact_digest: string | null
+  display_name: string
+  display_name_source: 'override' | 'generated'
 }
 
 export interface SummaryMetric {
@@ -437,7 +433,7 @@ export interface SystemProfile {
   query_timeout_min_seconds: number | null
 }
 
-export type ArtifactViewAvailability = 'available' | 'legacy_unavailable' | 'corrupted'
+export type ArtifactViewAvailability = 'available' | 'corrupted'
 export type ObservationStatus = 'observed' | 'unsupported' | 'unobserved' | 'failed' | 'corrupted'
 export type ObservationCompleteness = 'complete' | 'truncated' | 'partial' | 'unknown'
 export type ArtifactMetricStatus = 'observed' | 'unavailable'
@@ -589,12 +585,12 @@ export interface RunArtifactCaseV2 {
 }
 
 export interface ArtifactOverviewV2 {
-  schema_version: '1.0'
+  schema_version: '2.0'
   run_id: string
-  artifact_contract_version: '2.0' | '1.2'
+  artifact_contract_version: '2.0'
   availability: ArtifactViewAvailability
   reason: string | null
-  verification: ArtifactVerification | null
+  verification: ArtifactVerification
   manifest: {
     benchmark_identity: { dataset_release_id: string; benchmark_snapshot_digest: string; source_identities: unknown[] }
     runtime_profiles: Array<{ profile_id: string; system_id: string; system_version: string; configuration_digest: string }>
@@ -619,7 +615,7 @@ export interface ArtifactOverviewV2 {
 export interface RunCaseIndexEntryV2 {
   case_id: string
   repetition: number
-  seed: number | null
+  seed: number
   status: string
   question: string
   answer_judgment: ArtifactJudgmentV2
@@ -629,34 +625,23 @@ export interface RunCaseIndexEntryV2 {
 }
 
 export interface ArtifactCaseIndexViewV2 {
-  schema_version: '1.0'
+  schema_version: '2.0'
   run_id: string
-  artifact_contract_version: '2.0' | '1.2'
+  artifact_contract_version: '2.0'
   availability: ArtifactViewAvailability
   reason: string | null
-  verification: ArtifactVerification | null
+  verification: ArtifactVerification
   cases: RunCaseIndexEntryV2[]
 }
 
-export interface LegacyRunCaseV2 {
-  case_id: string
-  repetition: number
-  seed: number | null
-  status: string
-  question: string
-  answer: string | null
-  error: Record<string, unknown> | null
-}
-
 export interface ArtifactCaseViewV2 {
-  schema_version: '1.0'
+  schema_version: '2.0'
   run_id: string
-  artifact_contract_version: '2.0' | '1.2'
+  artifact_contract_version: '2.0'
   availability: ArtifactViewAvailability
   reason: string | null
-  verification: ArtifactVerification | null
+  verification: ArtifactVerification
   artifact_case: RunArtifactCaseV2 | null
-  legacy_case: LegacyRunCaseV2 | null
 }
 
 export interface ProductSystemSummary {
@@ -961,5 +946,5 @@ export interface ComparisonResponse {
     coverage_by_run: Record<string, number>
     winner_eligible: boolean
   }>
-  runs: Array<{ run: RunManifest; summary: ArtifactOverviewV2 }>
+  runs: Array<{ run: RunRecordViewV2; summary: ArtifactOverviewV2 }>
 }

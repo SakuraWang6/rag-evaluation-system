@@ -109,7 +109,7 @@ def test_launcher_bootstrap_registers_system_without_starting_worker(tmp_path: P
     assert not service.runs.list()
 
 
-def test_archive_run_is_visible_from_api_runs_and_cases(tmp_path: Path, monkeypatch) -> None:
+def test_archive_run_is_not_visible_from_native_v2_api(tmp_path: Path, monkeypatch) -> None:
     archive = tmp_path / "archive"
     _write_archive(archive)
     monkeypatch.setenv("RAG_EVAL_RUN_ARCHIVES", str(archive))
@@ -118,47 +118,10 @@ def test_archive_run_is_visible_from_api_runs_and_cases(tmp_path: Path, monkeypa
 
     runs = client.get("/api/v1/runs")
     assert runs.status_code == 200
-    assert runs.json()[0]["run_id"] == "archive-run-1"
-    cases = client.get("/api/v1/runs/archive-run-1/cases")
-    assert cases.status_code == 200
-    assert cases.json()["availability"] == "legacy_unavailable"
-    assert cases.json()["cases"][0]["legacy_case"]["case_id"] == "case-1"
-    index = client.get("/api/v1/runs/archive-run-1/cases/index")
-    assert index.status_code == 200
-    assert index.json()["availability"] == "legacy_unavailable"
-    assert index.json()["cases"] == [
-        {
-            "case_id": "case-1",
-            "question": "Which value is recorded?",
-            "status": "completed",
-            "repetition": 1,
-            "seed": None,
-            "answer_judgment": {
-                "status": "unavailable",
-                "value": None,
-                "reason": (
-                    "Artifact 2.0 observations, metric descriptors, and scores "
-                    "were not persisted for this Run; legacy execution facts are "
-                    "available without read-time rescoring."
-                ),
-            },
-            "evidence_judgment": {
-                "status": "unavailable",
-                "value": None,
-                "reason": (
-                    "Artifact 2.0 observations, metric descriptors, and scores "
-                    "were not persisted for this Run; legacy execution facts are "
-                    "available without read-time rescoring."
-                ),
-            },
-            "core_metrics_available": False,
-            "failure_kind": None,
-        }
-    ]
-    detail = client.get("/api/v1/runs/archive-run-1/cases/case-1")
-    assert detail.status_code == 200
-    assert detail.json()["availability"] == "legacy_unavailable"
-    assert detail.json()["legacy_case"]["case_id"] == "case-1"
+    assert runs.json() == []
+    assert client.get("/api/v1/runs/archive-run-1/cases").status_code == 404
+    assert client.get("/api/v1/runs/archive-run-1/cases/index").status_code == 404
+    assert client.get("/api/v1/runs/archive-run-1/cases/case-1").status_code == 404
 
 
 def test_run_presentation_is_an_append_only_overlay_not_a_run_mutation(
@@ -196,7 +159,7 @@ def test_run_presentation_is_an_append_only_overlay_not_a_run_mutation(
     assert (archive / "runs" / "archive-run-1" / "run.json").read_bytes() == original_bytes
 
 
-def test_run_presentation_api_keeps_the_original_manifest_unchanged(
+def test_run_presentation_api_rejects_legacy_run(
     tmp_path: Path, monkeypatch
 ) -> None:
     archive = tmp_path / "archive"
@@ -212,10 +175,7 @@ def test_run_presentation_api_keeps_the_original_manifest_unchanged(
         json={"display_name": "人工确认后的历史运行", "actor": "reviewer"},
     )
 
-    assert response.status_code == 200
-    assert response.json()["run"]["display_name"] == "人工确认后的历史运行"
-    assert response.json()["run"]["display_name_source"] == "override"
-    assert response.json()["presentation"]["history"][-1]["revision"] == 1
+    assert response.status_code == 404
     assert source.read_bytes() == original_bytes
 
 

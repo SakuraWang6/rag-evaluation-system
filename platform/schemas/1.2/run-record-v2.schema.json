@@ -1,0 +1,127 @@
+{
+  "$defs": {
+    "RunRecordStateV2": {
+      "enum": [
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "RunRecordStateV2",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Mutable orchestration state with no evaluation payload.\n\nGold, traces, metrics, provenance, judgments and leaderboard eligibility\nbelong exclusively to Artifact 2.0.  ``extra='forbid'`` makes accidental\nduplication into this record a contract violation rather than a silent\nsecond source of truth.",
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "experiment_id": {
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "resolved_plan_path": {
+      "minLength": 1,
+      "title": "Resolved Plan Path",
+      "type": "string"
+    },
+    "resolved_plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Resolved Plan Digest",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/RunRecordStateV2"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "started_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Started At"
+    },
+    "completed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    },
+    "execution_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution Error"
+    },
+    "artifact_path": {
+      "anyOf": [
+        {
+          "const": "artifact-v2/artifact.json",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Artifact Path"
+    },
+    "artifact_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Artifact Digest"
+    }
+  },
+  "required": [
+    "run_id",
+    "experiment_id",
+    "resolved_plan_path",
+    "resolved_plan_digest",
+    "state",
+    "created_at"
+  ],
+  "title": "RunRecordV2",
+  "type": "object"
+}

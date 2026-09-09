@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 import pytest
 
 from rag_eval.authoring.providers import LocalOllamaProvider
-from rag_eval.contracts.adapter import RAGEvidenceItem, RAGResult
-from rag_eval.contracts.run import CaseResult, MetricResult, MetricStatus
 from rag_eval.llm import LLMConfigurationService
 from rag_eval.reviews import (
     AnswerSupportReviewStore,
@@ -18,45 +14,21 @@ from rag_eval.reviews import (
     SemanticReviewCoordinator,
 )
 from rag_eval.run_history import RunHistory
+from rag_eval.runs.models import RunArtifactCaseV2
+from tests.rag_eval_platform.test_run_artifact_v2 import _evaluated_case
 
 
-def _case() -> CaseResult:
-    now = datetime.now(UTC)
-    return CaseResult(
-        case_id="case-support",
-        status="completed",
-        question="设备型号是什么？",
-        rag_result=RAGResult(
-            answer="根据提供的上下文，无法确定具体型号。",
-            final_context=[
-                RAGEvidenceItem(
-                    item_id="context-1",
-                    rank=1,
-                    document_id="segment-1",
-                    content="设备名称：接入交换机。",
-                )
-            ],
-        ),
-        metrics=[
-            MetricResult(
-                metric_id="answer_hallucination",
-                status=MetricStatus.NEEDS_REVIEW,
-                scorer_id="segment-native-answer-evidence",
-                scorer_version="1.0",
-                scorer_digest="sha256:test",
-            )
-        ],
-        started_at=now,
-        completed_at=now,
-    )
+def _case() -> RunArtifactCaseV2:
+    _resolved, case = _evaluated_case("case-support")
+    return case
 
 
 def test_support_reviewer_receives_final_context_but_never_gold(tmp_path, monkeypatch) -> None:
     def propose(_self, *, task, source, prompt, seed):
         assert task == "semantic_answer_support_adjudication"
         assert "gold" not in source[0]
-        assert source[0]["final_context"][0]["segment_id"] == "segment-1"
-        assert source[0]["final_context"][0]["content"] == "设备名称：接入交换机。"
+        assert source[0]["final_context"][0]["native_chunk_id"] == "gold"
+        assert source[0]["final_context"][0]["content"] == "content:gold"
         assert "missing Gold evidence alone" in prompt
         assert seed == 0
         return {"verdict": "supported", "reason": "The answer faithfully reports the context."}
@@ -89,6 +61,7 @@ def test_support_review_is_idempotent_and_human_is_terminal(tmp_path, monkeypatc
         run_id="run-support",
         case_id=case.case_id,
         repetition=case.repetition,
+        artifact_case_digest=case.case_digest,
         verdict=AnswerSupportVerdict.UNSUPPORTED,
         source=CaseReviewSource.HUMAN,
         reviewer="reviewer-1",
@@ -100,6 +73,7 @@ def test_support_review_is_idempotent_and_human_is_terminal(tmp_path, monkeypatc
             run_id="run-support",
             case_id=case.case_id,
             repetition=case.repetition,
+            artifact_case_digest=case.case_digest,
             verdict=AnswerSupportVerdict.SUPPORTED,
             source=CaseReviewSource.LLM,
             reviewer="ollama:qwen",
@@ -110,6 +84,8 @@ def test_support_review_is_idempotent_and_human_is_terminal(tmp_path, monkeypatc
 
 
 def test_support_projection_counts_hallucination_without_changing_answer_accuracy(tmp_path) -> None:
+    from rag_eval.contracts.run import MetricResult, MetricStatus
+
     metric = MetricResult(
         metric_id="answer_hallucination",
         status=MetricStatus.NEEDS_REVIEW,

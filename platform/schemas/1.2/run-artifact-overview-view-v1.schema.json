@@ -282,7 +282,6 @@
     "ArtifactViewAvailability": {
       "enum": [
         "available",
-        "legacy_unavailable",
         "corrupted"
       ],
       "title": "ArtifactViewAvailability",
@@ -801,8 +800,8 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "1.0",
-      "default": "1.0",
+      "const": "2.0",
+      "default": "2.0",
       "title": "Schema Version",
       "type": "string"
     },
@@ -812,10 +811,8 @@
       "type": "string"
     },
     "artifact_contract_version": {
-      "enum": [
-        "2.0",
-        "1.2"
-      ],
+      "const": "2.0",
+      "default": "2.0",
       "title": "Artifact Contract Version",
       "type": "string"
     },
@@ -835,15 +832,7 @@
       "title": "Reason"
     },
     "verification": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/ArtifactVerificationView"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
+      "$ref": "#/$defs/ArtifactVerificationView"
     },
     "manifest": {
       "anyOf": [
@@ -878,8 +867,8 @@
   },
   "required": [
     "run_id",
-    "artifact_contract_version",
-    "availability"
+    "availability",
+    "verification"
   ],
   "title": "RunArtifactOverviewView",
   "type": "object"

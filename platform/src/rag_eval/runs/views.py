@@ -1,15 +1,8 @@
-"""Persisted-only API read models for Run Artifact 2.0 and legacy archives.
-
-This module is intentionally below the Platform API and beside Artifact 2.0.
-It does not import an Adapter, provenance mapper, or scorer.  A legacy artifact
-can expose its persisted execution facts, but missing v2 observations and
-metrics remain explicitly unavailable instead of being reconstructed with the
-currently installed evaluation code.
-"""
+"""Scorer-free presentation models backed exclusively by Artifact 2.0."""
 
 from __future__ import annotations
 
-import json
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
@@ -21,23 +14,22 @@ from rag_eval.runs.artifacts import ArtifactV2Reader, ArtifactV2Verification
 from rag_eval.runs.models import (
     ARTIFACT_V2_DIRECTORY,
     ArtifactAnswerJudgment,
-    ArtifactAnswerStatus,
     ArtifactEvidenceJudgment,
-    ArtifactEvidenceStatus,
     RunArtifactCaseV2,
     RunArtifactManifestV2,
     RunArtifactSummaryV2,
     descriptor_digest,
 )
-
-ARTIFACT_PRESENTATION_SCHEMA_VERSION = "1.0"
-LEGACY_UNAVAILABLE_REASON = (
-    "Artifact 2.0 observations, metric descriptors, and scores were not persisted "
-    "for this Run; legacy execution facts are available without read-time rescoring."
+from rag_eval.runs.plans import ResolvedRunPlanV2
+from rag_eval.runs.records import (
+    RunRecordStateV2,
+    artifact_plan_binding_errors,
 )
+
+ARTIFACT_PRESENTATION_SCHEMA_VERSION = "2.0"
 CORRUPTED_REASON = (
-    "Artifact 2.0 integrity validation failed; persisted result content is withheld "
-    "from scoring and presentation."
+    "Artifact 2.0 integrity or RunRecord binding validation failed; persisted "
+    "result content is withheld from scoring and presentation."
 )
 
 
@@ -47,7 +39,6 @@ class ArtifactPresentationModel(BaseModel):
 
 class ArtifactViewAvailability(StrEnum):
     AVAILABLE = "available"
-    LEGACY_UNAVAILABLE = "legacy_unavailable"
     CORRUPTED = "corrupted"
 
 
@@ -69,6 +60,30 @@ class ArtifactVerificationView(ArtifactPresentationModel):
         )
 
 
+class RunRecordViewV2(ArtifactPresentationModel):
+    """Public orchestration view joined with immutable plan identity only."""
+
+    schema_version: Literal["2.0"] = ARTIFACT_PRESENTATION_SCHEMA_VERSION
+    run_id: str = Field(min_length=1)
+    experiment_id: str = Field(min_length=1)
+    state: RunRecordStateV2
+    resolved_plan_path: str = Field(min_length=1)
+    resolved_plan_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    benchmark_release_id: str = Field(min_length=1)
+    system_id: str = Field(min_length=1)
+    adapter_id: str = Field(min_length=1)
+    worker_profile_id: str = Field(min_length=1)
+    worker_profile_version: str = Field(min_length=1)
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    execution_error: str | None = None
+    artifact_path: str | None = None
+    artifact_digest: str | None = None
+    display_name: str = Field(min_length=1)
+    display_name_source: Literal["override", "generated"]
+
+
 class MetricDescriptorBindingView(ArtifactPresentationModel):
     metric_id: str = Field(min_length=1)
     descriptor_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
@@ -76,12 +91,12 @@ class MetricDescriptorBindingView(ArtifactPresentationModel):
 
 
 class RunArtifactViewEnvelope(ArtifactPresentationModel):
-    schema_version: Literal["1.0"] = ARTIFACT_PRESENTATION_SCHEMA_VERSION
+    schema_version: Literal["2.0"] = ARTIFACT_PRESENTATION_SCHEMA_VERSION
     run_id: str = Field(min_length=1)
-    artifact_contract_version: Literal["2.0", "1.2"]
+    artifact_contract_version: Literal["2.0"] = "2.0"
     availability: ArtifactViewAvailability
     reason: str | None = None
-    verification: ArtifactVerificationView | None = None
+    verification: ArtifactVerificationView
 
 
 class RunArtifactOverviewView(RunArtifactViewEnvelope):
@@ -93,7 +108,7 @@ class RunArtifactOverviewView(RunArtifactViewEnvelope):
 class RunCaseIndexEntryView(ArtifactPresentationModel):
     case_id: str = Field(min_length=1)
     repetition: int = Field(ge=1)
-    seed: int | None = None
+    seed: int
     status: str = Field(min_length=1)
     question: str = Field(min_length=1)
     answer_judgment: ArtifactAnswerJudgment
@@ -106,19 +121,8 @@ class RunArtifactCaseIndexView(RunArtifactViewEnvelope):
     cases: tuple[RunCaseIndexEntryView, ...] = ()
 
 
-class LegacyRunCaseView(ArtifactPresentationModel):
-    case_id: str = Field(min_length=1)
-    repetition: int = Field(ge=1)
-    seed: int | None = None
-    status: str = Field(min_length=1)
-    question: str = Field(min_length=1)
-    answer: str | None = None
-    error: dict[str, Any] | None = None
-
-
 class RunArtifactCaseView(RunArtifactViewEnvelope):
     artifact_case: RunArtifactCaseV2 | None = None
-    legacy_case: LegacyRunCaseView | None = None
 
 
 class RunArtifactCaseCollectionView(RunArtifactViewEnvelope):
@@ -126,26 +130,39 @@ class RunArtifactCaseCollectionView(RunArtifactViewEnvelope):
 
 
 class ArtifactPresentationReader:
-    """Expose only verified, already-persisted Run result facts."""
+    """Expose only a verified Artifact 2.0 bound to its RunRecordV2."""
 
-    def __init__(self, run_directory: Path, *, run_id: str) -> None:
+    def __init__(
+        self,
+        run_directory: Path,
+        *,
+        run_id: str,
+        expected_experiment_id: str | None = None,
+        expected_artifact_digest: str | None = None,
+        expected_benchmark_release_id: str | None = None,
+        expected_benchmark_release_digest: str | None = None,
+        expected_bundle_id: str | None = None,
+        expected_case_selection_id: str | None = None,
+        expected_plan: ResolvedRunPlanV2 | None = None,
+    ) -> None:
         self.run_directory = run_directory
         self.run_id = run_id
+        self.expected_experiment_id = expected_experiment_id
+        self.expected_artifact_digest = expected_artifact_digest
+        self.expected_benchmark_release_id = expected_benchmark_release_id
+        self.expected_benchmark_release_digest = expected_benchmark_release_digest
+        self.expected_bundle_id = expected_bundle_id
+        self.expected_case_selection_id = expected_case_selection_id
+        self.expected_plan = expected_plan
 
     @property
     def artifact_root(self) -> Path:
         return self.run_directory / ARTIFACT_V2_DIRECTORY
 
-    @property
-    def has_artifact_v2(self) -> bool:
-        return self.artifact_root.exists()
-
     def overview(self) -> RunArtifactOverviewView:
         state, verification = self._state()
-        if state != ArtifactViewAvailability.AVAILABLE:
-            return RunArtifactOverviewView(
-                **self._envelope(state, verification),
-            )
+        if state == ArtifactViewAvailability.CORRUPTED:
+            return RunArtifactOverviewView(**self._envelope(state, verification))
         reader = ArtifactV2Reader(self.artifact_root)
         cases = reader.cases()
         bindings: dict[tuple[str, str], MetricDescriptorBindingView] = {}
@@ -168,11 +185,6 @@ class ArtifactPresentationReader:
         state, verification = self._state()
         if state == ArtifactViewAvailability.CORRUPTED:
             return RunArtifactCaseIndexView(**self._envelope(state, verification))
-        if state == ArtifactViewAvailability.LEGACY_UNAVAILABLE:
-            entries = tuple(self._legacy_index_entry(item) for item in self._legacy_cases())
-            return RunArtifactCaseIndexView(
-                **self._envelope(state, verification), cases=entries
-            )
         entries = tuple(
             RunCaseIndexEntryView(
                 case_id=item.case_id,
@@ -196,43 +208,37 @@ class ArtifactPresentationReader:
         envelope = self._envelope(state, verification)
         if state == ArtifactViewAvailability.CORRUPTED:
             return RunArtifactCaseView(**envelope)
-        if state == ArtifactViewAvailability.AVAILABLE:
-            return RunArtifactCaseView(
-                **envelope,
-                artifact_case=ArtifactV2Reader(self.artifact_root).case(
-                    case_id, repetition=repetition
-                ),
-            )
-        legacy = next(
-            (
-                item
-                for item in self._legacy_cases()
-                if item.case_id == case_id and item.repetition == repetition
+        return RunArtifactCaseView(
+            **envelope,
+            artifact_case=ArtifactV2Reader(self.artifact_root).case(
+                case_id, repetition=repetition
             ),
-            None,
         )
-        if legacy is None:
-            raise FileNotFoundError(case_id)
-        return RunArtifactCaseView(**envelope, legacy_case=legacy)
+
+    def case_model(self, case_id: str, *, repetition: int = 1) -> RunArtifactCaseV2:
+        state, _verification = self._state()
+        if state != ArtifactViewAvailability.AVAILABLE:
+            raise ValueError("corrupted Artifact 2.0 cannot provide a review subject")
+        return ArtifactV2Reader(self.artifact_root).case(
+            case_id, repetition=repetition
+        )
+
+    def case_models(self) -> tuple[RunArtifactCaseV2, ...]:
+        state, _verification = self._state()
+        if state != ArtifactViewAvailability.AVAILABLE:
+            raise ValueError("corrupted Artifact 2.0 cannot provide cases")
+        return ArtifactV2Reader(self.artifact_root).cases()
 
     def cases(self) -> RunArtifactCaseCollectionView:
         state, verification = self._state()
         envelope = self._envelope(state, verification)
         if state == ArtifactViewAvailability.CORRUPTED:
             return RunArtifactCaseCollectionView(**envelope)
-        if state == ArtifactViewAvailability.AVAILABLE:
-            values = tuple(
-                RunArtifactCaseView(**envelope, artifact_case=item)
-                for item in ArtifactV2Reader(self.artifact_root).cases()
-            )
-        else:
-            values = tuple(
-                RunArtifactCaseView(**envelope, legacy_case=item)
-                for item in self._legacy_cases()
-            )
-        return RunArtifactCaseCollectionView(
-            **envelope, cases=values
+        values = tuple(
+            RunArtifactCaseView(**envelope, artifact_case=item)
+            for item in ArtifactV2Reader(self.artifact_root).cases()
         )
+        return RunArtifactCaseCollectionView(**envelope, cases=values)
 
     def comparison_summary(self) -> dict[str, Any]:
         """Adapt persisted aggregates to the comparison validator's read shape."""
@@ -240,12 +246,12 @@ class ArtifactPresentationReader:
         overview = self.overview()
         if overview.summary is None:
             return {
-                "artifact_contract_version": overview.artifact_contract_version,
+                "artifact_contract_version": "2.0",
                 "availability": overview.availability.value,
                 "metrics": {},
             }
         return {
-            "artifact_contract_version": overview.artifact_contract_version,
+            "artifact_contract_version": "2.0",
             "availability": overview.availability.value,
             "metrics": {
                 metric.metric_id: {
@@ -260,120 +266,82 @@ class ArtifactPresentationReader:
 
     def _state(
         self,
-    ) -> tuple[ArtifactViewAvailability, ArtifactVerificationView | None]:
-        if not self.has_artifact_v2:
-            return ArtifactViewAvailability.LEGACY_UNAVAILABLE, None
-        verification = ArtifactVerificationView.from_v2(
-            ArtifactV2Reader(self.artifact_root).verify()
-        )
+    ) -> tuple[ArtifactViewAvailability, ArtifactVerificationView]:
+        reader = ArtifactV2Reader(self.artifact_root)
+        verification = reader.verify()
+        invalid_models = list(verification.invalid_models)
+        if verification.valid:
+            manifest = reader.manifest()
+            if manifest.run_id != self.run_id:
+                invalid_models.append("run-record:run-id")
+            if (
+                self.expected_experiment_id is not None
+                and manifest.experiment_id != self.expected_experiment_id
+            ):
+                invalid_models.append("run-record:experiment-id")
+            if (
+                self.expected_artifact_digest is not None
+                and manifest.artifact_digest != self.expected_artifact_digest
+            ):
+                invalid_models.append("run-record:artifact-digest")
+            benchmark = manifest.benchmark_identity
+            if (
+                self.expected_benchmark_release_id is not None
+                and benchmark.dataset_release_id
+                != self.expected_benchmark_release_id
+            ):
+                invalid_models.append("resolved-plan:benchmark-release-id")
+            if (
+                self.expected_benchmark_release_digest is not None
+                and benchmark.dataset_release_digest
+                != self.expected_benchmark_release_digest
+            ):
+                invalid_models.append("resolved-plan:benchmark-release-digest")
+            if (
+                self.expected_bundle_id is not None
+                and benchmark.bundle_id != self.expected_bundle_id
+            ):
+                invalid_models.append("resolved-plan:runtime-bundle-id")
+            if (
+                self.expected_case_selection_id is not None
+                and benchmark.case_selection_id != self.expected_case_selection_id
+            ):
+                invalid_models.append("resolved-plan:case-selection-id")
+            if self.expected_plan is not None:
+                invalid_models.extend(
+                    artifact_plan_binding_errors(reader, self.expected_plan)
+                )
+        if invalid_models:
+            verification = ArtifactV2Verification(
+                valid=False,
+                missing=verification.missing,
+                unexpected=verification.unexpected,
+                mismatched=verification.mismatched,
+                invalid_models=tuple(sorted(set(invalid_models))),
+            )
+        view = ArtifactVerificationView.from_v2(verification)
         return (
             ArtifactViewAvailability.AVAILABLE
             if verification.valid
             else ArtifactViewAvailability.CORRUPTED,
-            verification,
+            view,
         )
 
     def _envelope(
         self,
         state: ArtifactViewAvailability,
-        verification: ArtifactVerificationView | None,
+        verification: ArtifactVerificationView,
     ) -> dict[str, Any]:
         return {
             "run_id": self.run_id,
-            "artifact_contract_version": (
-                "2.0" if self.has_artifact_v2 else "1.2"
-            ),
             "availability": state,
             "reason": (
                 None
                 if state == ArtifactViewAvailability.AVAILABLE
                 else CORRUPTED_REASON
-                if state == ArtifactViewAvailability.CORRUPTED
-                else LEGACY_UNAVAILABLE_REASON
             ),
             "verification": verification,
         }
-
-    def _legacy_cases(self) -> tuple[LegacyRunCaseView, ...]:
-        cases_directory = self.run_directory / "cases"
-        if cases_directory.is_dir():
-            payloads = tuple(
-                self._read_object(path)
-                for path in sorted(cases_directory.glob("*.json"))
-            )
-        else:
-            execution = (
-                self.run_directory
-                / "private-evaluation"
-                / "case-execution.jsonl"
-            )
-            if not execution.is_file():
-                return ()
-            payloads = tuple(self._read_jsonl(execution))
-        return tuple(self._legacy_case(payload) for payload in payloads)
-
-    @staticmethod
-    def _legacy_case(payload: dict[str, Any]) -> LegacyRunCaseView:
-        case_id = payload.get("case_id")
-        question = payload.get("question")
-        if not isinstance(case_id, str) or not case_id:
-            raise ValueError("legacy case artifact has no case_id")
-        if not isinstance(question, str) or not question:
-            question = "[question unavailable]"
-        repetition = payload.get("repetition")
-        seed = payload.get("seed")
-        status = payload.get("status")
-        rag_result = payload.get("rag_result")
-        answer = rag_result.get("answer") if isinstance(rag_result, dict) else None
-        error = payload.get("error")
-        return LegacyRunCaseView(
-            case_id=case_id,
-            repetition=repetition if isinstance(repetition, int) and repetition > 0 else 1,
-            seed=seed if isinstance(seed, int) else None,
-            status=status if isinstance(status, str) and status else "system_error",
-            question=question,
-            answer=answer if isinstance(answer, str) else None,
-            error=error if isinstance(error, dict) else None,
-        )
-
-    @staticmethod
-    def _legacy_index_entry(item: LegacyRunCaseView) -> RunCaseIndexEntryView:
-        return RunCaseIndexEntryView(
-            case_id=item.case_id,
-            repetition=item.repetition,
-            seed=item.seed,
-            status=item.status,
-            question=item.question,
-            answer_judgment=ArtifactAnswerJudgment(
-                status=ArtifactAnswerStatus.UNAVAILABLE,
-                reason=LEGACY_UNAVAILABLE_REASON,
-            ),
-            evidence_judgment=ArtifactEvidenceJudgment(
-                status=ArtifactEvidenceStatus.UNAVAILABLE,
-                reason=LEGACY_UNAVAILABLE_REASON,
-            ),
-        )
-
-    @staticmethod
-    def _read_object(path: Path) -> dict[str, Any]:
-        value = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(value, dict):
-            raise TypeError(f"{path.name} is malformed")
-        return value
-
-    @staticmethod
-    def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-        values: list[dict[str, Any]] = []
-        for line_number, line in enumerate(
-            path.read_text(encoding="utf-8").splitlines(), start=1
-        ):
-            if not line.strip():
-                continue
-            value = json.loads(line)
-            if not isinstance(value, dict):
-                raise TypeError(f"{path.name}:{line_number} is malformed")
-            values.append(value)
-        return values
 
 
 __all__ = [
@@ -381,11 +349,11 @@ __all__ = [
     "ArtifactPresentationReader",
     "ArtifactVerificationView",
     "ArtifactViewAvailability",
-    "LegacyRunCaseView",
     "MetricDescriptorBindingView",
     "RunArtifactCaseCollectionView",
     "RunArtifactCaseIndexView",
     "RunArtifactCaseView",
     "RunArtifactOverviewView",
     "RunCaseIndexEntryView",
+    "RunRecordViewV2",
 ]

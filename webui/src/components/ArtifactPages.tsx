@@ -12,14 +12,14 @@ import type {
   ComparisonResponse,
   RunArtifactCaseV2,
   RunCaseIndexEntryV2,
-  RunManifest,
+  RunRecordViewV2,
 } from '../types'
 import { Button, StatusBadge, Surface } from './primitives'
 
 type ResultPage = 'runs' | 'cases' | 'run-detail'
 type Go = (page: ResultPage, params?: Record<string, string>) => void
 
-const displayRunTitle = (run: Pick<RunManifest, 'display_name' | 'experiment_id'>) =>
+const displayRunTitle = (run: Pick<RunRecordViewV2, 'display_name' | 'experiment_id'>) =>
   run.display_name?.trim() || run.experiment_id
 
 function ResultPageIntro({ title, description, actions }: { title: string; description: string; actions?: React.ReactNode }) {
@@ -28,10 +28,10 @@ function ResultPageIntro({ title, description, actions }: { title: string; descr
 
 function AvailabilityNotice({ value }: { value: Pick<ArtifactOverviewV2, 'availability' | 'reason' | 'artifact_contract_version'> }) {
   if (value.availability === 'available') return null
-  return <div className="error-banner" role="status"><Archive size={18} /><div><strong>{value.availability === 'corrupted' ? 'Artifact 2.0 已损坏' : '历史结果不可用于 v2 指标'}</strong><p>{value.reason}</p><small>Artifact contract {value.artifact_contract_version}</small></div></div>
+  return <div className="error-banner" role="status"><Archive size={18} /><div><strong>Artifact 2.0 已损坏</strong><p>{value.reason}</p><small>Artifact contract {value.artifact_contract_version}</small></div></div>
 }
 
-export function ArtifactRunDetailPage({ runId, runs, go }: { runId: string; runs: RunManifest[]; go: Go }) {
+export function ArtifactRunDetailPage({ runId, runs, go }: { runId: string; runs: RunRecordViewV2[]; go: Go }) {
   const { formatDate } = useLocale()
   const [overview, setOverview] = useState<ArtifactOverviewV2 | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -81,13 +81,13 @@ export function ArtifactRunDetailPage({ runId, runs, go }: { runId: string; runs
     <ResultPageIntro title="运行结果" description="页面只呈现已持久化的 Artifact 2.0，不在读取时重新定位证据或评分。" actions={<Button onClick={() => go('runs')}><ArrowLeft size={16} />返回</Button>} />
     {loadError && <ErrorBanner message={loadError} />}
     <Surface className="run-detail-overview" tone="inspector">
-      <header><div><span className="eyebrow">{run.adapter_id} · {formatDate(run.started_at)}</span><h2>{presentedName}</h2></div><div><StatusBadge state={run.status} />{overview?.verification && <span className={overview.verification.valid ? 'integrity integrity--ok' : 'integrity'}><ShieldCheck size={16} />{overview.verification.valid ? 'Artifact 完整' : 'Artifact 校验失败'}</span>}</div></header>
+      <header><div><span className="eyebrow">{run.adapter_id} · {formatDate(run.started_at ?? run.created_at)}</span><h2>{presentedName}</h2></div><div><StatusBadge state={run.state} />{overview?.verification && <span className={overview.verification.valid ? 'integrity integrity--ok' : 'integrity'}><ShieldCheck size={16} />{overview.verification.valid ? 'Artifact 完整' : 'Artifact 校验失败'}</span>}</div></header>
       <details className="run-name-editor"><summary>重命名运行</summary><div><input value={nameDraft} maxLength={160} onChange={(event) => setNameDraft(event.target.value)} /><Button disabled={nameBusy || !nameDraft.trim()} onClick={() => void saveName()}>{nameBusy ? '正在保存…' : '保存名称'}</Button></div></details>
       {overview && <AvailabilityNotice value={overview} />}
       <div className="run-detail-facts">
         <span><small>系统</small><b>{run.system_id}</b></span>
-        <span><small>Benchmark Release</small><b>{overview?.manifest?.benchmark_identity.dataset_release_id ?? run.dataset_release_id ?? '—'}</b></span>
-        <span><small>创建时间</small><b>{formatDate(run.started_at)}</b></span>
+        <span><small>Benchmark Release</small><b>{overview?.manifest?.benchmark_identity.dataset_release_id ?? run.benchmark_release_id}</b></span>
+        <span><small>创建时间</small><b>{formatDate(run.created_at)}</b></span>
         <span><small>Artifact Contract</small><b>{overview?.artifact_contract_version ?? '—'}</b></span>
       </div>
       {summary && <section className="run-judgment-summary"><div><span>排行榜资格</span><b>{summary.leaderboard_eligibility.eligible ? 'Eligible' : 'Ineligible'}</b><small>{summary.leaderboard_eligibility.reasons.join(' · ') || '所有正式核心指标均可用且 descriptor 一致。'}</small></div><div><span>Case</span><b>{summary.case_count}</b><small>{Object.entries(summary.execution_status_counts).map(([status, count]) => `${status} ${count}`).join(' · ')}</small></div><div><span>核心指标</span><b>{coreMetrics.filter((metric) => metric.status === 'observed').length}/{coreMetrics.length}</b><small>由 Artifact 的 required_metric_ids 定义。</small></div></section>}
@@ -103,7 +103,7 @@ export function ArtifactRunDetailPage({ runId, runs, go }: { runId: string; runs
   </>
 }
 
-export function ArtifactCasesPage({ runs, initialRun, go }: { runs: RunManifest[]; initialRun: string; go: Go }) {
+export function ArtifactCasesPage({ runs, initialRun, go }: { runs: RunRecordViewV2[]; initialRun: string; go: Go }) {
   const [runId, setRunId] = useState(initialRun || runs[0]?.run_id || '')
   const [index, setIndex] = useState<ArtifactCaseIndexViewV2 | null>(null)
   const [selected, setSelected] = useState('')
@@ -153,14 +153,14 @@ function CaseIndexButton({ item, active, onClick }: { item: RunCaseIndexEntryV2;
   return <button className={active ? 'active' : ''} onClick={onClick}><span>R{item.repetition}</span><b>{item.question}</b>{item.status === 'completed' ? <StateMark state={judgment} /> : <StateMark state={item.status} />}</button>
 }
 
-function ArtifactCaseDetail({ value, run }: { value: ArtifactCaseViewV2; run?: RunManifest }) {
+function ArtifactCaseDetail({ value, run }: { value: ArtifactCaseViewV2; run?: RunRecordViewV2 }) {
   if (value.availability !== 'available' || !value.artifact_case) {
-    return <><AvailabilityNotice value={value} />{value.legacy_case && <Surface><span className="eyebrow">Persisted legacy execution</span><h2>{value.legacy_case.question}</h2><p>{value.legacy_case.answer ?? 'Answer was not persisted.'}</p><small>Metrics, provenance, and failure attribution are legacy unavailable.</small></Surface>}</>
+    return <AvailabilityNotice value={value} />
   }
   return <PersistedCaseDetail value={value.artifact_case} run={run} />
 }
 
-function PersistedCaseDetail({ value, run }: { value: RunArtifactCaseV2; run?: RunManifest }) {
+function PersistedCaseDetail({ value, run }: { value: RunArtifactCaseV2; run?: RunRecordViewV2 }) {
   const answer = value.gold_answer.canonical
   const trace = value.adapter_result?.trace
   return <>
@@ -188,7 +188,7 @@ function PersistedCaseDetail({ value, run }: { value: RunArtifactCaseV2; run?: R
   </>
 }
 
-export function ArtifactComparePage({ runs }: { runs: RunManifest[] }) {
+export function ArtifactComparePage({ runs }: { runs: RunRecordViewV2[] }) {
   const { t, formatPercent } = useLocale()
   const [selected, setSelected] = useState<string[]>([])
   const [tier, setTier] = useState('task_comparable')

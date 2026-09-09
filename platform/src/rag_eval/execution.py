@@ -17,6 +17,7 @@ from time import monotonic
 import httpx
 
 from rag_eval import __version__
+from rag_eval.artifact_contract import artifact_digest as contract_digest
 from rag_eval.contracts.adapter import (
     AdapterCapabilities,
     DocumentInput,
@@ -127,7 +128,12 @@ from rag_eval.runs import (
     benchmark_identity_from_release_metadata,
     evaluation_profile_from_query_config,
 )
-from rag_eval.runs.plans import ResolvedRunPlanV2, formal_metric_descriptors
+from rag_eval.runs.plans import (
+    ResolvedRunPlanReferenceV2,
+    ResolvedRunPlanV2,
+    formal_metric_descriptors,
+)
+from rag_eval.runs.records import RunRecordStoreV2
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.runs import RunStore
 from rag_eval.worker.client import WorkerRemoteError
@@ -141,11 +147,13 @@ class RunExecutor:
         run_store: RunStore,
         provider: ExecutionProvider | None = None,
         dataset_release_store: DatasetReleaseStore | None = None,
+        run_record_store: RunRecordStoreV2 | None = None,
     ) -> None:
         self.dataset_store = dataset_store
         self.run_store = run_store
         self.provider = provider or LocalProcessProvider()
         self.dataset_release_store = dataset_release_store
+        self.run_record_store = run_record_store
 
     def execute(
         self,
@@ -158,6 +166,7 @@ class RunExecutor:
         replay_of_run_id: str | None = None,
         execution_metadata: dict[str, object] | None = None,
         resolved_plan: ResolvedRunPlanV2 | None = None,
+        resolved_plan_reference: ResolvedRunPlanReferenceV2 | None = None,
     ) -> RunManifest:
         run_id = run_id or uuid.uuid4().hex
         cancelled = cancelled or (lambda: False)
@@ -180,6 +189,16 @@ class RunExecutor:
                 raise ValueError(
                     "resolved plan scorer descriptors do not match the running Platform"
                 )
+            if self.run_record_store is None:
+                raise ValueError(
+                    "Native v2 execution requires the RunRecordV2 store"
+                )
+            if resolved_plan_reference is None:
+                raise ValueError(
+                    "Native v2 execution requires its resolved plan reference"
+                )
+            if resolved_plan_reference.digest != contract_digest(resolved_plan):
+                raise ValueError("resolved plan reference digest mismatch")
             documents_by_id = {
                 document.document_id: document for document in bundle.manifest.documents
             }
@@ -221,7 +240,14 @@ class RunExecutor:
                 experiment.seed + offset for offset in range(experiment.repetitions)
             )
         }
-        run_dir = self.run_store.prepare_execution_layout(run_id)
+        if resolved_plan is not None:
+            assert self.run_record_store is not None
+            assert resolved_plan_reference is not None
+            self.run_record_store.create(
+                run_id=run_id,
+                experiment_id=experiment.experiment_id,
+                resolved_plan=resolved_plan_reference,
+            )
         manifest: RunManifest | None = None
         documents: list[DocumentInput] | None = None
         corpus: CorpusEvidenceIndex | None = None
@@ -242,6 +268,7 @@ class RunExecutor:
             experiment.seed + offset for offset in range(experiment.repetitions)
         ]
         try:
+            run_dir = self.run_store.prepare_execution_layout(run_id)
             for repetition, repetition_seed in enumerate(repetition_seeds, start=1):
                 if cancelled():
                     if manifest is not None:
@@ -288,6 +315,11 @@ class RunExecutor:
                             repetition_seeds,
                             replay_of_run_id,
                         )
+                        if resolved_plan is not None:
+                            assert self.run_record_store is not None
+                            self.run_record_store.mark_running(
+                                run_id, started_at=manifest.started_at
+                            )
                         self.run_store.create(manifest, experiment)
                         provider_metadata = {
                             **handle.launch_metadata,
@@ -550,8 +582,6 @@ class RunExecutor:
 
             if manifest is None:
                 raise RuntimeError("run did not start")
-            if manifest.status != RunStatus.CANCELLED:
-                manifest = manifest.model_copy(update={"status": RunStatus.COMPLETED})
             expected_cases = len(questions) * experiment.repetitions
             counts = execution_counts(results, expected=expected_cases)
             summary = aggregate_metrics(
@@ -572,10 +602,16 @@ class RunExecutor:
             )
             completed_at = datetime.now(UTC)
             artifact_v2_reference: dict[str, str] = {}
-            if (
-                manifest.status == RunStatus.COMPLETED
-                and artifact_v2_cases
-                and len(artifact_v2_cases) == expected_cases
+            benchmark_identity = None
+            if manifest.status != RunStatus.CANCELLED:
+                if resolved_plan is not None and len(artifact_v2_cases) != expected_cases:
+                    raise ValueError(
+                        "Native v2 Run did not produce one Artifact case per planned execution"
+                    )
+                manifest = manifest.model_copy(update={"status": RunStatus.COMPLETED})
+            if manifest.status == RunStatus.COMPLETED and (
+                resolved_plan is not None
+                or (artifact_v2_cases and len(artifact_v2_cases) == expected_cases)
             ):
                 benchmark_identity = benchmark_identity_from_release_metadata(
                     bundle_id=bundle.bundle_id,
@@ -588,15 +624,12 @@ class RunExecutor:
                     },
                     cases=tuple(artifact_v2_cases),
                 )
-                if benchmark_identity is not None:
-                    ArtifactWriter(run_dir).publish(
-                        run_id=run_id,
-                        experiment_id=experiment.experiment_id,
-                        benchmark_identity=benchmark_identity,
-                        cases=tuple(artifact_v2_cases),
-                        started_at=manifest.started_at,
-                        completed_at=completed_at,
-                    )
+                if benchmark_identity is None:
+                    if resolved_plan is not None:
+                        raise ValueError(
+                            "Native v2 Run could not bind Artifact 2.0 to its Benchmark Release"
+                        )
+                else:
                     artifact_v2_reference = {
                         "artifact_v2": "artifact-v2/artifact.json"
                     }
@@ -623,6 +656,30 @@ class RunExecutor:
                 update={"artifact_checksums": self.run_store.artifact_hashes(run_id)}
             )
             self.run_store.write_manifest(manifest)
+            if benchmark_identity is not None:
+                # Artifact publication and RunRecord completion are the final
+                # authority transition. Transitional outputs above cannot
+                # make a Native v2 Run visible as completed, and no fallible
+                # legacy write occurs after this boundary.
+                ArtifactWriter(run_dir).publish(
+                    run_id=run_id,
+                    experiment_id=experiment.experiment_id,
+                    benchmark_identity=benchmark_identity,
+                    cases=tuple(artifact_v2_cases),
+                    started_at=manifest.started_at,
+                    completed_at=completed_at,
+                )
+            if resolved_plan is not None:
+                assert self.run_record_store is not None
+                if manifest.status == RunStatus.CANCELLED:
+                    self.run_record_store.mark_cancelled(
+                        run_id, completed_at=completed_at
+                    )
+                else:
+                    # This is the final authority transition.  The store reads
+                    # and verifies the atomically published Artifact before it
+                    # can expose COMPLETED.
+                    self.run_record_store.mark_completed(run_id)
             return manifest
         except Exception as exc:
             if manifest is not None:
@@ -634,6 +691,19 @@ class RunExecutor:
                     }
                 )
                 self.run_store.write_manifest(manifest)
+            if resolved_plan is not None and self.run_record_store is not None:
+                try:
+                    if cancelled():
+                        self.run_record_store.mark_cancelled(run_id)
+                    else:
+                        self.run_record_store.mark_failed(
+                            run_id,
+                            error=str(exc) or type(exc).__name__,
+                        )
+                except (FileNotFoundError, ValueError):
+                    # Never mask the execution failure. A terminal/completed
+                    # record cannot be rewritten by this defensive boundary.
+                    pass
             raise
 
     def _validate_dataset_release_reference(

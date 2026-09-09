@@ -25,13 +25,14 @@ from rag_eval.reviews import (
     SemanticAnswerSupportReviewer,
     SemanticReviewCoordinator,
 )
-from rag_eval.run_history import RunHistory
 from rag_eval.run_presentations import RunPresentationStore
+from rag_eval.runs.history import RunArtifactHistory
 from rag_eval.runs.plans import (
     ResolvedRunPlanReferenceV2,
     ResolvedRunPlanStore,
     ResolvedRunPlanV2,
 )
+from rag_eval.runs.records import RunRecordStoreV2
 from rag_eval.runtime_admission import (
     NewRunAdmissionError,
     admit_new_public_experiment,
@@ -71,6 +72,10 @@ class PlatformService:
         self.jobs = JobStore(paths.jobs)
         self.experiments = ExperimentStore(paths.experiments)
         self.resolved_run_plans = ResolvedRunPlanStore(paths.resolved_run_plans)
+        self.run_records = RunRecordStoreV2(
+            paths.runs,
+            self.resolved_run_plans,
+        )
         self.systems = SystemRegistry(paths.systems)
         self.providers = ExecutionProviderRegistry()
         self.llm = LLMConfigurationService(paths.llm_configuration) if self.product_enabled else None
@@ -139,23 +144,10 @@ class PlatformService:
             if self.authoring is not None and self.formal_datasets is not None and self.portfolios is not None
             else None
         )
-        self.run_history = RunHistory(
-            self.runs,
-            reviews=self.case_reviews,
-            answer_support_reviews=self.answer_support_reviews,
+        self.run_history = RunArtifactHistory(
+            self.run_records,
+            self.resolved_run_plans,
             presentations=self.run_presentations,
-            dataset_store=self.datasets,
-            dataset_releases=(
-                self.formal_datasets.releases
-                if self.formal_datasets is not None
-                else None
-            ),
-            authoring_store=(
-                self.authoring.store if self.authoring is not None else None
-            ),
-            historical_rescores_root=(
-                paths.historical_rescores if self.product_enabled else None
-            ),
         )
         self.benchmark_admission = (
             BenchmarkAdmissionService(paths.benchmark_admission, portfolios=self.portfolios)
@@ -170,14 +162,21 @@ class PlatformService:
             dataset_release_store=(
                 self.formal_datasets.releases if self.formal_datasets is not None else None
             ),
+            run_record_store=self.run_records,
         )
         self.semantic_review_coordinator = (
-            SemanticReviewCoordinator(self.semantic_reviewer, self.runs.cases)
+            SemanticReviewCoordinator(
+                self.semantic_reviewer,
+                self.run_history.artifact_case_models,
+            )
             if self.semantic_reviewer is not None
             else None
         )
         self.semantic_support_review_coordinator = (
-            SemanticReviewCoordinator(self.semantic_support_reviewer, self.runs.cases)
+            SemanticReviewCoordinator(
+                self.semantic_support_reviewer,
+                self.run_history.artifact_case_models,
+            )
             if self.semantic_support_reviewer is not None
             else None
         )
@@ -185,6 +184,7 @@ class PlatformService:
         self.supervisor = JobSupervisor(
             self.jobs,
             self.resolved_run_plans,
+            self.run_records,
             self.system_resolver,
             self.executor,
             self.providers,

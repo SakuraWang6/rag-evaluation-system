@@ -12,7 +12,10 @@ import uvicorn
 
 from rag_eval.api import create_app
 from rag_eval.artifact_contract import freeze_artifact
-from rag_eval.comparison import validate_comparison
+from rag_eval.comparison import (
+    ArtifactComparisonRunV2,
+    validate_artifact_comparison_v2,
+)
 from rag_eval.contracts.research import (
     AnalysisContract,
     ComparisonSpec,
@@ -22,9 +25,7 @@ from rag_eval.contracts.research import (
 from rag_eval.contracts.run import ComparisonTier, ExperimentSpec
 from rag_eval.contracts.schema import export_json_schemas
 from rag_eval.datasets.blind import validate_blind_layout
-from rag_eval.replay import replay_mismatches
 from rag_eval.service import PlatformService
-from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.layout import PlatformPaths
 from rag_eval.systems import SystemRegistration
 
@@ -151,17 +152,21 @@ def main(argv: list[str] | None = None) -> int:
             if args.spec
             else None
         )
-        manifests = [service.runs.get(run_id) for run_id in args.run_ids]
-        summaries = {
-            manifest.run_id: json.loads(
-                (service.paths.runs / manifest.run_id / "summary.json").read_text(
-                    encoding="utf-8"
-                )
+        runs = [
+            ArtifactComparisonRunV2(
+                record=service.run_history.get(run_id),
+                plan=service.run_history.plan(run_id),
             )
-            for manifest in manifests
+            for run_id in args.run_ids
+        ]
+        summaries = {
+            run.run_id: service.run_history.artifact_comparison_summary(
+                run.run_id
+            )
+            for run in runs
         }
-        decision = validate_comparison(
-            manifests,
+        decision = validate_artifact_comparison_v2(
+            runs,
             ComparisonTier(args.tier),
             summaries=summaries,
             spec=spec,
@@ -169,67 +174,17 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(asdict(decision), default=str, indent=2))
         return 0 if decision.compatible else 2
     elif args.command == "verify-run":
-        verification = service.runs.verify_artifacts(args.run_id)
-        print(json.dumps(asdict(verification), indent=2))
+        verification = service.run_history.artifact_overview(
+            args.run_id
+        ).verification
+        print(verification.model_dump_json(indent=2))
         return 0 if verification.valid else 2
     elif args.command == "replay":
-        verification = service.runs.verify_artifacts(args.run_id)
-        if not verification.valid:
-            print(json.dumps(asdict(verification), indent=2), file=sys.stderr)
-            return 2
-        original = service.runs.get(args.run_id)
-        experiment = service.runs.experiment(args.run_id)
-        bundle = service.datasets.get(experiment.bundle_id)
-        plan_reference = service.admit_new_public_experiment(experiment, bundle)
-        resolved_plan = service.resolved_run_plans.get(plan_reference)
-        resolved = service.system_resolver.resolve(
-            experiment.system_id,
-            provider=resolved_plan.system.execution_provider,
+        print(
+            "historical replay/rescore is unsupported by the Native v2 runtime",
+            file=sys.stderr,
         )
-        if (
-            service.system_resolver.plan_identity(
-                experiment.system_id,
-                expected_adapter_id=experiment.adapter_id,
-                provider=resolved_plan.system.execution_provider,
-            )
-            != resolved_plan.system
-        ):
-            raise ValueError(
-                "replay system/worker profile drifted from the resolved plan"
-            )
-        replayed = service.executor.execute(
-            experiment,
-            resolved.command,
-            run_id=args.new_run_id,
-            replay_of_run_id=original.run_id,
-            execution_metadata=resolved.execution_metadata,
-            resolved_plan=resolved_plan,
-        )
-        mismatches = replay_mismatches(original, replayed)
-        report = {
-            "replay_of_run_id": original.run_id,
-            "run_id": replayed.run_id,
-            "allow_drift": args.allow_drift,
-            "mismatches": mismatches,
-        }
-        mismatch_path = service.paths.runs / replayed.run_id / "replay-mismatch.json"
-        atomic_write_json(mismatch_path, report)
-        replayed = replayed.model_copy(
-            update={
-                "artifacts": {
-                    **replayed.artifacts,
-                    "replay_mismatch": "replay-mismatch.json",
-                }
-            }
-        )
-        service.runs.write_manifest(replayed)
-        replayed = replayed.model_copy(
-            update={"artifact_checksums": service.runs.artifact_hashes(replayed.run_id)}
-        )
-        service.runs.write_manifest(replayed)
-        print(json.dumps({"manifest": replayed.model_dump(mode="json"), **report}, indent=2))
-        if mismatches and not args.allow_drift:
-            return 2
+        return 2
     elif args.command == "freeze-model-lock":
         lock = ModelLock.model_validate_json(args.source.read_text(encoding="utf-8"))
         digest = freeze_artifact(lock, args.destination)

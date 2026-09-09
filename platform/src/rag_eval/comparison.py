@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from rag_eval.artifact_contract import artifact_digest
 from rag_eval.contracts.research import ComparisonSpec
 from rag_eval.contracts.run import ComparisonTier, RunManifest, RunStatus
+from rag_eval.runs.plans import ResolvedRunPlanV2
+from rag_eval.runs.records import RunRecordStateV2, RunRecordV2
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +29,149 @@ class ComparisonDecision:
     reasons: tuple[str, ...]
     may_declare_winner: bool
     metric_decisions: tuple[MetricComparisonDecision, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactComparisonRunV2:
+    """The non-evaluation inputs needed to compare two Artifact 2.0 Runs."""
+
+    record: RunRecordV2
+    plan: ResolvedRunPlanV2
+
+    @property
+    def run_id(self) -> str:
+        return self.record.run_id
+
+
+class _RunIdentity(Protocol):
+    @property
+    def run_id(self) -> str: ...
+
+
+def validate_artifact_comparison_v2(
+    runs: list[ArtifactComparisonRunV2],
+    requested: ComparisonTier,
+    *,
+    summaries: dict[str, dict[str, Any]],
+    spec: ComparisonSpec | None = None,
+) -> ComparisonDecision:
+    """Compare only immutable plans and persisted Artifact 2.0 summaries."""
+
+    if len(runs) < 2:
+        return ComparisonDecision(
+            requested, False, ("at least two runs are required",), False
+        )
+    reasons: list[str] = []
+    for run in runs:
+        if run.record.state != RunRecordStateV2.COMPLETED:
+            reasons.append(f"{run.run_id} is not a completed RunRecordV2")
+        summary = summaries.get(run.run_id, {})
+        if (
+            summary.get("artifact_contract_version") != "2.0"
+            or summary.get("availability") != "available"
+        ):
+            reasons.append(
+                f"{run.run_id} Artifact 2.0 is not verified and available"
+            )
+    for label, values in (
+        (
+            "Benchmark Release",
+            {
+                (
+                    run.plan.benchmark_release.release_id,
+                    run.plan.benchmark_release.release_digest,
+                    run.plan.benchmark_release.runtime_bundle_id,
+                )
+                for run in runs
+            },
+        ),
+        ("case selection", {run.plan.case_selection_id for run in runs}),
+        ("selected cases", {run.plan.case_ids for run in runs}),
+        ("repetitions", {run.plan.repetitions for run in runs}),
+        ("seed", {run.plan.seed for run in runs}),
+    ):
+        if len(values) > 1:
+            reasons.append(f"task contract differs: {label}")
+
+    if spec is None:
+        if requested == ComparisonTier.STRICT_CONTROLLED:
+            reasons.append(
+                "strict controlled comparison requires a preregistered ComparisonSpec"
+            )
+    else:
+        if spec.tier != requested.value:
+            reasons.append("ComparisonSpec tier does not match requested tier")
+        if set(spec.experiment_ids) != {
+            run.record.experiment_id for run in runs
+        }:
+            reasons.append(
+                "ComparisonSpec experiment IDs do not match selected runs"
+            )
+        plan_configs = [_v2_comparison_config(run.plan) for run in runs]
+        for factor in spec.controlled_factors:
+            values = [lookup_factor(config, factor) for config in plan_configs]
+            if any(value is _MISSING for value in values):
+                reasons.append(f"controlled factor is missing: {factor}")
+            elif len({serialized(value) for value in values}) > 1:
+                reasons.append(f"controlled factor differs: {factor}")
+        if requested == ComparisonTier.STRICT_CONTROLLED:
+            baseline = flatten_config(plan_configs[0])
+            allowed = tuple(spec.treatment_factors)
+            for candidate in plan_configs[1:]:
+                flattened = flatten_config(candidate)
+                for path in sorted(set(baseline).union(flattened)):
+                    if baseline.get(path, _MISSING) == flattened.get(path, _MISSING):
+                        continue
+                    if any(
+                        path == factor or path.startswith(f"{factor}.")
+                        for factor in allowed
+                    ):
+                        continue
+                    reasons.append(f"undeclared treatment/config drift: {path}")
+
+    metric_decisions = _metric_decisions(runs, requested, summaries, spec, reasons)
+    if requested == ComparisonTier.EXPLORATORY:
+        return ComparisonDecision(
+            requested,
+            True,
+            tuple(dict.fromkeys(reasons)),
+            False,
+            metric_decisions,
+        )
+    compatible = not reasons
+    primary = set(spec.primary_metrics) if spec is not None else set()
+    eligible = [item for item in metric_decisions if item.metric_id in primary]
+    return ComparisonDecision(
+        requested,
+        compatible,
+        tuple(dict.fromkeys(reasons)),
+        bool(
+            compatible
+            and requested == ComparisonTier.STRICT_CONTROLLED
+            and eligible
+            and all(item.winner_eligible for item in eligible)
+        ),
+        metric_decisions,
+    )
+
+
+def _v2_comparison_config(plan: ResolvedRunPlanV2) -> dict[str, Any]:
+    """Expose only frozen plan fields to ComparisonSpec factor paths."""
+
+    return {
+        "benchmark": plan.benchmark_release.model_dump(mode="json"),
+        "document": plan.original_document.model_dump(mode="json"),
+        "system": plan.system.model_dump(mode="json"),
+        "adapter": {"configuration_digest": plan.adapter_config_digest},
+        "query": plan.query_config.model_dump(mode="json"),
+        "metrics": plan.metric_config.model_dump(mode="json"),
+        "evaluation": plan.evaluation_profile.model_dump(mode="json"),
+        "resources": plan.resource_limits.model_dump(mode="json"),
+        "case_ids": list(plan.case_ids),
+        "case_selection_id": plan.case_selection_id,
+        "seed": plan.seed,
+        "repetitions": plan.repetitions,
+    }
 
 
 def validate_comparison(
@@ -229,7 +375,7 @@ def lookup_factor(config: dict[str, Any], path: str) -> Any:
 
 
 def _metric_decisions(
-    runs: list[RunManifest],
+    runs: Sequence[_RunIdentity],
     requested: ComparisonTier,
     summaries: dict[str, dict[str, Any]] | None,
     spec: ComparisonSpec | None,

@@ -300,7 +300,6 @@
     "ArtifactViewAvailability": {
       "enum": [
         "available",
-        "legacy_unavailable",
         "corrupted"
       ],
       "title": "ArtifactViewAvailability",
@@ -989,76 +988,6 @@
         "items"
       ],
       "title": "IngestionCatalogObservation",
-      "type": "object"
-    },
-    "LegacyRunCaseView": {
-      "additionalProperties": false,
-      "properties": {
-        "case_id": {
-          "minLength": 1,
-          "title": "Case Id",
-          "type": "string"
-        },
-        "repetition": {
-          "minimum": 1,
-          "title": "Repetition",
-          "type": "integer"
-        },
-        "seed": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Seed"
-        },
-        "status": {
-          "minLength": 1,
-          "title": "Status",
-          "type": "string"
-        },
-        "question": {
-          "minLength": 1,
-          "title": "Question",
-          "type": "string"
-        },
-        "answer": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Answer"
-        },
-        "error": {
-          "anyOf": [
-            {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Error"
-        }
-      },
-      "required": [
-        "case_id",
-        "repetition",
-        "status",
-        "question"
-      ],
-      "title": "LegacyRunCaseView",
       "type": "object"
     },
     "LineageIntegrityStatus": {
@@ -2817,8 +2746,8 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "1.0",
-      "default": "1.0",
+      "const": "2.0",
+      "default": "2.0",
       "title": "Schema Version",
       "type": "string"
     },
@@ -2828,10 +2757,8 @@
       "type": "string"
     },
     "artifact_contract_version": {
-      "enum": [
-        "2.0",
-        "1.2"
-      ],
+      "const": "2.0",
+      "default": "2.0",
       "title": "Artifact Contract Version",
       "type": "string"
     },
@@ -2851,15 +2778,7 @@
       "title": "Reason"
     },
     "verification": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/ArtifactVerificationView"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
+      "$ref": "#/$defs/ArtifactVerificationView"
     },
     "artifact_case": {
       "anyOf": [
@@ -2871,23 +2790,12 @@
         }
       ],
       "default": null
-    },
-    "legacy_case": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/LegacyRunCaseView"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
     }
   },
   "required": [
     "run_id",
-    "artifact_contract_version",
-    "availability"
+    "availability",
+    "verification"
   ],
   "title": "RunArtifactCaseView",
   "type": "object"

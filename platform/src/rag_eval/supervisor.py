@@ -7,7 +7,6 @@ import threading
 from collections.abc import Callable
 from typing import Self
 
-from rag_eval.contracts.run import RunStatus
 from rag_eval.execution import RunExecutor
 from rag_eval.execution_provider import ExecutionProviderRegistry
 from rag_eval.jobs import JobStatus, JobStore
@@ -15,6 +14,7 @@ from rag_eval.runs.plans import (
     ResolvedRunPlanReferenceV2,
     ResolvedRunPlanStore,
 )
+from rag_eval.runs.records import RunRecordStateV2, RunRecordStoreV2
 from rag_eval.systems import SystemResolver
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ class JobSupervisor:
         self,
         jobs: JobStore,
         resolved_run_plans: ResolvedRunPlanStore,
+        run_records: RunRecordStoreV2,
         systems: SystemResolver,
         executor: RunExecutor,
         providers: ExecutionProviderRegistry,
@@ -33,6 +34,7 @@ class JobSupervisor:
     ) -> None:
         self.jobs = jobs
         self.resolved_run_plans = resolved_run_plans
+        self.run_records = run_records
         self.systems = systems
         self.executor = executor
         self.providers = providers
@@ -121,6 +123,7 @@ class JobSupervisor:
                 # by its preview; otherwise formal releases look unavailable
                 # only after the supervisor claims the job.
                 dataset_release_store=self.executor.dataset_release_store,
+                run_record_store=self.run_records,
             )
             manifest = executor.execute(
                 job.experiment,
@@ -129,13 +132,25 @@ class JobSupervisor:
                 worker_started=worker_started,
                 execution_metadata=resolved.execution_metadata,
                 resolved_plan=plan,
+                resolved_plan_reference=ResolvedRunPlanReferenceV2(
+                    path=job.resolved_plan_path,
+                    digest=job.resolved_plan_digest,
+                ),
             )
+            record = self.run_records.get(manifest.run_id)
             current = self.jobs.get(job.job_id)
-            if manifest.status == RunStatus.CANCELLED or current.status == JobStatus.CANCELLING:
+            if (
+                record.state == RunRecordStateV2.CANCELLED
+                or current.status == JobStatus.CANCELLING
+            ):
                 self.jobs.transition(
                     job.job_id, JobStatus.CANCELLED, run_id=manifest.run_id
                 )
             else:
+                if record.state != RunRecordStateV2.COMPLETED:
+                    raise ValueError(
+                        "executor returned without a completed RunRecordV2"
+                    )
                 self.jobs.transition(
                     job.job_id, JobStatus.COMPLETED, run_id=manifest.run_id
                 )

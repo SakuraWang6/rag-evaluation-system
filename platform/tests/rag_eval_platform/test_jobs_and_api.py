@@ -112,9 +112,7 @@ def test_api_keeps_system_registration_local_and_legacy_out(tmp_path: Path) -> N
         encoding="utf-8",
     )
     liveness = client.get("/api/v1/runs/native-active/liveness")
-    assert liveness.status_code == 200
-    assert liveness.json()["status"] == "parsing"
-    assert liveness.json()["repetitions"][0]["progress_seq"] == 2
+    assert liveness.status_code == 404
 
     legacy = service.paths.runs / "old-legacy"
     legacy.mkdir()

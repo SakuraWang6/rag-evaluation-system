@@ -42,11 +42,13 @@ from rag_eval.runs.models import (
     RunArtifactManifestV2,
     RunArtifactSummaryV2,
 )
+from rag_eval.runs.records import RunRecordV2
 from rag_eval.runs.views import (
     RunArtifactCaseCollectionView,
     RunArtifactCaseIndexView,
     RunArtifactCaseView,
     RunArtifactOverviewView,
+    RunRecordViewV2,
 )
 
 PUBLIC_MODELS: dict[str, type[BaseModel]] = {
@@ -72,6 +74,8 @@ PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "run-artifact-case-v2": RunArtifactCaseV2,
     "run-artifact-summary-v2": RunArtifactSummaryV2,
     "run-artifact-case-index-v2": ArtifactCaseIndexV2,
+    "run-record-v2": RunRecordV2,
+    "run-record-view-v2": RunRecordViewV2,
     "run-artifact-overview-view-v1": RunArtifactOverviewView,
     "run-artifact-case-index-view-v1": RunArtifactCaseIndexView,
     "run-artifact-case-view-v1": RunArtifactCaseView,

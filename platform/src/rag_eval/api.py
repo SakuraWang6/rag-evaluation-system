@@ -7,7 +7,6 @@ import shutil
 import zipfile
 from asyncio import CancelledError, Task, create_task
 from contextlib import asynccontextmanager, suppress
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -28,7 +27,10 @@ from rag_eval.authoring.models import (
 )
 from rag_eval.authoring.storage import AuthoringStorageError
 from rag_eval.authoring.workflow import AuthoringWorkflowError
-from rag_eval.comparison import validate_comparison
+from rag_eval.comparison import (
+    ArtifactComparisonRunV2,
+    validate_artifact_comparison_v2,
+)
 from rag_eval.contracts.research import ComparisonSpec
 from rag_eval.contracts.run import ComparisonTier, ExperimentSpec
 from rag_eval.datasets.drafts import DatasetDraft
@@ -67,6 +69,7 @@ from rag_eval.runs.views import (
     RunArtifactCaseIndexView,
     RunArtifactCaseView,
     RunArtifactOverviewView,
+    RunRecordViewV2,
 )
 
 
@@ -1269,11 +1272,11 @@ def create_app(
         return record.model_dump(mode="json")
 
     @app.get("/api/v1/runs")
-    async def runs() -> list[dict[str, Any]]:
+    async def runs() -> list[RunRecordViewV2]:
         return await run_in_threadpool(service.run_history.list_views)
 
     @app.get("/api/v1/runs/{run_id}")
-    async def run(run_id: str) -> dict[str, Any]:
+    async def run(run_id: str) -> RunRecordViewV2:
         try:
             return await run_in_threadpool(lambda: service.run_history.run_view(run_id))
         except (OSError, ValueError) as exc:
@@ -1289,6 +1292,9 @@ def create_app(
             raise HTTPException(status_code=404, detail="run presentation is unavailable in this Platform mode")
         try:
             await run_in_threadpool(lambda: service.run_history.get(run_id))
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="run does not exist") from exc
+        try:
             record = await run_in_threadpool(
                 lambda: service.run_presentations.append(
                     run_id=run_id,
@@ -1312,6 +1318,10 @@ def create_app(
             run_dir = service.paths.runs / safe_id(run_id)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        try:
+            await run_in_threadpool(lambda: service.run_history.get(run_id))
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="run does not exist") from exc
         if not run_dir.is_dir():
             raise HTTPException(status_code=404, detail="run does not exist")
         repetitions: list[dict[str, Any]] = []
@@ -1366,15 +1376,10 @@ def create_app(
             presentation = await run_in_threadpool(
                 service.run_history.artifact_presentation, run_id
             )
-            if presentation.has_artifact_v2:
-                verification = await run_in_threadpool(
-                    lambda: presentation.overview().verification
-                )
-                assert verification is not None
-                return verification.model_dump(mode="json")
-            return await run_in_threadpool(
-                lambda: asdict(service.run_history.verify_artifacts(run_id))
+            verification = await run_in_threadpool(
+                lambda: presentation.overview().verification
             )
+            return verification.model_dump(mode="json")
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -1390,14 +1395,17 @@ def create_app(
         if service.case_reviews is None:
             raise HTTPException(status_code=404, detail="case review is unavailable in this Platform mode")
         try:
-            await run_in_threadpool(
-                lambda: service.run_history.case(run_id, case_id, repetition=repetition)
+            artifact_case = await run_in_threadpool(
+                lambda: service.run_history.artifact_case_model(
+                    run_id, case_id, repetition=repetition
+                )
             )
             record = await run_in_threadpool(
                 lambda: service.case_reviews.append(
                     run_id=run_id,
                     case_id=case_id,
                     repetition=repetition,
+                    artifact_case_digest=artifact_case.case_digest,
                     verdict=payload.verdict,
                     source=CaseReviewSource.HUMAN,
                     reviewer=payload.reviewer,
@@ -1421,7 +1429,9 @@ def create_app(
             raise HTTPException(status_code=404, detail="semantic review is unavailable in this Platform mode")
         try:
             case = await run_in_threadpool(
-                lambda: service.run_history.case(run_id, case_id, repetition=repetition)
+                lambda: service.run_history.artifact_case_model(
+                    run_id, case_id, repetition=repetition
+                )
             )
             record = await run_in_threadpool(
                 lambda: service.semantic_reviewer.review(
@@ -1451,14 +1461,17 @@ def create_app(
                 detail="answer support review is unavailable in this Platform mode",
             )
         try:
-            await run_in_threadpool(
-                lambda: service.run_history.case(run_id, case_id, repetition=repetition)
+            artifact_case = await run_in_threadpool(
+                lambda: service.run_history.artifact_case_model(
+                    run_id, case_id, repetition=repetition
+                )
             )
             record = await run_in_threadpool(
                 lambda: service.answer_support_reviews.append(
                     run_id=run_id,
                     case_id=case_id,
                     repetition=repetition,
+                    artifact_case_digest=artifact_case.case_digest,
                     verdict=payload.verdict,
                     source=CaseReviewSource.HUMAN,
                     reviewer=payload.reviewer,
@@ -1485,7 +1498,9 @@ def create_app(
             )
         try:
             case = await run_in_threadpool(
-                lambda: service.run_history.case(run_id, case_id, repetition=repetition)
+                lambda: service.run_history.artifact_case_model(
+                    run_id, case_id, repetition=repetition
+                )
             )
             record = await run_in_threadpool(
                 lambda: service.semantic_support_reviewer.review(
@@ -1523,17 +1538,23 @@ def create_app(
     @app.post("/api/v1/comparisons/validate")
     async def compare(request: ComparisonRequest) -> dict[str, Any]:
         try:
-            manifests = [service.run_history.get(run_id) for run_id in request.run_ids]
+            runs = [
+                ArtifactComparisonRunV2(
+                    record=service.run_history.get(run_id),
+                    plan=service.run_history.plan(run_id),
+                )
+                for run_id in request.run_ids
+            ]
+            summaries = {
+                run.run_id: service.run_history.artifact_comparison_summary(
+                    run.run_id
+                )
+                for run in runs
+            }
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        summaries = {
-            manifest.run_id: service.run_history.artifact_comparison_summary(
-                manifest.run_id
-            )
-            for manifest in manifests
-        }
-        decision = validate_comparison(
-            manifests,
+        decision = validate_artifact_comparison_v2(
+            runs,
             request.tier,
             summaries=summaries,
             spec=request.comparison_spec,
@@ -1556,14 +1577,14 @@ def create_app(
             "runs": [
                 {
                     # Presentation metadata is an append-only product overlay;
-                    # preserve the raw manifest for comparison validation but
-                    # return the readable label to the UI.
-                    "run": service.run_history.run_view(manifest.run_id),
+                    # comparison itself consumes only the frozen plan and
+                    # Artifact summary, while the UI receives a readable label.
+                    "run": service.run_history.run_view(run.run_id),
                     "summary": service.run_history.artifact_overview(
-                        manifest.run_id
+                        run.run_id
                     ).model_dump(mode="json"),
                 }
-                for manifest in manifests
+                for run in runs
             ],
         }
 

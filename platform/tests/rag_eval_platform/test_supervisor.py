@@ -21,13 +21,16 @@ from rag_eval.runs.plans import (
     digest_json,
     formal_metric_descriptors,
 )
+from rag_eval.runs.records import RunRecordStateV2, RunRecordStoreV2
 from rag_eval.supervisor import JobSupervisor
 
 
 def _idle_supervisor(tmp_path) -> JobSupervisor:
+    plans = ResolvedRunPlanStore(tmp_path / "idle-resolved-run-plans")
     return JobSupervisor(
         JobStore(tmp_path / "idle-jobs"),
-        ResolvedRunPlanStore(tmp_path / "idle-resolved-run-plans"),
+        plans,
+        RunRecordStoreV2(tmp_path / "idle-runs", plans),
         SimpleNamespace(),
         RunExecutor(SimpleNamespace(), SimpleNamespace()),  # type: ignore[arg-type]
         SimpleNamespace(),
@@ -178,6 +181,9 @@ def test_supervisor_keeps_the_formal_release_store_for_queued_runs(tmp_path, mon
         dataset_release_store=formal_store,  # type: ignore[arg-type]
     )
     observed: list[tuple[object, object]] = []
+    run_records = SimpleNamespace(
+        get=lambda _run_id: SimpleNamespace(state=RunRecordStateV2.COMPLETED)
+    )
 
     def execute(self, *_args, **_kwargs):
         observed.append(
@@ -189,6 +195,7 @@ def test_supervisor_keeps_the_formal_release_store_for_queued_runs(tmp_path, mon
     supervisor = JobSupervisor(
         jobs,
         plans,
+        run_records,
         SimpleNamespace(
             plan_identity=lambda *_args, **_kwargs: system_identity,
             resolve=lambda *_args, **_kwargs: SimpleNamespace(

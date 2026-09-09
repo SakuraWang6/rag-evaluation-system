@@ -33,7 +33,7 @@ import type {
   FormalDatasetsResponse,
   ExperimentSpec,
   JobRecord,
-  RunManifest,
+  RunRecordViewV2,
   SystemSummary,
   ProductSystemSummary,
 } from './types'
@@ -84,7 +84,7 @@ function usePlatformData() {
   const [formalDatasets, setFormalDatasets] = useState<FormalDatasetsResponse>({ releases: [], bundles_v3: [] })
   const [systems, setSystems] = useState<SystemSummary[]>([])
   const [experiments, setExperiments] = useState<ExperimentSpec[]>([])
-  const [runs, setRuns] = useState<RunManifest[]>([])
+  const [runs, setRuns] = useState<RunRecordViewV2[]>([])
   const [jobs, setJobs] = useState<JobRecord[]>([])
   const [error, setError] = useState('')
   const [connected, setConnected] = useState(false)
@@ -102,7 +102,7 @@ function usePlatformData() {
       setFormalDatasets(nextFormalDatasets)
       setSystems(nextSystems)
       setExperiments(nextExperiments)
-      setRuns(nextRuns.sort((a, b) => b.started_at.localeCompare(a.started_at)))
+      setRuns(nextRuns.sort((a, b) => b.created_at.localeCompare(a.created_at)))
       setJobs(nextJobs.sort((a, b) => b.updated_at.localeCompare(a.updated_at)))
       setError('')
     } catch (cause) {
@@ -255,16 +255,16 @@ function ExperimentsPage({ experiments }: { experiments: ExperimentSpec[] }) {
   return <><PageIntro titleKey="page.experiments.title" descriptionKey="page.experiments.description" /><Surface tone="inset"><p>{t('page.experiments.readOnly')}</p></Surface><div className="experiment-list">{experiments.map((experiment) => { const repetitions = experiment.repetitions === 1 ? t('page.experiments.repetitions', { count: experiment.repetitions }) : t('page.experiments.repetitionsPlural', { count: experiment.repetitions }); return <Surface key={experiment.experiment_id}><div><span className="eyebrow">{experiment.adapter_id} / {t('page.experiments.seed', { value: experiment.seed })}</span><h3>{experiment.display_name?.trim() || experiment.experiment_id}</h3><p>{t('page.experiments.bundleSummary', { id: experiment.bundle_id.slice(0, 12), repetitions })}</p></div><code>{JSON.stringify({ query: experiment.query_config, metrics: experiment.metric_config }, null, 2)}</code></Surface> })}</div>{!experiments.length && <Empty>{t('page.experiments.empty')}</Empty>}</>
 }
 
-function runTitle(run: Pick<RunManifest, 'display_name' | 'experiment_id'>): string {
+function runTitle(run: Pick<RunRecordViewV2, 'display_name' | 'experiment_id'>): string {
   return run.display_name?.trim() || run.experiment_id
 }
 
-function RunsPage({ runs, jobs, go }: { runs: RunManifest[]; jobs: JobRecord[]; go: (page: Page, params?: Record<string, string>) => void }) {
+function RunsPage({ runs, jobs, go }: { runs: RunRecordViewV2[]; jobs: JobRecord[]; go: (page: Page, params?: Record<string, string>) => void }) {
   const { t, formatDate } = useLocale()
   return <>
     <PageIntro titleKey="page.runs.title" descriptionKey="page.runs.description" />
     {!!jobs.length && <Surface className="job-tape" tone="inset">{jobs.slice(0, 5).map((job) => <div key={job.job_id}><StateMark state={job.status} /><span>{job.experiment.display_name?.trim() || job.experiment.experiment_id}</span>{['queued', 'running', 'cancelling'].includes(job.status) && <Button variant="quiet" onClick={() => void api.cancelJob(job.job_id)}>{t('common.cancel')}</Button>}{job.error && <small>{job.error}</small>}</div>)}</Surface>}
-    <Surface className="runs-navigator">{runs.map((run) => <button key={run.run_id} className="runs-navigator__row" onClick={() => go('run-detail', { run: run.run_id })}><span><StateMark state={run.status} /><span><strong>{runTitle(run)}</strong><small>{run.adapter_id} · {formatDate(run.started_at)}</small></span></span><span className="runs-navigator__cases">{run.execution_counts.completed || 0} 已完成 · {run.execution_counts.timeout || 0} 超时</span><ExternalLink size={15} aria-hidden="true" /></button>)}</Surface>
+    <Surface className="runs-navigator">{runs.map((run) => <button key={run.run_id} className="runs-navigator__row" onClick={() => go('run-detail', { run: run.run_id })}><span><StateMark state={run.state} /><span><strong>{runTitle(run)}</strong><small>{run.adapter_id} · {formatDate(run.started_at ?? run.created_at)}</small></span></span><span className="runs-navigator__cases">{run.state === 'completed' ? 'Artifact 2.0' : run.state}</span><ExternalLink size={15} aria-hidden="true" /></button>)}</Surface>
     {!runs.length && <Empty>{t('page.runs.empty')}</Empty>}
   </>
 }

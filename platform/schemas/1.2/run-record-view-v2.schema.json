@@ -1,0 +1,170 @@
+{
+  "$defs": {
+    "RunRecordStateV2": {
+      "enum": [
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "RunRecordStateV2",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Public orchestration view joined with immutable plan identity only.",
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/RunRecordStateV2"
+    },
+    "resolved_plan_path": {
+      "minLength": 1,
+      "title": "Resolved Plan Path",
+      "type": "string"
+    },
+    "resolved_plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Resolved Plan Digest",
+      "type": "string"
+    },
+    "benchmark_release_id": {
+      "minLength": 1,
+      "title": "Benchmark Release Id",
+      "type": "string"
+    },
+    "system_id": {
+      "minLength": 1,
+      "title": "System Id",
+      "type": "string"
+    },
+    "adapter_id": {
+      "minLength": 1,
+      "title": "Adapter Id",
+      "type": "string"
+    },
+    "worker_profile_id": {
+      "minLength": 1,
+      "title": "Worker Profile Id",
+      "type": "string"
+    },
+    "worker_profile_version": {
+      "minLength": 1,
+      "title": "Worker Profile Version",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "started_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Started At"
+    },
+    "completed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    },
+    "execution_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution Error"
+    },
+    "artifact_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Artifact Path"
+    },
+    "artifact_digest": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Artifact Digest"
+    },
+    "display_name": {
+      "minLength": 1,
+      "title": "Display Name",
+      "type": "string"
+    },
+    "display_name_source": {
+      "enum": [
+        "override",
+        "generated"
+      ],
+      "title": "Display Name Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "experiment_id",
+    "state",
+    "resolved_plan_path",
+    "resolved_plan_digest",
+    "benchmark_release_id",
+    "system_id",
+    "adapter_id",
+    "worker_profile_id",
+    "worker_profile_version",
+    "created_at",
+    "display_name",
+    "display_name_source"
+  ],
+  "title": "RunRecordViewV2",
+  "type": "object"
+}

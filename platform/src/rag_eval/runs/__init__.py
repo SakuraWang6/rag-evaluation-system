@@ -52,22 +52,31 @@ from rag_eval.runs.plans import (
     ResolvedRunPlanV2,
     ResolvedSystemIdentityV2,
 )
+from rag_eval.runs.records import (
+    ARTIFACT_V2_REFERENCE,
+    RUN_RECORD_V2_FILENAME,
+    RunRecordStateV2,
+    RunRecordStoreV2,
+    RunRecordV2,
+)
 from rag_eval.runs.views import (
     ArtifactPresentationReader,
     ArtifactVerificationView,
     ArtifactViewAvailability,
-    LegacyRunCaseView,
     MetricDescriptorBindingView,
     RunArtifactCaseCollectionView,
     RunArtifactCaseIndexView,
     RunArtifactCaseView,
     RunArtifactOverviewView,
     RunCaseIndexEntryView,
+    RunRecordViewV2,
 )
 
 __all__ = [
     "ARTIFACT_V2_DIRECTORY",
     "ARTIFACT_V2_MANIFEST",
+    "ARTIFACT_V2_REFERENCE",
+    "RUN_RECORD_V2_FILENAME",
     "AdapterSession",
     "AggregateMetricV2",
     "ArtifactAnswerJudgment",
@@ -89,7 +98,6 @@ __all__ = [
     "BenchmarkResolver",
     "EvaluationEngine",
     "LeaderboardEligibilityV2",
-    "LegacyRunCaseView",
     "MetricDescriptorBindingView",
     "NativeCaseOrchestrator",
     "NativeCaseOutcome",
@@ -110,6 +118,10 @@ __all__ = [
     "RunArtifactOverviewView",
     "RunArtifactSummaryV2",
     "RunCaseIndexEntryView",
+    "RunRecordStateV2",
+    "RunRecordStoreV2",
+    "RunRecordV2",
+    "RunRecordViewV2",
     "TraceValidationRecordV2",
     "TraceValidationResult",
     "TraceValidator",
