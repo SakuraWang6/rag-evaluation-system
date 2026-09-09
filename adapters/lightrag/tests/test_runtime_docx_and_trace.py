@@ -180,8 +180,6 @@ def test_source_only_docx_is_uploaded_from_prepared_runtime_sandbox(
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
     ]
-    assert adapter._source_text_by_document == {}
-    assert adapter._canonical_provenance_by_document == {}
 
 
 def test_source_only_document_digest_mismatch_fails_closed(tmp_path: Path) -> None:

@@ -1,16 +1,10 @@
-"""Structure-first targets, reviewable candidates, gates, and Bundle export.
-
-This module only manipulates Authoring workspace state and filesystem export
-directories.  Registration into Evaluation's DatasetBundleStore is performed
-by the API/composition layer after export, preserving the domain boundary.
-"""
+"""Structure-first targets, reviewable candidates, and formal release gates."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import re
-import shutil
 import uuid
 from collections import Counter, defaultdict
 from dataclasses import replace
@@ -23,7 +17,6 @@ from rag_eval.authoring.models import (
     ApprovedCase,
     AuthoringDataset,
     AuthoringDiscoveryJob,
-    AuthoringExport,
     AuthoringState,
     BenchmarkTargetCandidate,
     CandidateEvidence,
@@ -1402,84 +1395,6 @@ class AuthoringWorkflow:
                 raise AuthoringWorkflowError("representability profile belongs to a different frozen source")
         return profiles
 
-    def export(
-        self,
-        dataset: AuthoringDataset,
-        *,
-        name: str,
-        version: str,
-        approved_case_ids: list[str] | None = None,
-    ) -> AuthoringExport:
-        self._require_analyzed(dataset)
-        if not name.strip() or not version.strip():
-            raise AuthoringWorkflowError("export name and version are required")
-        all_approved = self.list_approved(dataset)
-        if approved_case_ids is None:
-            approved = all_approved
-        else:
-            requested = set(approved_case_ids)
-            known = {item.case_id for item in all_approved}
-            unknown = sorted(requested.difference(known))
-            if unknown:
-                raise AuthoringWorkflowError("release selection contains an unknown approved case")
-            approved = [item for item in all_approved if item.case_id in requested]
-        blocked = self._blocked_cases(dataset)
-        if not approved:
-            raise AuthoringWorkflowError("at least one reviewer-approved case is required for export")
-        release_payload = {
-            "name": name.strip(),
-            "version": version.strip(),
-            "source_sha256": dataset.source.sha256,
-            "canonical_digest": self._canonical_digest(dataset),
-            "approved": [item.model_dump(mode="json") for item in approved],
-        }
-        release_id = _stable_id("release", release_payload)
-        release_root = self.store.export_path(dataset.authoring_dataset_id, release_id)
-        views = {
-            "canonical-text": release_root / "canonical-text",
-            "native-docx": release_root / "native-docx",
-        }
-        for view_name, root in views.items():
-            self._write_bundle(dataset, approved, root=root, name=name.strip(), version=version.strip(), view=view_name)
-        for approved_case in approved:
-            self._ensure_ledger_candidate(dataset, approved_case.candidate)
-        try:
-            ledger_release = self.ledger.freeze_release(
-                dataset,
-                release_id=release_id,
-                case_ids=tuple(item.case_id for item in approved),
-                actor="authoring-exporter",
-                reason="pin approved Case and Gold revisions for a historical Bundle 2.0 export",
-            )
-        except ValueError as exc:
-            raise AuthoringWorkflowError(f"cannot freeze Authoring Ledger release: {exc}") from exc
-        export = AuthoringExport(
-            release_id=release_id,
-            name=name.strip(),
-            version=version.strip(),
-            source_sha256=dataset.source.sha256,
-            canonical_digest=self._canonical_digest(dataset),
-            approved_case_ids=[item.case_id for item in approved],
-            views={name: str(path.relative_to(self.store.workspace(dataset.authoring_dataset_id))) for name, path in views.items()},
-            blocked_cases=blocked,
-            ledger_release_id=ledger_release.ledger_release_id,
-        )
-        self.store.save_model(release_root / "export.json", export)
-        self._advance_state(dataset, AuthoringState.EXPORTED)
-        return export
-
-    def get_export(self, dataset: AuthoringDataset, release_id: str) -> AuthoringExport:
-        return self.store.load_model(self.store.export_path(dataset.authoring_dataset_id, release_id) / "export.json", AuthoringExport)
-
-    def mark_registered(self, dataset: AuthoringDataset, *, release_id: str, view: str, bundle_id: str) -> AuthoringExport:
-        export = self.get_export(dataset, release_id)
-        if view not in export.views:
-            raise AuthoringWorkflowError("unknown execution view")
-        updated = export.model_copy(update={"registered_bundle_ids": export.registered_bundle_ids | {view: bundle_id}})
-        self.store.save_model(self.store.export_path(dataset.authoring_dataset_id, release_id) / "export.json", updated)
-        self._advance_state(dataset, AuthoringState.REGISTERED)
-        return updated
-
     def _ensure_ledger_candidate(self, dataset: AuthoringDataset, candidate: QuestionCandidate) -> None:
         """Lazily project pre-ledger candidate views without overwriting them."""
 
@@ -2242,91 +2157,6 @@ class AuthoringWorkflow:
                 raise AuthoringWorkflowError("near-miss evidence cites unknown canonical object")
         if resolution.answer_kind != "abstain" and not resolution.evidence:
             raise AuthoringWorkflowError("positive answer needs source evidence")
-
-    def _write_bundle(self, dataset: AuthoringDataset, approved: list[ApprovedCase], *, root: Path, name: str, version: str, view: str) -> None:
-        if root.exists():
-            shutil.rmtree(root)
-        documents = root / "documents"
-        canonical = root / "canonical"
-        documents.mkdir(parents=True)
-        canonical.mkdir()
-        document_id = dataset.document_id
-        if not document_id:
-            raise AuthoringWorkflowError("analyzed source has no document ID")
-        workspace = self.store.workspace(dataset.authoring_dataset_id)
-        evidence_source = workspace / "canonical" / "evidence.jsonl"
-        shutil.copyfile(evidence_source, canonical / "evidence.jsonl")
-        if view == "canonical-text":
-            source_name = f"{document_id}.md"
-            shutil.copyfile(workspace / "canonical" / "execution.md", documents / source_name)
-            mime_type = "text/markdown"
-        elif view == "native-docx":
-            source_name = f"{document_id}.docx"
-            shutil.copyfile(self.store.source_path(dataset.authoring_dataset_id), documents / source_name)
-            mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        else:
-            raise AuthoringWorkflowError("unknown execution view")
-        source_path = documents / source_name
-        manifest = {
-            "schema_version": 2,
-            "name": name,
-            "version": version,
-            "created_at": dataset.created_at.isoformat(),
-            "documents": [{"document_id": document_id, "path": f"documents/{source_name}", "canonical_path": "canonical/evidence.jsonl", "sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(), "mime_type": mime_type, "metadata": {"execution_view": view, "source_sha256": dataset.source.sha256}}],
-            "metadata": {"validation_profile": "formal", "primary_evaluation_corpus": "canonical_segments", "authoring": {"source_sha256": dataset.source.sha256, "canonical_digest": self._canonical_digest(dataset), "execution_view": view, "private_document": True, "native_diagnostic_only": view == "native-docx"}},
-        }
-        questions: list[dict[str, Any]] = []
-        answers: list[dict[str, Any]] = []
-        evidence_sets: list[dict[str, Any]] = []
-        records = {str(record["object_id"]): record for record in self._records(dataset.authoring_dataset_id)}
-        for approved_case in sorted(approved, key=lambda item: item.case_id):
-            candidate = approved_case.candidate
-            resolution = candidate.answer_evidence
-            if resolution is None:
-                raise AuthoringWorkflowError(f"approved case {approved_case.case_id} has no answer/evidence")
-            answer_id = f"answer-{approved_case.case_id}"
-            evidence_set_id = f"evidence-set-{approved_case.case_id}"
-            representability = self._evidence_representability_gate(dataset, resolution)
-            questions.append({"case_id": approved_case.case_id, "question": candidate.question, "gold_answer_id": answer_id, "gold_evidence_set_id": evidence_set_id, "tags": [self._target(dataset, candidate.target_id).capability], "metadata": {"authoring_candidate_id": candidate.candidate_id, "authoring_candidate_version": candidate.version, "runtime_evidence_representability": {"gate_status": representability.status, **representability.details}}})
-            answer = {"gold_answer_id": answer_id, "kind": resolution.answer_kind, "canonical": resolution.canonical_answer, "accepted_values": resolution.accepted_values, "locale": resolution.locale, "unit": resolution.unit, "tolerance": resolution.model_dump(mode="json")["tolerance"]}
-            answers.append({key: value for key, value in answer.items() if value is not None})
-            evidence: list[dict[str, Any]] = []
-            grouped: dict[str, list[str]] = defaultdict(list)
-            for index, selection in enumerate(resolution.evidence, start=1):
-                record = records[selection.source_object_id]
-                evidence_id = f"evidence-{approved_case.case_id}-{index}"
-                if record["object_type"] == "cell":
-                    locator = {"type": "table_cell", "table_id": record["table_id"], "row": record["row"], "column": record["column"]}
-                else:
-                    locator = {"type": "object", "object_type": record["object_type"], "object_id": record["object_id"]}
-                # Structured canonical records intentionally carry value and
-                # witness fields, so a quote is not unique in JSONL. Formal
-                # validation instead verifies the complete locator/value record.
-                evidence.append({"evidence_id": evidence_id, "document_id": document_id, "locator": locator, "canonical_value": record["canonical_value"], "quote_anchor": None})
-                grouped[selection.required_group].append(evidence_id)
-            if resolution.answer_kind == "abstain":
-                # Bundle schema requires a non-empty evidence group. An abstention
-                # is exportable only after an explicit scoped canonical witness.
-                if not resolution.negative_scope_object_ids:
-                    raise AuthoringWorkflowError("abstention export requires scoped negative evidence")
-                record = records[resolution.negative_scope_object_ids[0]]
-                evidence_id = f"evidence-{approved_case.case_id}-negative-scope"
-                if record["object_type"] == "cell":
-                    locator = {
-                        "type": "table_cell",
-                        "table_id": record["table_id"],
-                        "row": record["row"],
-                        "column": record["column"],
-                    }
-                else:
-                    locator = {"type": "object", "object_type": record["object_type"], "object_id": record["object_id"]}
-                evidence.append({"evidence_id": evidence_id, "document_id": document_id, "locator": locator, "canonical_value": record["canonical_value"], "quote_anchor": None})
-                grouped["negative-scope"].append(evidence_id)
-            evidence_sets.append({"gold_evidence_set_id": evidence_set_id, "evidence": evidence, "required_groups": [grouped[key] for key in sorted(grouped)]})
-        atomic_write_json(root / "manifest.json", manifest)
-        (root / "questions.jsonl").write_text(_json_lines(questions), encoding="utf-8")
-        (root / "gold_answers.jsonl").write_text(_json_lines(answers), encoding="utf-8")
-        (root / "gold_evidence.jsonl").write_text(_json_lines(evidence_sets), encoding="utf-8")
 
     def _blocked_cases(self, dataset: AuthoringDataset) -> list[dict[str, Any]]:
         blocked: list[dict[str, Any]] = []

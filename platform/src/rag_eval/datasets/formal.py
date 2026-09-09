@@ -1,8 +1,8 @@
 """The Platform's single formal Dataset validator and immutable release lineage.
 
 This contract sits above the versioned Canonical Data Model and the append-only
-Authoring Ledger.  It deliberately does not alter Bundle 2.0: a Bundle is an
-optional, explicitly assessed compatibility projection of a formal release.
+Authoring Ledger. Runtime projection stages exactly one release-pinned original
+DOCX plus its Platform-owned benchmark and canonical sidecars.
 """
 
 from __future__ import annotations
@@ -39,12 +39,6 @@ from rag_eval.authoring.ledger import (
 from rag_eval.authoring.models import AuthoringDataset, CanonicalView
 from rag_eval.authoring.storage import AuthoringWorkspaceStore
 from rag_eval.datasets.bundle import DatasetBundle, DatasetBundleStore
-from rag_eval.datasets.benchmark_contract import (
-    formal_release_benchmark_contract_path,
-    load_benchmark_dataset,
-    publish_benchmark_dataset,
-)
-from rag_eval.contracts.benchmark import BenchmarkDataset
 from rag_eval.contracts.canonical import (
     CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY,
     CANONICAL_SCHEMA_VERSION,
@@ -1841,47 +1835,6 @@ class FormalDatasetReleaseService:
             return bundles.register(staging)
         finally:
             shutil.rmtree(staging, ignore_errors=True)
-
-    def benchmark_contract_path(self, release_id: str) -> Path:
-        """Return the immutable v1 benchmark package location for a release."""
-
-        return formal_release_benchmark_contract_path(self.releases.root, release_id)
-
-    def publish_benchmark_contract(
-        self,
-        release_id: str,
-        bundles: DatasetBundleStore,
-    ) -> BenchmarkDataset:
-        """Publish the release's independent segment-native benchmark package.
-
-        The Bundle used here is a transient compatibility projection of the
-        frozen release.  Publishing never edits that Bundle, the DOCX source,
-        the Release record, or any historical run.  Repeating the call only
-        verifies and returns the already-published immutable contract.
-        """
-
-        release = self.releases.get(release_id)
-        bundle = self.materialize_runtime_bundle(release_id, bundles)
-        return publish_benchmark_dataset(
-            bundle,
-            self.benchmark_contract_path(release_id),
-            source_release_id=release.release_id,
-            source_release_digest=release.release_digest,
-        )
-
-    def get_benchmark_contract(self, release_id: str) -> BenchmarkDataset:
-        """Load a release-pinned benchmark package after checksum validation."""
-
-        release = self.releases.get(release_id)
-        dataset = load_benchmark_dataset(self.benchmark_contract_path(release_id))
-        if (
-            dataset.manifest.source_release_id != release.release_id
-            or dataset.manifest.source_release_digest != release.release_digest
-        ):
-            raise FormalDatasetError(
-                "benchmark contract source release pin does not match the selected release"
-            )
-        return dataset
 
     @staticmethod
     def _runtime_json_lines(values: list[dict[str, object]]) -> str:

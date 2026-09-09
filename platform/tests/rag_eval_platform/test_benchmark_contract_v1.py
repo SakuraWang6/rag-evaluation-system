@@ -26,7 +26,6 @@ from rag_eval.contracts.dataset import (
 from rag_eval.datasets.benchmark_contract import (
     build_benchmark_dataset,
     load_benchmark_dataset,
-    materialize_benchmark_segment_documents,
     publish_benchmark_dataset,
 )
 from rag_eval.datasets.bundle import DatasetBundle
@@ -194,16 +193,11 @@ def test_table_and_multi_evidence_publish_as_explicit_leaf_mses(tmp_path: Path) 
     )
 
 
-def test_publish_is_immutable_and_stages_one_input_per_leaf(tmp_path: Path) -> None:
+def test_legacy_contract_publish_remains_an_immutable_offline_model(tmp_path: Path) -> None:
     bundle = _bundle(tmp_path)
     root = tmp_path / "release" / "rag-benchmark-contract-1"
     published = publish_benchmark_dataset(bundle, root, source_release_id="release-1", source_release_digest="b" * 64)
     assert load_benchmark_dataset(root).manifest.contract_digest == published.manifest.contract_digest
-
-    inputs = materialize_benchmark_segment_documents(published, tmp_path / "run-source")
-    assert len(inputs) == len(published.segments)
-    assert {item.document_id for item in inputs} == set(published.segments_by_id)
-    assert all(item.metadata["primary_evaluation_corpus"] == "benchmark_segments" for item in inputs)
 
     with pytest.raises(BenchmarkContractError, match="immutable"):
         publish_benchmark_dataset(

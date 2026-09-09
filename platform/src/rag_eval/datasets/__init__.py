@@ -32,12 +32,9 @@ from rag_eval.datasets.benchmark_contract import (
     BENCHMARK_GOLD_NAME,
     BENCHMARK_MANIFEST_NAME,
     BENCHMARK_QUESTIONS_NAME,
-    BENCHMARK_RUNTIME_REFERENCE_NAME,
     BENCHMARK_SEGMENTS_NAME,
     build_benchmark_dataset,
-    formal_release_benchmark_contract_path,
     load_benchmark_dataset,
-    materialize_benchmark_segment_documents,
     publish_benchmark_dataset,
 )
 
@@ -67,11 +64,8 @@ __all__ = [
     "BENCHMARK_GOLD_NAME",
     "BENCHMARK_MANIFEST_NAME",
     "BENCHMARK_QUESTIONS_NAME",
-    "BENCHMARK_RUNTIME_REFERENCE_NAME",
     "BENCHMARK_SEGMENTS_NAME",
     "build_benchmark_dataset",
-    "formal_release_benchmark_contract_path",
     "load_benchmark_dataset",
-    "materialize_benchmark_segment_documents",
     "publish_benchmark_dataset",
 ]

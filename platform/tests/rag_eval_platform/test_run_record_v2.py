@@ -248,10 +248,6 @@ def _native_executor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "rag_eval.execution.validate_native_provenance_contract",
         lambda *_args, **_kwargs: None,
     )
-    monkeypatch.setattr(
-        "rag_eval.execution.validate_canonical_segment_provenance_contract",
-        lambda *_args, **_kwargs: None,
-    )
     return service, executor, experiment, plan, reference, resolved.command, client
 
 

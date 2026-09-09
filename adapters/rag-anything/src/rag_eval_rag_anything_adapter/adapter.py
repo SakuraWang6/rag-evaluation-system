@@ -126,9 +126,6 @@ class NativeLivenessConfig(BaseModel):
 class RAGAnythingAdapterConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    evaluation_corpus: Literal[
-        "source_document", "canonical_segments", "benchmark_segments"
-    ] = "source_document"
     parser: Literal["mineru", "docling", "paddleocr"] = "mineru"
     parse_method: Literal["auto", "ocr", "txt"] = "auto"
     query_mode: Literal["local", "global", "hybrid", "naive", "mix"] = "mix"
@@ -160,10 +157,6 @@ class Runtime(Protocol):
     core_version: str
     model_digests: dict[str, str]
     prompt_digests: dict[str, str]
-
-    async def insert_text(
-        self, content: str, *, document_id: str, file_name: str
-    ) -> None: ...
 
     async def process_document(
         self,
@@ -295,16 +288,6 @@ class OfficialRAGAnythingRuntime:
             },
             output_dir=output_dir,
             parse_timeout_seconds=config.native_liveness.parse_timeout_seconds,
-        )
-
-    async def insert_text(
-        self, content: str, *, document_id: str, file_name: str
-    ) -> None:
-        await self.rag.insert_content_list(
-            content_list=[{"type": "text", "text": content, "page_idx": 0}],
-            file_path=file_name,
-            doc_id=document_id,
-            display_stats=False,
         )
 
     async def process_document(
@@ -795,11 +778,6 @@ class RAGAnythingAdapter:
         original_docx: OriginalDocumentV2,
         resolved_config: ResolvedAdapterConfigV2,
     ) -> PreparedSystemV2:
-        if "evaluation_corpus" in resolved_config.adapter_config:
-            raise ValueError(
-                "Direct Wire 2.0 owns the native source route; "
-                "evaluation_corpus is not accepted"
-            )
         context = PrepareContext(
             run_id=resolved_config.run_id,
             work_dir=resolved_config.work_dir,
@@ -940,31 +918,15 @@ class RAGAnythingAdapter:
         self, documents: list[DocumentInput]
     ) -> IngestionResult:
         runtime, config, context = self._require_prepared()
-        benchmark_documents = [
-            document
-            for document in documents
-            if document.metadata.get("primary_evaluation_corpus")
-            == "benchmark_segments"
-        ]
-        if benchmark_documents and len(benchmark_documents) != len(documents):
-            raise ValueError("benchmark segment ingestion cannot be mixed with another corpus")
-        if config.evaluation_corpus == "benchmark_segments" and not benchmark_documents:
-            raise ValueError(
-                "RAG-Anything is configured for benchmark_segments but received no benchmark leaf inputs"
-            )
-        if benchmark_documents and config.evaluation_corpus != "benchmark_segments":
-            raise ValueError(
-                "benchmark segment inputs require evaluation_corpus='benchmark_segments'"
-            )
-        benchmark_digest: str | None = None
-        if benchmark_documents:
-            values = [
-                document.metadata.get("benchmark_contract_digest")
-                for document in benchmark_documents
-            ]
-            if any(not isinstance(value, str) for value in values) or len(set(values)) != 1:
-                raise ValueError("benchmark segment inputs must share one contract digest")
-            benchmark_digest = values[0]
+        if len(documents) != 1:
+            raise ValueError("RAG-Anything Native v2 requires exactly one original DOCX")
+        document = documents[0]
+        if (
+            document.content is not None
+            or document.source_path is None
+            or Path(document.source_path).suffix.lower() != ".docx"
+        ):
+            raise ValueError("RAG-Anything Native v2 accepts only a source-only DOCX")
         digest = hashlib.sha256()
         digest.update(
             ingestion_identity(
@@ -979,62 +941,42 @@ class RAGAnythingAdapter:
             digest.update(document_digest(document, path).encode())
             digest.update(b"\0")
             file_name = str(document.metadata.get("original_name") or path.name)
-            if document.content is not None:
-                self._set_liveness(
-                    "indexing",
+            self._set_liveness(
+                "parsing",
+                document_id=document.document_id,
+                details={"execution_view": "native-document/v2", "event": "submitted"},
+            )
+            monitor_stop = asyncio.Event()
+            monitor = asyncio.create_task(
+                self._monitor_native_activity(monitor_stop),
+                name=f"native-liveness-{document.document_id}",
+            )
+            try:
+                await runtime.process_document(
+                    path,
                     document_id=document.document_id,
-                    details={"execution_view": "canonical-text"},
+                    file_name=file_name,
+                    progress=self._native_progress,
                 )
-                try:
-                    await runtime.insert_text(
-                        document.content,
-                        document_id=document.document_id,
-                        file_name=file_name,
-                    )
-                except Exception as exc:
-                    self._set_liveness(
-                        "failed",
-                        document_id=document.document_id,
-                        details=exception_details(exc, stage="indexing"),
-                    )
-                    raise
-            else:
+            except asyncio.CancelledError:
                 self._set_liveness(
-                    "parsing",
+                    "cancelling",
                     document_id=document.document_id,
-                    details={"execution_view": "native-docx", "event": "submitted"},
+                    details={"stage": self._active_liveness_stage()},
                 )
-                monitor_stop = asyncio.Event()
-                monitor = asyncio.create_task(
-                    self._monitor_native_activity(monitor_stop),
-                    name=f"native-liveness-{document.document_id}",
+                raise
+            except Exception as exc:
+                self._set_liveness(
+                    "failed",
+                    document_id=document.document_id,
+                    details=exception_details(
+                        exc, stage=self._active_liveness_stage()
+                    ),
                 )
-                try:
-                    await runtime.process_document(
-                        path,
-                        document_id=document.document_id,
-                        file_name=file_name,
-                        progress=self._native_progress,
-                    )
-                except asyncio.CancelledError:
-                    self._set_liveness(
-                        "cancelling",
-                        document_id=document.document_id,
-                        details={"stage": self._active_liveness_stage()},
-                    )
-                    raise
-                except Exception as exc:
-                    self._set_liveness(
-                        "failed",
-                        document_id=document.document_id,
-                        details=exception_details(
-                            exc, stage=self._active_liveness_stage()
-                        ),
-                    )
-                    raise
-                finally:
-                    monitor_stop.set()
-                    await monitor
+                raise
+            finally:
+                monitor_stop.set()
+                await monitor
         self._set_liveness(
             "completed", details={"ingested_documents": len(documents)}
         )
@@ -1060,16 +1002,6 @@ class RAGAnythingAdapter:
                 ),
             },
         }
-        if benchmark_digest is not None:
-            details.update(
-                {
-                    "benchmark_contract_schema_version": "rag-benchmark-contract/1",
-                    "benchmark_contract_digest": benchmark_digest,
-                    "benchmark_segment_mapping_status": "unsupported_stage",
-                    "benchmark_segment_inputs": len(benchmark_documents),
-                    "benchmark_segment_runtime_chunks": None,
-                }
-            )
         return IngestionResult(
             ingested_documents=len(documents),
             index_fingerprint=self._index_fingerprint,
@@ -1203,7 +1135,7 @@ class RAGAnythingAdapter:
         self._native_observation_reason = (
             "native observation requires one source-document DOCX with a canonical sidecar"
         )
-        if config.evaluation_corpus != "source_document" or len(documents) != 1:
+        if len(documents) != 1:
             return
         document = documents[0]
         if (

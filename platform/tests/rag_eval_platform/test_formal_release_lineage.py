@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import shutil
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -21,19 +19,15 @@ from rag_eval.authoring.ledger import (
 )
 from rag_eval.authoring.models import AnswerEvidenceCandidate, CandidateEvidence, DiscoveryMethod
 from rag_eval.authoring.service import AuthoringService
-from rag_eval.contracts.adapter import AdapterCapabilities
-from rag_eval.contracts.run import RunManifest, RunStatus
-from rag_eval.datasets.bundle import DatasetBundleStore, load_bundle
+from rag_eval.datasets.bundle import DatasetBundleStore
 from rag_eval.datasets.formal import (
     BundleProjectionStatus,
     FormalDatasetError,
     FormalDatasetReleaseService,
-    HistoricalRunReleaseStatus,
     ReleaseSchemaVersions,
     RuleResult,
     RuleSeverity,
 )
-from rag_eval.datasets.registry import FROZEN_20_CASE_BUNDLE_ID
 from tests.rag_eval_platform.test_authoring import mini_docx
 
 
@@ -104,27 +98,6 @@ def test_lossless_release_materializes_a_release_pinned_runtime_bundle(tmp_path:
         (bundle.root / document.canonical_path).read_bytes()
     ).hexdigest()
     assert all(item.canonical_object_id for item in evidence_set.evidence)
-
-
-def test_formal_release_publishes_a_release_pinned_benchmark_contract(tmp_path: Path) -> None:
-    authoring, dataset, candidate, _resolved, formal, _target = _workflow(tmp_path)
-    _approve(authoring, dataset, candidate)
-    release = formal.freeze(
-        dataset.authoring_dataset_id,
-        release_version="benchmark-contract-1.0.0",
-        case_ids=(_case_id(formal, candidate),),
-        actor="fixture-release-manager",
-    )
-
-    contract = formal.publish_benchmark_contract(
-        release.release_id, DatasetBundleStore(tmp_path / "runtime-bundles")
-    )
-    loaded = formal.get_benchmark_contract(release.release_id)
-
-    assert contract.manifest.contract_digest == loaded.manifest.contract_digest
-    assert loaded.manifest.source_release_id == release.release_id
-    assert loaded.manifest.source_release_digest == release.release_digest
-    assert len(loaded.segments) >= 1
 
 
 def _approve(authoring: AuthoringService, dataset, candidate) -> None:
@@ -390,50 +363,3 @@ def test_removing_published_release_hides_catalog_entry_without_mutating_history
     assert formal.releases.list() == []
     assert formal.releases.get(release.release_id) == release
     assert formal.rebuild(release.release_id).reproducible
-
-
-def test_bundle_v2_compatibility_and_historical_run_release_resolution(tmp_path: Path) -> None:
-    authoring, dataset, candidate, _, formal, _ = _workflow(tmp_path)
-    _approve(authoring, dataset, candidate)
-    exported = authoring.workflow.export(
-        authoring.get(dataset.authoring_dataset_id), name="formal-release", version="1.0.0"
-    )
-    bundle = load_bundle(
-        authoring.store.workspace(dataset.authoring_dataset_id) / exported.views["canonical-text"]
-    )
-    case_id = _case_id(formal, candidate)
-    release = formal.freeze(
-        dataset.authoring_dataset_id,
-        release_version="1.0.0",
-        case_ids=(case_id,),
-        actor="release-manager",
-        bundle_id=bundle.bundle_id,
-    )
-    assert release.bundle_projection.status == BundleProjectionStatus.LOSSLESS_RUNNABLE
-    run = RunManifest(
-        run_id="run-pinned",
-        experiment_id="experiment-pinned",
-        status=RunStatus.COMPLETED,
-        bundle_id=bundle.bundle_id,
-        dataset_release_id=release.release_id,
-        case_selection_id="selected",
-        platform_version="test",
-        adapter_id="test",
-        adapter_version="test",
-        system_id="test",
-        system_version="test",
-        declared_config={},
-        effective_config={},
-        scorer_id="test",
-        scorer_version="test",
-        scorer_digest="test",
-        declared_capabilities=AdapterCapabilities(),
-        observed_capabilities=AdapterCapabilities(),
-        seed=0,
-        repetitions=1,
-        started_at=datetime.now(UTC),
-    )
-    assert formal.resolve_historical_run(run).status == HistoricalRunReleaseStatus.EXACT
-    assert formal.resolve_historical_run(run.model_copy(update={"dataset_release_id": None})).status == HistoricalRunReleaseStatus.LEGACY_UNPINNED
-    registry = Path(__file__).resolve().parents[2] / "registries" / "reference-datasets" / f"{FROZEN_20_CASE_BUNDLE_ID}.json"
-    assert json.loads(registry.read_text(encoding="utf-8"))["bundle_id"] == FROZEN_20_CASE_BUNDLE_ID

@@ -12,7 +12,6 @@ from rag_eval.api import create_app
 from rag_eval.cli import main as cli_main
 from rag_eval.contracts.run import ExperimentSpec
 from rag_eval.datasets.bundle import case_selection_id
-from rag_eval.datasets.canonical_segments import CanonicalSegmentError
 from rag_eval.execution import (
     RunExecutor,
     execution_view_identity,
@@ -169,7 +168,7 @@ def test_formal_release_preview_materializes_only_the_original_docx_for_ingestio
     ).read_bytes()
 
 
-def test_native_projection_shadow_records_legacy_oracle_divergence_without_changing_gold(
+def test_native_projection_has_no_presegmented_shadow_materialization(
     tmp_path: Path,
 ) -> None:
     service, client, release_id = _native_product_service(tmp_path)
@@ -194,10 +193,9 @@ def test_native_projection_shadow_records_legacy_oracle_divergence_without_chang
 
     native = source_only_documents(bundle, tmp_path / "native")
     assert len(native) == 1 and native[0].source_path.endswith(".docx")
-    # The old oracle cannot admit this logical-cell Gold. This is a legitimate
-    # shadow divergence, not a reason to reshape the Benchmark or block native
-    # ingestion. Other legacy fixtures continue to exercise its success path.
-    with pytest.raises(CanonicalSegmentError, match="no deterministic segment"):
+    # The execution boundary no longer accepts any corpus selector. Canonical
+    # Gold remains unchanged and adjacent to the one native DOCX input.
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
         source_only_documents(
             bundle,
             tmp_path / "oracle",
@@ -445,15 +443,20 @@ def test_cli_create_and_run_apply_the_same_native_admission(
     assert service.jobs.list() == []
 
 
-def test_legacy_presegmented_execution_oracles_remain_available() -> None:
-    execution_source = (
-        Path(__file__).resolve().parents[2] / "src" / "rag_eval" / "execution.py"
-    ).read_text(encoding="utf-8")
+def test_presegmented_execution_and_materialization_symbols_are_absent() -> None:
+    source_root = Path(__file__).resolve().parents[2] / "src" / "rag_eval"
+    production = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in source_root.rglob("*.py")
+    )
 
-    # Phase 8 closes normal creation; Phase 9 does not delete the compatibility
-    # implementations or their direct characterization tests.
-    assert "materialize_canonical_segment_documents" in execution_source
-    assert "materialize_benchmark_segment_documents" in execution_source
+    for retired in (
+        "materialize_canonical_segment_documents",
+        "materialize_benchmark_segment_documents",
+        "execute_benchmark_case",
+        "validate_canonical_segment_provenance_contract",
+    ):
+        assert retired not in production
 
 
 def test_leaderboard_eligibility_has_no_adapter_or_route_policy() -> None:

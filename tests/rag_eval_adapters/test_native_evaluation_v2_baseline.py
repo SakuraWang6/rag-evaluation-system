@@ -6,6 +6,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from rag_eval_lightrag_adapter.adapter import (
     CAPABILITIES as LIGHTRAG_CAPABILITIES,
 )
@@ -38,29 +40,20 @@ def _assert_partial_mapping(
         assert actual[key] == value
 
 
-def test_v2_baseline_pins_contracts_modes_and_offline_artifacts() -> None:
+def test_v2_baseline_pins_native_contract_and_offline_artifacts() -> None:
     baseline = _baseline()
 
-    assert baseline["schema_version"] == "native-evaluation-v2-behavior-baseline/1"
-    assert baseline["baseline_revision"] == "3cfcb64"
+    assert baseline["schema_version"] == "native-v2-input-baseline/1"
+    assert baseline["baseline_revision"] == "adbad6c"
     assert baseline["contract_baseline"] == {
-        "artifact_contract": "1.2",
-        "future_artifact_contract": "2.0",
-        "future_wire_protocol": "2.0",
-        "wire_protocol": "1.0",
+        "artifact_contract": "2.0",
+        "input_contract": "native-document/v2",
+        "wire_protocol": "2.0",
     }
-    assert set(baseline["legacy_corpus_modes"]) == {
-        "source_document",
-        "canonical_segments",
-        "benchmark_segments",
-    }
-    for corpus_mode in baseline["legacy_corpus_modes"]:
-        assert (
-            resolve_lightrag_config(
-                {"evaluation_corpus": corpus_mode}
-            ).evaluation_corpus
-            == corpus_mode
-        )
+    assert "legacy_corpus_modes" not in baseline
+    for resolver in (resolve_lightrag_config, resolve_rag_anything_config):
+        with pytest.raises(ValueError):
+            resolver({"evaluation_corpus": "source_document"})
 
     for pinned in baseline["offline_artifacts"]:
         artifact = REPOSITORY_ROOT / pinned["path"]
@@ -74,8 +67,6 @@ def test_v2_baseline_characterization_nodes_still_exist() -> None:
 
     assert set(baseline["characterization_nodes"]) == {
         "source_document",
-        "canonical_segments",
-        "benchmark_segments",
         "rag-anything_answer_only",
         "legacy_artifact",
         "p0_unobservable_semantics",

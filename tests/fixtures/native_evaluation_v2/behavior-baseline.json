@@ -22,7 +22,6 @@
           "strategy": "fixed_token"
         },
         "enable_rerank": false,
-        "evaluation_corpus": "source_document",
         "final_context_k": 5,
         "max_context_tokens": 12000,
         "profile": "legacy",
@@ -56,7 +55,6 @@
         "enable_image_processing": true,
         "enable_table_processing": true,
         "enable_vlm_query": false,
-        "evaluation_corpus": "source_document",
         "max_context_tokens": 12000,
         "parse_method": "auto",
         "parser": "mineru",
@@ -65,16 +63,8 @@
       }
     }
   },
-  "baseline_revision": "3cfcb64",
+  "baseline_revision": "adbad6c",
   "characterization_nodes": {
-    "benchmark_segments": [
-      "platform/tests/rag_eval_platform/test_benchmark_execution_v1.py::test_execute_benchmark_case_scores_segment_trace_not_legacy_provenance",
-      "adapters/lightrag/tests/test_benchmark_segment_trace.py::test_benchmark_leaf_mapping_and_trace_are_exact"
-    ],
-    "canonical_segments": [
-      "platform/tests/rag_eval_platform/test_canonical_segment_corpus.py::test_canonical_segments_are_stable_and_materialize_as_primary_inputs",
-      "adapters/lightrag/tests/test_canonical_segment_provenance.py::test_primary_chunk_mapping_is_exact_and_contains_no_guesswork"
-    ],
     "legacy_artifact": [
       "platform/tests/rag_eval_platform/test_history_provenance.py::test_baseline_and_destination_guards_are_read_only",
       "platform/tests/rag_eval_platform/test_run_history.py::test_archive_run_is_available_through_normal_run_contract"
@@ -92,27 +82,9 @@
     ]
   },
   "contract_baseline": {
-    "artifact_contract": "1.2",
-    "future_artifact_contract": "2.0",
-    "future_wire_protocol": "2.0",
-    "wire_protocol": "1.0"
-  },
-  "legacy_corpus_modes": {
-    "benchmark_segments": {
-      "baseline_role": "strict segment-native characterization oracle",
-      "future_role": "legacy fixture and read-only compatibility",
-      "input_boundary": "one Platform benchmark leaf per Adapter document"
-    },
-    "canonical_segments": {
-      "baseline_role": "deterministic canonical provenance characterization oracle",
-      "future_role": "legacy fixture and read-only compatibility",
-      "input_boundary": "Platform canonical batches"
-    },
-    "source_document": {
-      "baseline_role": "native DOCX behavior baseline",
-      "future_role": "only formal new-run corpus",
-      "input_boundary": "original checksum-pinned DOCX"
-    }
+    "artifact_contract": "2.0",
+    "input_contract": "native-document/v2",
+    "wire_protocol": "2.0"
   },
   "offline_artifacts": [
     {
@@ -136,5 +108,5 @@
       "size_bytes": 48
     }
   ],
-  "schema_version": "native-evaluation-v2-behavior-baseline/1"
+  "schema_version": "native-v2-input-baseline/1"
 }

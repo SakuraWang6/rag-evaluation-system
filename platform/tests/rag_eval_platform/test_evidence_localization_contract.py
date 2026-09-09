@@ -38,7 +38,6 @@ from rag_eval.evaluation.evidence import (
 from rag_eval.evaluation.metrics import evaluate_retrieval_stages
 from rag_eval.execution import (
     NativeProvenanceContractError,
-    _gold_has_deterministic_canonical_mapping,
     corpus_evidence_index_after_ingest,
     validate_native_provenance_contract,
 )
@@ -740,10 +739,9 @@ def test_whole_table_requires_all_physical_cells_not_table_full_flag() -> None:
         locator=table_locator,
         canonical_value=source,
     )
-    # This is the same pre-query gate used by canonical-segment LightRAG
-    # runs: a whole-table Gold is accepted only when every physical cell has
-    # a full runtime witness, not because a table envelope calls itself full.
-    assert _gold_has_deterministic_canonical_mapping(gold, full_index) is True
+    # A whole-table Gold is complete only when every physical cell has a full
+    # runtime witness, not because a table envelope calls itself full.
+    assert full_index.has_complete_table_footprint(DOC_ID, "table-1") is True
     assert localize_gold_evidence([full_item], gold, full_index).status == LocalizationStatus.MATCHED
 
     # The same self-declared table-full edge with only one cell must fail.
@@ -770,7 +768,7 @@ def test_whole_table_requires_all_physical_cells_not_table_full_flag() -> None:
         object_end=6,
         locator=table_locator,
     )
-    assert _gold_has_deterministic_canonical_mapping(gold, one_cell_index) is False
+    assert one_cell_index.has_complete_table_footprint(DOC_ID, "table-1") is False
     assert localize_gold_evidence([one_cell_item], gold, one_cell_index).status != LocalizationStatus.MATCHED
 
 

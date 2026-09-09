@@ -23,7 +23,7 @@ from rag_eval.authoring.canonical import CANONICALIZER_VERSION
 from rag_eval.authoring.providers import ProposalProviderError
 from rag_eval.authoring.storage import CANONICALIZER_IDENTITY, AuthoringStorageError
 from rag_eval.authoring.workflow import AuthoringWorkflowError
-from rag_eval.datasets.bundle import load_bundle
+from rag_eval.datasets.formal import FormalDatasetError, FormalDatasetReleaseService
 from rag_eval.service import PlatformService
 from rag_eval.storage.layout import PlatformPaths
 
@@ -312,7 +312,7 @@ def test_authoring_api_is_not_available_when_product_layer_is_disabled(tmp_path:
     assert client.get("/api/v1/authoring/datasets").status_code == 404
 
 
-def test_rule_targets_manual_candidate_review_export_and_registration(tmp_path: Path) -> None:
+def test_rule_targets_manual_candidate_review_and_native_release(tmp_path: Path) -> None:
     service = PlatformService(PlatformPaths(tmp_path / "platform"), product_enabled=True)
     assert service.authoring is not None
     dataset = service.authoring.upload_docx(filename="private.docx", payload=mini_docx())
@@ -342,16 +342,22 @@ def test_rule_targets_manual_candidate_review_export_and_registration(tmp_path: 
         reviewer="fixture-reviewer",
     )
     assert approved.state == CandidateState.APPROVED
-    export = service.authoring.workflow.export(service.authoring.get(dataset.authoring_dataset_id), name="fixture-private-docx", version="1.0.0")
-    root = service.authoring.store.workspace(dataset.authoring_dataset_id)
-    canonical = load_bundle(root / export.views["canonical-text"])
-    native = load_bundle(root / export.views["native-docx"])
-    assert canonical.questions[0].case_id == native.questions[0].case_id
-    assert canonical.manifest.documents[0].mime_type == "text/markdown"
-    assert native.manifest.documents[0].mime_type.endswith("document")
-    registered = service.datasets.register(root / export.views["canonical-text"])
-    marked = service.authoring.workflow.mark_registered(service.authoring.get(dataset.authoring_dataset_id), release_id=export.release_id, view="canonical-text", bundle_id=registered.bundle_id)
-    assert marked.registered_bundle_ids["canonical-text"] == registered.bundle_id
+    assert service.formal_datasets is not None
+    case_id = service.formal_datasets.ledger.case_id_for_candidate(
+        candidate.candidate_id
+    )
+    release = service.formal_datasets.freeze(
+        dataset.authoring_dataset_id,
+        release_version="1.0.0",
+        case_ids=(case_id,),
+        actor="fixture-release-manager",
+    )
+    native = service.formal_datasets.materialize_runtime_bundle(
+        release.release_id, service.datasets
+    )
+    assert native.questions[0].case_id == case_id
+    assert len(native.manifest.documents) == 1
+    assert native.manifest.documents[0].path.endswith(".docx")
 
 
 @pytest.mark.parametrize(
@@ -361,7 +367,7 @@ def test_rule_targets_manual_candidate_review_export_and_registration(tmp_path: 
         ("partial", "FLAG", "PARTIAL_UNOBSERVABLE"),
     ],
 )
-def test_runtime_evidence_representability_is_diagnostic_and_exported(
+def test_runtime_evidence_representability_remains_a_review_diagnostic(
     tmp_path: Path,
     coverage: str,
     expected_gate_status: str,
@@ -421,18 +427,13 @@ def test_runtime_evidence_representability_is_diagnostic_and_exported(
         note="representability classification reviewed",
     )
     assert approved.state == CandidateState.APPROVED
-    exported = authoring.workflow.export(
-        authoring.get(dataset.authoring_dataset_id),
-        name=f"representability-{coverage}",
-        version="1.0.0",
+    approved_gate = next(
+        item
+        for item in approved.gates
+        if item.gate_id == "runtime_evidence_representability"
     )
-    bundle = load_bundle(
-        authoring.store.workspace(dataset.authoring_dataset_id)
-        / exported.views["canonical-text"]
-    )
-    diagnostic = bundle.questions[0].metadata["runtime_evidence_representability"]
-    assert diagnostic["gate_status"] == expected_gate_status
-    assert diagnostic["case_status"] == expected_case_status
+    assert approved_gate.status == expected_gate_status
+    assert approved_gate.details["case_status"] == expected_case_status
 
 
 def test_runtime_evidence_representability_rejects_non_round_tripping_map(
@@ -466,18 +467,12 @@ def test_runtime_evidence_representability_rejects_non_round_tripping_map(
         )
 
 
-def test_negative_cell_scope_exports_table_cell_locator_and_release_can_select_cases(
+def test_native_release_rejects_gold_prohibited_negative_cell_scope(
     tmp_path: Path,
 ) -> None:
     authoring = AuthoringService(tmp_path / "authoring")
     dataset = authoring.analyze(
         authoring.upload_docx(filename="private.docx", payload=mini_docx()).authoring_dataset_id
-    )
-    targets = authoring.workflow.discover_targets(dataset, provider=DiscoveryMethod.RULE)
-    cell_target = next(
-        item
-        for item in targets
-        if item.capability == "table_lookup" and not item.flags
     )
     records = [
         json.loads(line)
@@ -517,45 +512,18 @@ def test_negative_cell_scope_exports_table_cell_locator_and_release_can_select_c
         decision="accept",
         reviewer="fixture-reviewer",
     )
-    excluded = authoring.workflow.create_question(
-        authoring.get(dataset.authoring_dataset_id),
-        target_id=cell_target.target_id,
-        question="延迟指标的值是多少？",
-    )
-    excluded = authoring.workflow.resolve_answer_evidence(
-        authoring.get(dataset.authoring_dataset_id),
-        candidate_id=excluded.candidate_id,
-        resolution=AnswerEvidenceCandidate(
-            answer_kind="text",
-            canonical_answer="42 ms",
-            evidence=[CandidateEvidence(source_object_id=cell_target.source_object_ids[0])],
-        ),
-    )
-    excluded = authoring.workflow.review(
-        authoring.get(dataset.authoring_dataset_id),
-        candidate_id=excluded.candidate_id,
-        decision="accept",
-        reviewer="fixture-reviewer",
-    )
     selected_case_id = f"case-{negative.candidate_id.removeprefix('candidate-')}"
-    excluded_case_id = f"case-{excluded.candidate_id.removeprefix('candidate-')}"
-    export = authoring.workflow.export(
-        authoring.get(dataset.authoring_dataset_id),
-        name="selected-negative",
-        version="1.0.0",
-        approved_case_ids=[selected_case_id],
+    formal = FormalDatasetReleaseService(
+        authoring_store=authoring.store,
+        release_root=tmp_path / "formal-releases",
     )
-    assert export.approved_case_ids == [selected_case_id]
-    assert excluded_case_id not in export.approved_case_ids
-    bundle = load_bundle(
-        authoring.store.workspace(dataset.authoring_dataset_id)
-        / export.views["canonical-text"]
-    )
-    locator = next(iter(bundle.gold_evidence_sets.values())).evidence[0].locator
-    assert locator.type == "table_cell"
-    assert locator.table_id == cell["table_id"]
-    assert locator.row == cell["row"]
-    assert locator.column == cell["column"]
+    with pytest.raises(FormalDatasetError, match="formal validation failed"):
+        formal.freeze(
+            dataset.authoring_dataset_id,
+            release_version="1.0.0",
+            case_ids=(selected_case_id,),
+            actor="fixture-release-manager",
+        )
 
 
 def test_failed_leakage_candidate_cannot_be_accepted_and_edit_versions_candidate(tmp_path: Path) -> None:
@@ -986,28 +954,27 @@ def test_authoring_api_generates_one_complete_reviewable_proposal(
     assert response.json()["answer_evidence"]["answer_kind"] == "text"
 
 
-def test_authoring_api_manual_review_export_and_bundle_registration(tmp_path: Path) -> None:
-    service = PlatformService(PlatformPaths(tmp_path / "platform"), product_enabled=True)
-    client = TestClient(create_app(service, start_supervisor=False))
-    uploaded = client.post("/api/v1/authoring/datasets", content=mini_docx(), headers={"x-rag-eval-filename": "private.docx"})
-    dataset_id = uploaded.json()["authoring_dataset_id"]
-    assert client.post(f"/api/v1/authoring/datasets/{dataset_id}/analyze").status_code == 200
-    targets = client.post(f"/api/v1/authoring/datasets/{dataset_id}/targets/discover", json={"provider": "rule"})
-    assert targets.status_code == 200
-    target = next(item for item in targets.json() if item["capability"] == "table_lookup" and not item["flags"])
-    candidate = client.post(f"/api/v1/authoring/datasets/{dataset_id}/candidates", json={"target_id": target["target_id"], "question": "延迟指标对应的数值是多少？"})
-    assert candidate.status_code == 201
-    candidate_id = candidate.json()["candidate_id"]
-    resolved = client.post(f"/api/v1/authoring/datasets/{dataset_id}/candidates/{candidate_id}/resolve", json={"resolution": {"answer_kind": "text", "canonical_answer": "42 ms", "evidence": [{"source_object_id": target["source_object_ids"][0]}]}})
-    assert resolved.json()["state"] == "review_required"
-    accepted = client.post(f"/api/v1/authoring/datasets/{dataset_id}/candidates/{candidate_id}/review", json={"decision": "accept", "reviewer": "fixture-reviewer"})
-    assert accepted.json()["state"] == "approved"
-    exported = client.post(f"/api/v1/authoring/datasets/{dataset_id}/exports", json={"name": "api-fixture", "version": "1.0.0"})
-    assert exported.status_code == 201
-    release_id = exported.json()["release_id"]
-    registered = client.post(f"/api/v1/authoring/datasets/{dataset_id}/exports/{release_id}/register/canonical-text")
-    assert registered.status_code == 200
-    assert registered.json()["bundle_id"] in [item["bundle_id"] for item in client.get("/api/v1/datasets").json()]
+def test_authoring_api_does_not_expose_presegmented_exports(
+    tmp_path: Path,
+) -> None:
+    service = PlatformService(
+        PlatformPaths(tmp_path / "platform"), product_enabled=True
+    )
+    paths = create_app(service, start_supervisor=False).openapi()["paths"]
+
+    assert (
+        "/api/v1/authoring/datasets/{authoring_dataset_id}/exports"
+        not in paths
+    )
+    assert (
+        "/api/v1/authoring/datasets/{authoring_dataset_id}/exports/"
+        "{release_id}/register/{view}"
+        not in paths
+    )
+    assert (
+        "/api/v1/product/formal-datasets/{release_id}/benchmark-contract"
+        not in paths
+    )
 
 
 def test_authoring_api_publishes_and_removes_formal_catalog_version_without_erasing_history(

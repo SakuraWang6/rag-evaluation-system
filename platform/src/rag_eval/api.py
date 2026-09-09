@@ -214,12 +214,6 @@ class AuthoringReviewRequest(APIModel):
     edited_resolution: AnswerEvidenceCandidate | None = None
 
 
-class AuthoringExportRequest(APIModel):
-    name: str
-    version: str
-    approved_case_ids: list[str] | None = None
-
-
 class AuthoringFormalReleaseRequest(APIModel):
     display_name: str | None = None
     release_version: str
@@ -891,35 +885,6 @@ def create_app(
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail="authoring dataset not found") from exc
 
-    @app.post("/api/v1/authoring/datasets/{authoring_dataset_id}/exports", status_code=201)
-    async def export_authoring_dataset(authoring_dataset_id: str, request: AuthoringExportRequest) -> dict[str, Any]:
-        authoring = require_authoring()
-        try:
-            return authoring.workflow.export(authoring.get(authoring_dataset_id), name=request.name, version=request.version, approved_case_ids=request.approved_case_ids).model_dump(mode="json")
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail="authoring dataset not found") from exc
-        except (ValueError, AuthoringWorkflowError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/v1/authoring/datasets/{authoring_dataset_id}/exports/{release_id}/register/{view}")
-    async def register_authoring_export(authoring_dataset_id: str, release_id: str, view: str) -> dict[str, Any]:
-        """The sole composition-layer crossing from mutable Authoring to Evaluation."""
-
-        authoring = require_authoring()
-        try:
-            dataset = authoring.get(authoring_dataset_id)
-            export = authoring.workflow.get_export(dataset, release_id)
-            relative = export.views.get(view)
-            if not relative:
-                raise AuthoringWorkflowError("unknown execution view")
-            bundle = service.datasets.register(authoring.store.workspace(authoring_dataset_id) / relative)
-            updated = authoring.workflow.mark_registered(dataset, release_id=release_id, view=view, bundle_id=bundle.bundle_id)
-            return {"bundle_id": bundle.bundle_id, "export": updated.model_dump(mode="json")}
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail="authoring dataset or export not found") from exc
-        except (ValueError, AuthoringWorkflowError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.post("/api/v1/authoring/datasets/{authoring_dataset_id}/formal-releases", status_code=201)
     async def publish_authoring_formal_release(
         authoring_dataset_id: str,
@@ -1046,56 +1011,6 @@ def create_app(
             ) from exc
         except (FileNotFoundError, OSError, ValueError, KeyError) as exc:
             raise HTTPException(status_code=404, detail=f"formal Dataset Release not found: {release_id}") from exc
-
-    @app.get("/api/v1/product/formal-datasets/{release_id}/benchmark-contract")
-    async def formal_dataset_benchmark_contract(release_id: str) -> dict[str, Any]:
-        """Read the verified immutable rag-benchmark-contract/1 package."""
-
-        if service.formal_datasets is None:
-            raise HTTPException(status_code=404, detail="formal Data Layer is disabled")
-        try:
-            dataset = await run_in_threadpool(
-                lambda: service.formal_datasets.get_benchmark_contract(release_id)
-            )
-            return {
-                "manifest": dataset.manifest.model_dump(mode="json"),
-                "segment_count": len(dataset.segments),
-                "case_count": len(dataset.questions),
-                "artifact_path": str(dataset.root),
-            }
-        except FileNotFoundError as exc:
-            raise HTTPException(
-                status_code=404,
-                detail=f"benchmark contract not published for formal Dataset Release: {release_id}",
-            ) from exc
-        except (FormalDatasetError, ValueError) as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    @app.post("/api/v1/product/formal-datasets/{release_id}/benchmark-contract", status_code=201)
-    async def publish_formal_dataset_benchmark_contract(release_id: str) -> dict[str, Any]:
-        """Publish the Release-adjacent immutable segment-native benchmark package."""
-
-        if service.formal_datasets is None:
-            raise HTTPException(status_code=404, detail="formal Data Layer is disabled")
-        try:
-            dataset = await run_in_threadpool(
-                lambda: service.formal_datasets.publish_benchmark_contract(
-                    release_id, service.datasets
-                )
-            )
-            return {
-                "schema_version": dataset.manifest.schema_version,
-                "dataset_id": dataset.manifest.dataset_id,
-                "name": dataset.manifest.name,
-                "version": dataset.manifest.version,
-                "contract_digest": dataset.manifest.contract_digest,
-                "segment_count": len(dataset.segments),
-                "case_count": len(dataset.questions),
-            }
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=f"formal Dataset Release not found: {release_id}") from exc
-        except (FormalDatasetError, ValueError) as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/v1/product/formal-datasets/{release_id}/cases")
     async def formal_dataset_case_index(release_id: str) -> dict[str, Any]:

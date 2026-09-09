@@ -1,9 +1,7 @@
-"""Publisher and reader for ``rag-benchmark-contract/1`` packages.
+"""Offline builder and reader for the retired segment benchmark contract.
 
-The publisher consumes an immutable Bundle 2.0 runtime projection but never
-changes it.  The resulting package contains the one canonical leaf corpus used
-by every compliant RAG Adapter and the segment-native Gold used by the new
-retrieval evaluator.
+The contract models remain until the contract cleanup phase, but this module
+no longer provides a formal-release location or an executable RAG input.
 """
 
 from __future__ import annotations
@@ -31,7 +29,6 @@ from rag_eval.contracts.benchmark import (
     benchmark_sha256,
     render_benchmark_segment,
 )
-from rag_eval.contracts.adapter import DocumentInput
 from rag_eval.contracts.dataset import (
     GoldEvidence,
     ObjectLocator,
@@ -45,7 +42,6 @@ BENCHMARK_MANIFEST_NAME = "manifest.json"
 BENCHMARK_SEGMENTS_NAME = "segments.jsonl"
 BENCHMARK_QUESTIONS_NAME = "questions.jsonl"
 BENCHMARK_GOLD_NAME = "gold.jsonl"
-BENCHMARK_RUNTIME_REFERENCE_NAME = "benchmark-contract-reference.json"
 _CONTRACT_FILES = (
     BENCHMARK_SEGMENTS_NAME,
     BENCHMARK_QUESTIONS_NAME,
@@ -63,24 +59,6 @@ _ROOT_TYPES = {
     "endnote",
 }
 _CELL_TYPES = {"cell", "table_cell", "logical_cell"}
-
-
-def formal_release_benchmark_contract_path(release_root: Path, release_id: str) -> Path:
-    """Return the stable v1 artifact location beside immutable Releases."""
-
-    safe_release_id = "".join(
-        character
-        for character in release_id
-        if character.isascii() and (character.isalnum() or character in {"_", "-"})
-    )
-    if not safe_release_id or safe_release_id != release_id:
-        raise BenchmarkContractError("benchmark release ID is not safe")
-    return (
-        release_root
-        / "benchmark-contracts"
-        / safe_release_id
-        / "rag-benchmark-contract-1"
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -874,58 +852,3 @@ def load_benchmark_dataset(root: Path) -> BenchmarkDataset:
         questions=questions,
         gold=gold,
     )
-
-
-def materialize_benchmark_segment_documents(
-    dataset: BenchmarkDataset,
-    source_dir: Path,
-) -> list[DocumentInput]:
-    """Stage exactly one immutable leaf as each Adapter ingestion input.
-
-    The runtime reference is deliberately tiny: it pins the externally stored
-    immutable contract for reproduction, while the adapter receives inline
-    rendered leaf content and can verify every byte after native ingestion.
-    No Word/OOXML location is copied into this retrieval-scoring input.
-    """
-
-    source_dir.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(
-        source_dir / BENCHMARK_RUNTIME_REFERENCE_NAME,
-        {
-            "schema_version": BENCHMARK_CONTRACT_SCHEMA_VERSION,
-            "contract_digest": dataset.manifest.contract_digest,
-            "source_release_id": dataset.manifest.source_release_id,
-            "source_release_digest": dataset.manifest.source_release_digest,
-            "file_checksums": dataset.manifest.file_checksums,
-            "segment_count": len(dataset.segments),
-        },
-    )
-    inputs: list[DocumentInput] = []
-    for ordinal, segment in enumerate(sorted(
-        dataset.segments,
-        key=lambda item: (item.document_id, item.ordinal, item.segment_id),
-    )):
-        rendered = render_benchmark_segment(segment)
-        rendered_sha256 = benchmark_sha256(rendered)
-        source_name = f"benchmark-leaf-{ordinal:05d}-{rendered_sha256[:12]}.txt"
-        atomic_write_bytes(source_dir / source_name, rendered.encode("utf-8"))
-        inputs.append(
-            DocumentInput(
-                document_id=segment.segment_id,
-                content=rendered,
-                source_path=source_name,
-                sha256=rendered_sha256,
-                mime_type="text/plain",
-                metadata={
-                    "primary_evaluation_corpus": "benchmark_segments",
-                    "benchmark_contract_schema_version": BENCHMARK_CONTRACT_SCHEMA_VERSION,
-                    "benchmark_contract_digest": dataset.manifest.contract_digest,
-                    "benchmark_segment_id": segment.segment_id,
-                    "benchmark_segment_content_sha256": segment.content_sha256,
-                    "benchmark_segment_rendered_sha256": rendered_sha256,
-                },
-            )
-        )
-    if len(inputs) != dataset.manifest.segment_count:
-        raise BenchmarkContractError("benchmark runtime input count does not match manifest")
-    return inputs

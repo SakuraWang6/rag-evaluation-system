@@ -26,7 +26,6 @@ from rag_eval.authoring.ledger import (
 )
 from rag_eval.authoring.models import AnswerEvidenceCandidate, CandidateEvidence, CandidateState, DiscoveryMethod
 from rag_eval.authoring.service import AuthoringService
-from rag_eval.datasets.bundle import load_bundle
 from rag_eval.datasets.registry import FROZEN_20_CASE_BUNDLE_ID
 from tests.rag_eval_platform.test_authoring import mini_docx
 
@@ -351,7 +350,7 @@ def test_mses_alternatives_multihop_and_negative_scope_are_formal_and_bundle_v2_
     )
 
 
-def test_docx_authoring_projects_to_ledger_without_changing_bundle_v2_or_frozen_registry(tmp_path: Path) -> None:
+def test_docx_authoring_freezes_ledger_without_changing_frozen_registry(tmp_path: Path) -> None:
     service, dataset, ledger = _dataset(tmp_path)
     target = next(
         item
@@ -379,15 +378,15 @@ def test_docx_authoring_projects_to_ledger_without_changing_bundle_v2_or_frozen_
         decision="accept",
         reviewer="fixture-reviewer",
     )
-    exported = service.workflow.export(
-        service.get(dataset.authoring_dataset_id), name="ledger-fixture", version="1.0.0"
-    )
-    assert exported.ledger_release_id
-    bundle = load_bundle(
-        service.store.workspace(dataset.authoring_dataset_id) / exported.views["canonical-text"]
-    )
-    assert bundle.manifest.schema_version == 2
     case_id = ledger.case_id_for_candidate(candidate.candidate_id)
+    frozen = ledger.freeze_release(
+        service.get(dataset.authoring_dataset_id),
+        release_id="ledger-fixture",
+        case_ids=(case_id,),
+        actor="fixture-release-manager",
+        reason="freeze approved native benchmark state",
+    )
+    assert frozen.ledger_release_id == "ledger-ledger-fixture"
     gold_id = ledger.gold_id_for_case(case_id)
     assert ledger.current_case(dataset.authoring_dataset_id, case_id).lifecycle == LifecycleState.FROZEN
     assert ledger.current_gold(dataset.authoring_dataset_id, gold_id).lifecycle == LifecycleState.FROZEN

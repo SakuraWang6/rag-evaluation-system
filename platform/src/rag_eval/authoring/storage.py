@@ -40,7 +40,6 @@ WORKSPACE_DIRECTORIES = (
     "reviews",
     "approved",
     "ledger",
-    "exports",
     "diagnostics",
     "generation-jobs",
     "discovery-jobs",
@@ -266,9 +265,6 @@ class AuthoringWorkspaceStore:
 
     def approved_path(self, authoring_dataset_id: str, case_id: str) -> Path:
         return self.workspace(authoring_dataset_id) / "approved" / f"{safe_id(case_id)}.json"
-
-    def export_path(self, authoring_dataset_id: str, release_id: str) -> Path:
-        return self.workspace(authoring_dataset_id) / "exports" / safe_id(release_id)
 
     def save_model(self, path: Path, value: BaseModel) -> None:
         workspace = self.workspace_from_path(path)

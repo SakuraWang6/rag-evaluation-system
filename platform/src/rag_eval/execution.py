@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from statistics import pstdev
 from threading import Event, Thread
-from time import monotonic
+from typing import Any
 
 import httpx
 
@@ -24,18 +24,8 @@ from rag_eval.contracts.adapter import (
     PreparedSystem,
     RAGQuery,
     RAGResult,
-    SegmentTraceSet,
-    SegmentTraceStage,
-    SegmentTraceStatus,
 )
-from rag_eval.contracts.benchmark import (
-    BENCHMARK_CONTRACT_SCHEMA_VERSION,
-    BenchmarkDataset,
-    BenchmarkQuestion,
-    SegmentEvaluationOutcome,
-    SegmentEvaluationTrace,
-)
-from rag_eval.contracts.dataset import GoldEvidence, ObjectLocator, Question
+from rag_eval.contracts.dataset import Question
 from rag_eval.contracts.native import (
     NativeQueryV2,
     OriginalDocumentV2,
@@ -43,12 +33,7 @@ from rag_eval.contracts.native import (
     ResolvedAdapterConfigV2,
 )
 from rag_eval.contracts.observation import AdapterCapabilitiesV2, ObservationStatus
-from rag_eval.contracts.research import (
-    FailureAssessment,
-    FailureLabel,
-    LatencyProtocol,
-    ModelArtifactIdentity,
-)
+from rag_eval.contracts.research import LatencyProtocol, ModelArtifactIdentity
 from rag_eval.contracts.run import (
     CaseError,
     CaseResult,
@@ -59,22 +44,12 @@ from rag_eval.contracts.run import (
     RunStatus,
 )
 from rag_eval.contracts.wire import WorkerIdentityV2
-from rag_eval.datasets.benchmark_contract import (
-    formal_release_benchmark_contract_path,
-    load_benchmark_dataset,
-    materialize_benchmark_segment_documents,  # noqa: F401 - removed in Phase 5
-)
 from rag_eval.datasets.bundle import (
     DatasetBundle,
     DatasetBundleStore,
     case_selection_id,
 )
-from rag_eval.datasets.canonical_segments import (
-    CanonicalSegmentError,
-    load_staged_canonical_segment_manifest,
-    materialize_canonical_segment_documents,
-)
-from rag_eval.datasets.formal import BundleProjectionStatus, DatasetReleaseStore
+from rag_eval.datasets.formal import DatasetReleaseStore
 from rag_eval.evaluation.answers import (
     ANSWER_SCORER_DIGEST,
     ANSWER_SCORER_ID,
@@ -93,20 +68,6 @@ from rag_eval.evaluation.evidence import (
     CorpusEvidenceIndex,
 )
 from rag_eval.evaluation.failures import assess_failure
-from rag_eval.evaluation.segment_answers import (
-    SEGMENT_ANSWER_SCORER_DIGEST,
-    SEGMENT_ANSWER_SCORER_ID,
-    SEGMENT_ANSWER_SCORER_VERSION,
-    answer_error_metrics,
-    answer_not_applicable_metrics,
-    evaluate_segment_answer,
-)
-from rag_eval.evaluation.segment_metrics import (
-    SEGMENT_SCORER_DIGEST,
-    SEGMENT_SCORER_ID,
-    SEGMENT_SCORER_VERSION,
-    evaluate_segment_retrieval,
-)
 from rag_eval.evaluation.unified import EvaluationProfile
 from rag_eval.execution_provider import (
     ExecutionProvider,
@@ -222,24 +183,8 @@ class RunExecutor:
                     "runtime Bundle does not match the resolved original DOCX identity"
                 )
         self._validate_dataset_release_reference(experiment, bundle)
-        benchmark_dataset = self._load_benchmark_contract(experiment)
-        questions = (
-            select_benchmark_questions(benchmark_dataset, experiment)
-            if benchmark_dataset is not None
-            else select_questions(bundle, experiment)
-        )
-        primary_corpus = (
-            "benchmark_segments"
-            if benchmark_dataset is not None
-            else requested_primary_corpus(experiment, bundle)
-        )
+        questions = select_questions(bundle, experiment)
         resolved_adapter_config = dict(experiment.adapter_config)
-        # Pre-segmented compatibility runs still need their historical Adapter
-        # selector.  Native runs omit it entirely: the Adapter receives the
-        # original source and its own default/native ingestion behavior owns
-        # parsing and chunking.
-        if primary_corpus != "source_document":
-            resolved_adapter_config.setdefault("evaluation_corpus", primary_corpus)
         question_orders = {
             repetition_seed: order_questions(questions, repetition_seed)
             for repetition_seed in (
@@ -350,11 +295,7 @@ class RunExecutor:
                             )
                             self.run_store.write_manifest(manifest)
                         source_dir = run_dir / "source"
-                        documents = source_only_documents(
-                            bundle,
-                            source_dir,
-                            primary_corpus="source_document",
-                        )
+                        documents = source_only_documents(bundle, source_dir)
                         original_docx = direct_native_document(
                             documents,
                             resolved_plan,
@@ -670,51 +611,9 @@ class RunExecutor:
             # ingestion input is the pinned DOCX. An older release's Bundle
             # projection identity must not override this native route.
             return
-        if release.bundle_projection.status == BundleProjectionStatus.LOSSLESS_RUNNABLE:
-            if release.bundle_projection.bundle_id != bundle.bundle_id:
-                raise ValueError("experiment Bundle does not match selected formal Dataset Release")
-            return
-        if (
-            release.bundle_projection.projections
-            and isinstance(runtime_projection, dict)
-            and runtime_projection.get("release_id") == release.release_id
-            and runtime_projection.get("release_digest") == release.release_digest
-        ):
-            # This is a deterministic, release-pinned runtime projection. It
-            # preserves formal MSES alternatives when legacy Bundle 2.0 could
-            # not represent them; it is neither a release mutation nor a
-            # workspace export.
-            return
-        raise ValueError("selected formal Dataset Release is not runnable through the standard executor")
-
-    def _load_benchmark_contract(
-        self, experiment: ExperimentSpec
-    ) -> BenchmarkDataset | None:
-        """Resolve a vNext run only from the immutable Release-adjacent package."""
-
-        if experiment.benchmark_contract_digest is None:
-            if experiment.benchmark_contract_version is not None:
-                raise ValueError("benchmark contract version requires a contract digest")
-            return None
-        if experiment.benchmark_contract_version != BENCHMARK_CONTRACT_SCHEMA_VERSION:
-            raise ValueError("unsupported benchmark contract version")
-        if experiment.dataset_release_id is None or self.dataset_release_store is None:
-            raise ValueError("benchmark execution requires an immutable Dataset Release")
-        release = self.dataset_release_store.get(experiment.dataset_release_id)
-        dataset = load_benchmark_dataset(
-            formal_release_benchmark_contract_path(
-                self.dataset_release_store.root,
-                release.release_id,
-            )
+        raise ValueError(
+            "selected formal Dataset Release does not expose the Native v2 DOCX projection"
         )
-        if dataset.manifest.contract_digest != experiment.benchmark_contract_digest:
-            raise ValueError("experiment benchmark contract digest does not match Release artifact")
-        if (
-            dataset.manifest.source_release_id != release.release_id
-            or dataset.manifest.source_release_digest != release.release_digest
-        ):
-            raise ValueError("benchmark contract source release pin does not match experiment")
-        return dataset
 
 
 def initial_manifest(
@@ -788,16 +687,6 @@ def initial_manifest(
                 "scorer_version": GROUNDING_SCORER_VERSION,
                 "scorer_digest": GROUNDING_SCORER_DIGEST,
             },
-            "segment_native_retrieval": {
-                "scorer_id": SEGMENT_SCORER_ID,
-                "scorer_version": SEGMENT_SCORER_VERSION,
-                "scorer_digest": SEGMENT_SCORER_DIGEST,
-            },
-            "segment_native_answer_evidence": {
-                "scorer_id": SEGMENT_ANSWER_SCORER_ID,
-                "scorer_version": SEGMENT_ANSWER_SCORER_VERSION,
-                "scorer_digest": SEGMENT_ANSWER_SCORER_DIGEST,
-            },
         },
         model_artifacts=experiment.model_artifacts,
         # RunManifest is a transitional, non-authoritative persistence model
@@ -815,17 +704,10 @@ def initial_manifest(
 
 
 def execution_view_identity(
-    experiment: ExperimentSpec, bundle: DatasetBundle
+    _experiment: ExperimentSpec, bundle: DatasetBundle
 ) -> tuple[str, bool]:
-    """Freeze the declared execution view without rewriting historical runs.
+    """Return the sole admitted Native v2 execution view."""
 
-    A release-pinned ``native-document/v2`` projection is the formal route.
-    Older authoring-native inputs retain their historical diagnostic identity,
-    while persisted Artifact 2.0 availability decides modern eligibility.
-    """
-
-    if experiment.benchmark_contract_digest is not None:
-        return "benchmark-contract/v1", False
     metadata = bundle.manifest.metadata
     formal_projection = metadata.get("formal_runtime_projection")
     if (
@@ -835,18 +717,7 @@ def execution_view_identity(
         == NATIVE_DOCUMENT_EXECUTION_CONTRACT
     ):
         return NATIVE_DOCUMENT_EXECUTION_CONTRACT, False
-    authoring = metadata.get("authoring") if isinstance(metadata, dict) else None
-    raw_view = authoring.get("execution_view") if isinstance(authoring, dict) else None
-    if raw_view == "native-docx" or (
-        isinstance(authoring, dict) and authoring.get("native_diagnostic_only") is True
-    ):
-        return "native-docx", True
-    if raw_view == "canonical-text":
-        return "canonical-text", False
-    requested = experiment.adapter_config.get("evaluation_corpus")
-    if requested in {"canonical_segments", "canonical-segments/v1"}:
-        return "canonical-segments", False
-    return "source-document", False
+    raise ValueError("RunManifest requires an admitted Native v2 DOCX projection")
 
 
 def validate_worker_identity(
@@ -1294,257 +1165,6 @@ def append_unavailable_artifact_v2_case(
     )
 
 
-def execute_benchmark_case(
-    client,
-    capabilities: AdapterCapabilities,
-    question: BenchmarkQuestion,
-    dataset: BenchmarkDataset,
-    experiment: ExperimentSpec,
-    cancelled: Callable[[], bool],
-    repetition: int,
-    seed: int,
-) -> CaseResult:
-    """Execute one vNext case without invoking legacy locator/provenance scoring."""
-
-    started = datetime.now(UTC)
-    gold = dataset.gold_by_id[question.gold_id]
-    query = RAGQuery(
-        case_id=question.case_id,
-        question=question.question,
-        generate_answer=bool(experiment.query_config.get("generate_answer", True)),
-        retrieval_candidate_k=experiment.query_config.get("retrieval_candidate_k"),
-        final_context_k=experiment.query_config.get("final_context_k"),
-        max_context_tokens=experiment.query_config.get("max_context_tokens"),
-        generation_options=experiment.query_config.get("generation_options", {}),
-    )
-    try:
-        query_started = monotonic()
-        rag_result = client.query(query)
-        validate_result_capabilities(
-            rag_result,
-            capabilities,
-            generate_answer=query.generate_answer,
-        )
-        validate_benchmark_result_capabilities(rag_result, capabilities)
-        latency = dict(rag_result.latency or {})
-        latency["end_to_end_query_latency"] = monotonic() - query_started
-        native_metadata = {
-            **rag_result.native_metadata,
-            "benchmark_contract_digest": dataset.manifest.contract_digest,
-            "benchmark_contract_schema_version": BENCHMARK_CONTRACT_SCHEMA_VERSION,
-            "retrieval_evaluation": "segment_native_only",
-        }
-        rag_result = rag_result.model_copy(
-            update={"latency": latency, "native_metadata": native_metadata}
-        )
-        metrics, trace = evaluate_segment_retrieval(
-            rag_result,
-            gold,
-            benchmark_contract_digest=dataset.manifest.contract_digest,
-            known_segment_ids=set(dataset.segments_by_id),
-            k_values=segment_metric_k_values(experiment),
-        )
-        metrics.extend(
-            evaluate_segment_answer(
-                rag_result,
-                gold,
-                trace,
-                evaluate_answer=query.generate_answer,
-            )
-        )
-        return CaseResult(
-            case_id=question.case_id,
-            status="completed",
-            question=question.question,
-            gold_answer=gold.answer,
-            rag_result=rag_result,
-            metrics=metrics,
-            segment_evaluation_trace=trace,
-            failure_assessment=assess_segment_failure(trace, answer_metrics=metrics),
-            started_at=started,
-            completed_at=datetime.now(UTC),
-            repetition=repetition,
-            seed=seed,
-        )
-    except httpx.TimeoutException as exc:
-        return failed_benchmark_case(
-            question,
-            gold.answer,
-            gold,
-            dataset,
-            started,
-            status="cancelled" if cancelled() else "timeout",
-            code="cancelled" if cancelled() else "timeout",
-            message=str(exc) or "adapter query timed out",
-            experiment=experiment,
-            repetition=repetition,
-            seed=seed,
-        )
-    except (WorkerRemoteError, httpx.HTTPError) as exc:
-        return failed_benchmark_case(
-            question,
-            gold.answer,
-            gold,
-            dataset,
-            started,
-            status="cancelled" if cancelled() else "system_error",
-            code="cancelled" if cancelled() else getattr(exc, "code", "adapter_error"),
-            message=str(exc),
-            experiment=experiment,
-            repetition=repetition,
-            seed=seed,
-        )
-
-
-def failed_benchmark_case(
-    question: BenchmarkQuestion,
-    gold_answer,
-    gold,
-    dataset: BenchmarkDataset,
-    started,
-    *,
-    status: str,
-    code: str,
-    message: str,
-    experiment: ExperimentSpec,
-    repetition: int,
-    seed: int,
-) -> CaseResult:
-    """Persist query failures as runtime errors, never as fabricated zeros."""
-
-    traces = SegmentTraceSet(
-        raw=SegmentTraceStage(
-            stage="raw", status=SegmentTraceStatus.RUNTIME_ERROR, reason=message
-        ),
-        ranked=SegmentTraceStage(
-            stage="ranked", status=SegmentTraceStatus.RUNTIME_ERROR, reason=message
-        ),
-        context=SegmentTraceStage(
-            stage="context", status=SegmentTraceStatus.RUNTIME_ERROR, reason=message
-        ),
-    )
-    metrics, trace = evaluate_segment_retrieval(
-        RAGResult(segment_traces=traces),
-        gold,
-        benchmark_contract_digest=dataset.manifest.contract_digest,
-        known_segment_ids=set(dataset.segments_by_id),
-        k_values=segment_metric_k_values(experiment),
-    )
-    if experiment.query_config.get("generate_answer", True):
-        metrics.extend(answer_error_metrics(message))
-    else:
-        metrics.extend(
-            answer_not_applicable_metrics(
-                "answer generation is disabled for this experiment"
-            )
-        )
-    return CaseResult(
-        case_id=question.case_id,
-        status=status,  # type: ignore[arg-type]
-        question=question.question,
-        gold_answer=gold_answer,
-        metrics=metrics,
-        segment_evaluation_trace=trace,
-        error=CaseError(code=code, message=message),
-        failure_assessment=FailureAssessment(
-            labels=[
-                FailureLabel.TIMEOUT
-                if status == "timeout"
-                else FailureLabel.RUNTIME_ERROR
-            ],
-            certainty="deterministic",
-            reasons=[message],
-        ),
-        started_at=started,
-        completed_at=datetime.now(UTC),
-        repetition=repetition,
-        seed=seed,
-    )
-
-
-def assess_segment_failure(
-    trace: SegmentEvaluationTrace,
-    *,
-    answer_metrics: list[MetricResult] | None = None,
-) -> FailureAssessment:
-    """Map strict segment outcomes to deterministic, non-provenance labels."""
-
-    labels: list[FailureLabel] = []
-    reasons: list[str] = []
-    label_by_outcome = {
-        SegmentEvaluationOutcome.RETRIEVAL_MISSING: FailureLabel.RETRIEVAL_MISSING,
-        SegmentEvaluationOutcome.PARTIAL_COVERAGE: FailureLabel.PARTIAL_COVERAGE,
-        SegmentEvaluationOutcome.UNSUPPORTED_STAGE: FailureLabel.UNSUPPORTED_STAGE,
-        SegmentEvaluationOutcome.RUNTIME_ERROR: FailureLabel.RUNTIME_ERROR,
-        SegmentEvaluationOutcome.MAPPING_CORRUPTED: FailureLabel.MAPPING_CORRUPTED,
-    }
-    for stage in (trace.raw, trace.ranked, trace.context):
-        label = label_by_outcome.get(stage.outcome)
-        if label is not None:
-            labels.append(label)
-            reasons.append(
-                stage.reason
-                or f"{stage.stage} retrieval stage is {stage.outcome.value}"
-            )
-    if (
-        trace.raw.outcome == SegmentEvaluationOutcome.COMPLETE
-        and trace.ranked.outcome != SegmentEvaluationOutcome.COMPLETE
-    ):
-        labels.append(FailureLabel.RANKING_FAILURE)
-        reasons.append("raw Gold path was complete but ranked retrieval lost it")
-    if (
-        trace.ranked.outcome == SegmentEvaluationOutcome.COMPLETE
-        and trace.context.outcome != SegmentEvaluationOutcome.COMPLETE
-    ):
-        labels.append(FailureLabel.CONTEXT_SELECTION_LOSS)
-        reasons.append("ranked Gold path was complete but final context lost it")
-    review_required = False
-    if answer_metrics:
-        by_id = {metric.metric_id: metric for metric in answer_metrics}
-        accuracy = by_id.get("answer_accuracy")
-        grounding = by_id.get("answer_groundedness")
-        hallucination = by_id.get("answer_hallucination")
-        if (
-            trace.context.outcome == SegmentEvaluationOutcome.COMPLETE
-            and accuracy is not None
-            and accuracy.status == MetricStatus.OBSERVED
-            and accuracy.value == 0.0
-        ):
-            labels.append(FailureLabel.GENERATION_FAILURE)
-            reasons.append(
-                "final segment context completed Gold Evidence but the answer rule failed"
-            )
-        # Groundedness is intentionally *not* translated into an unsupported
-        # answer label.  A strict Gold miss can coexist with semantically
-        # equivalent support; it is a retrieval finding, not a hallucination
-        # determination.
-        if hallucination is not None:
-            if (
-                hallucination.status == MetricStatus.OBSERVED
-                and hallucination.value == 1.0
-            ):
-                labels.append(FailureLabel.UNSUPPORTED_ANSWER)
-                reasons.append(hallucination.reason or "answer was deterministically unsupported")
-            elif hallucination.status == MetricStatus.NEEDS_REVIEW:
-                review_required = True
-                labels.append(FailureLabel.NEEDS_REVIEW)
-                reasons.append(hallucination.reason or "answer support requires review")
-        if accuracy is not None and accuracy.status == MetricStatus.NEEDS_REVIEW:
-            review_required = True
-            labels.append(FailureLabel.NEEDS_REVIEW)
-            reasons.append(accuracy.reason or "answer equivalence requires review")
-        if grounding is not None and grounding.status == MetricStatus.NEEDS_REVIEW:
-            review_required = True
-            labels.append(FailureLabel.NEEDS_REVIEW)
-            reasons.append(grounding.reason or "answer grounding requires review")
-    return FailureAssessment(
-        labels=list(dict.fromkeys(labels)),
-        certainty="unknown" if review_required else "deterministic",
-        reasons=list(dict.fromkeys(reasons)),
-        review_required=review_required,
-    )
-
-
 def command_for_seed(command: WorkerCommand, seed: int) -> WorkerCommand:
     environment = dict(command.environment)
     environment.update(
@@ -1581,28 +1201,7 @@ def select_questions(bundle: DatasetBundle, experiment: ExperimentSpec):
     return [question_by_id[case_id] for case_id in case_ids]
 
 
-def select_benchmark_questions(
-    dataset: BenchmarkDataset,
-    experiment: ExperimentSpec,
-) -> list[BenchmarkQuestion]:
-    question_by_id = {item.case_id: item for item in dataset.questions}
-    case_ids = experiment.case_ids or sorted(question_by_id)
-    unknown = [case_id for case_id in case_ids if case_id not in question_by_id]
-    if unknown:
-        raise ValueError(f"experiment references unknown benchmark cases: {unknown}")
-    expected_selection_id = case_selection_id(
-        case_ids,
-        policy="explicit" if experiment.case_ids is not None else "all",
-        seed=experiment.seed,
-    )
-    if expected_selection_id != experiment.case_selection_id:
-        raise ValueError("case_selection_id does not match selected benchmark cases/policy/seed")
-    return [question_by_id[case_id] for case_id in case_ids]
-
-
-def order_questions(
-    questions: list[Question] | list[BenchmarkQuestion], seed: int
-) -> list[Question] | list[BenchmarkQuestion]:
+def order_questions(questions: list[Question], seed: int) -> list[Question]:
     """Generate a stable, persisted per-seed order without changing selection."""
 
     def order_key(question: Question) -> tuple[str, str]:
@@ -1610,32 +1209,6 @@ def order_questions(
         return hashlib.sha256(payload).hexdigest(), question.case_id
 
     return sorted(questions, key=order_key)
-
-
-def requested_primary_corpus(experiment: ExperimentSpec, bundle: DatasetBundle) -> str:
-    """Resolve the explicit primary corpus without changing old run records."""
-
-    requested = experiment.adapter_config.get("evaluation_corpus")
-    if requested is None:
-        requested = bundle.manifest.metadata.get("primary_evaluation_corpus")
-    if requested in (None, "source_document", "native_source"):
-        return "source_document"
-    if requested in {"canonical_segments", "canonical-segments/v1"}:
-        return "canonical_segments"
-    raise ValueError(
-        "unsupported evaluation_corpus; use 'canonical_segments' or 'source_document'"
-    )
-
-
-def segment_metric_k_values(experiment: ExperimentSpec) -> tuple[int, ...]:
-    """The benchmark contract fixes the comparable strict Retrieval cutoffs."""
-
-    values = tuple(
-        sorted({int(value) for value in experiment.metric_config.get("k_values", [1, 3, 5, 10])})
-    )
-    if values != (1, 3, 5, 10):
-        raise ValueError("segment-native benchmark requires k_values [1, 3, 5, 10]")
-    return values
 
 
 INGESTION_RPC_RESPONSE_GRACE_SECONDS = 30.0
@@ -1665,10 +1238,9 @@ def ingestion_rpc_timeout(
             return float(value)
         return None
 
-    # ``ingestion_timeout_seconds`` protects one native track; a corpus with
-    # many bounded benchmark batches additionally declares its complete
-    # Worker-call budget through ``ingestion_run_timeout_seconds``.  Retain
-    # the former as a safe fallback for legacy adapters/configurations.
+    # ``ingestion_timeout_seconds`` protects one native track; adapters may
+    # additionally declare the complete Worker-call budget through
+    # ``ingestion_run_timeout_seconds``.
     candidates = [command.request_timeout_seconds]
     for key in ("ingestion_timeout_seconds", "ingestion_run_timeout_seconds"):
         configured = declared_timeout(key)
@@ -1677,88 +1249,12 @@ def ingestion_rpc_timeout(
     return max(candidates)
 
 
-def validate_benchmark_ingestion_contract(
-    details: Mapping[str, object],
-    dataset: BenchmarkDataset,
-    *,
-    strict_segment_ranking: bool,
-) -> None:
-    """Reject a run before query if exact leaf-to-native mapping was not proven."""
-
-    if details.get("benchmark_contract_schema_version") != BENCHMARK_CONTRACT_SCHEMA_VERSION:
-        raise ValueError("adapter did not acknowledge the benchmark contract schema")
-    if details.get("benchmark_contract_digest") != dataset.manifest.contract_digest:
-        raise ValueError("adapter benchmark contract digest does not match Dataset Release")
-    if details.get("benchmark_segment_inputs") != len(dataset.segments):
-        raise ValueError("adapter benchmark input count does not match the contract")
-    mapping_status = details.get("benchmark_segment_mapping_status")
-    if not strict_segment_ranking:
-        if mapping_status != "unsupported_stage":
-            raise ValueError("Answer-only adapter must explicitly mark segment mapping unsupported")
-        return
-    if mapping_status != "verified":
-        raise ValueError("adapter did not verify benchmark leaf-to-native mapping")
-    if details.get("benchmark_segment_runtime_chunks") != len(dataset.segments):
-        raise ValueError("adapter benchmark native chunk count does not match the contract")
-    mapping_digest = details.get("benchmark_segment_mapping_file_digest")
-    if not isinstance(mapping_digest, str) or len(mapping_digest) != 64:
-        raise ValueError("adapter did not pin its benchmark native mapping artifact")
-
-
-def validate_benchmark_result_capabilities(
-    result: RAGResult,
-    capabilities: AdapterCapabilities,
-) -> None:
-    if not capabilities.segment_traces:
-        raise ValueError("benchmark Adapter must implement typed segment trace capability")
-    if result.segment_traces is None:
-        raise ValueError("benchmark Adapter did not return typed segment traces")
-
-
-def canonical_segment_batch_limit(adapter_config: Mapping[str, object]) -> int:
-    """Choose a conservative pre-ingestion envelope below LightRAG's chunk size.
-
-    This is only a packing hint.  The post-ingestion acceptance gate remains
-    authoritative and rejects any actual split regardless of this estimate.
-    """
-
-    explicit = adapter_config.get("canonical_segment_max_batch_characters")
-    if isinstance(explicit, int) and not isinstance(explicit, bool):
-        if explicit < 256:
-            raise ValueError(
-                "canonical_segment_max_batch_characters must be at least 256"
-            )
-        return explicit
-    chunking = adapter_config.get("chunking")
-    chunk_size = 1200
-    if isinstance(chunking, Mapping):
-        candidate = chunking.get("chunk_token_size")
-        if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate > 0:
-            chunk_size = candidate
-    # Treat character count as a deliberately pessimistic token estimate.  A
-    # Unicode/tokenizer edge case can still only fail closed at ingest.
-    return max(256, min(3000, (chunk_size * 7) // 10))
-
-
 def source_only_documents(
     bundle: DatasetBundle,
     source_dir: Path,
-    *,
-    primary_corpus: str = "source_document",
-    canonical_segment_max_batch_characters: int | None = None,
 ) -> list[DocumentInput]:
-    if primary_corpus == "canonical_segments":
-        return materialize_canonical_segment_documents(
-            bundle,
-            source_dir,
-            max_batch_characters=(
-                canonical_segment_max_batch_characters
-                if canonical_segment_max_batch_characters is not None
-                else 3000
-            ),
-        )
-    if primary_corpus != "source_document":
-        raise ValueError(f"unsupported primary corpus {primary_corpus!r}")
+    """Stage the Benchmark's original sources for Direct Wire 2.0."""
+
     source_dir.mkdir(parents=True, exist_ok=True)
     inputs: list[DocumentInput] = []
     for document in bundle.manifest.documents:
@@ -1963,209 +1459,6 @@ def validate_native_provenance_contract(
         raise NativeProvenanceContractError(message)
 
 
-class CanonicalSegmentProvenanceContractError(ValueError):
-    """The primary canonical corpus has no complete chunk-to-segment proof."""
-
-
-def validate_canonical_segment_provenance_contract(
-    bundle: DatasetBundle,
-    questions: list[Question] | tuple[Question, ...],
-    documents: list[DocumentInput],
-    corpus: CorpusEvidenceIndex,
-    *,
-    source_dir: Path,
-    ingestion_details: Mapping[str, object] | None = None,
-) -> None:
-    """Enforce the canonical corpus acceptance gate before the first query.
-
-    A primary run can only make retrieval claims after LightRAG has proved all
-    of the following facts: every prepared canonical batch was persisted once,
-    every persisted chunk has the exact batch bytes, and the batch's declared
-    ``chunk -> segment_id(s)`` relation round-trips through the run catalog.
-    This is intentionally stricter than a post-hoc textual match.  A missing,
-    split, merged, or ambiguous chunk aborts the run at ingestion time.
-    """
-
-    primary = [
-        item
-        for item in documents
-        if item.metadata.get("primary_evaluation_corpus") == "canonical_segments"
-    ]
-    if not primary:
-        return
-    if len(primary) != len(documents):
-        raise CanonicalSegmentProvenanceContractError(
-            "canonical primary corpus cannot be mixed with raw source inputs"
-        )
-    try:
-        manifest = load_staged_canonical_segment_manifest(source_dir, documents)
-    except CanonicalSegmentError as exc:
-        raise CanonicalSegmentProvenanceContractError(
-            f"canonical segment manifest is not usable: {exc}"
-        ) from exc
-    if manifest is None:
-        raise CanonicalSegmentProvenanceContractError(
-            "canonical segment inputs do not publish a staged manifest"
-        )
-
-    details = ingestion_details if isinstance(ingestion_details, Mapping) else {}
-    problems: list[str] = []
-    if details.get("canonical_segment_manifest_digest") != manifest.manifest_digest:
-        problems.append("adapter did not return the pinned canonical segment manifest digest")
-    if details.get("canonical_segment_mapping_status") != "verified":
-        problems.append("adapter did not report a verified canonical chunk-to-segment map")
-    for key, expected in (
-        ("canonical_segment_batches", len(manifest.batches)),
-        ("canonical_segment_segments", len(manifest.segments)),
-        ("canonical_segment_runtime_chunks", len(manifest.batches)),
-    ):
-        value = details.get(key)
-        if value != expected:
-            problems.append(
-                f"adapter reported {key}={value!r}; expected {expected}"
-            )
-
-    payload = corpus.provenance_map
-    if not isinstance(payload, Mapping):
-        problems.append("adapter did not publish the canonical chunk provenance map")
-        payload = {}
-    primary_meta = payload.get("primary_corpus")
-    if not isinstance(primary_meta, Mapping):
-        problems.append("provenance map lacks a primary corpus declaration")
-    elif (
-        primary_meta.get("mode") != "canonical-segments/v1"
-        or primary_meta.get("manifest_digest") != manifest.manifest_digest
-    ):
-        problems.append("provenance map primary corpus declaration does not match the staged manifest")
-
-    if not corpus.map_pin_verified:
-        problems.append("canonical chunk provenance map is not externally digest-pinned")
-    if not corpus.source_pins_verified:
-        problems.append("canonical chunk provenance source checksum pins are unavailable or mismatched")
-    if not corpus.catalog_round_trip_verified or not corpus.catalog_verified:
-        problems.append("canonical chunk provenance catalog did not pass forward/reverse round-trip verification")
-
-    expected_batches = {item.batch_id: item for item in manifest.batches}
-    expected_segments = {item.segment_id: item for item in manifest.segments}
-    raw_segment_catalog = payload.get("segment_catalog")
-    if not isinstance(raw_segment_catalog, Mapping):
-        problems.append("provenance map lacks a segment catalog")
-        raw_segment_catalog = {}
-    if set(raw_segment_catalog) != set(expected_segments):
-        problems.append("provenance segment catalog does not contain exactly the staged segment IDs")
-    else:
-        for segment_id, expected in expected_segments.items():
-            observed = raw_segment_catalog.get(segment_id)
-            if not isinstance(observed, Mapping) or (
-                observed.get("content_sha256") != expected.content_sha256
-                or observed.get("document_id") != expected.document_id
-            ):
-                problems.append(
-                    f"segment catalog entry {segment_id!r} does not match the staged segment"
-                )
-                break
-
-    raw_batch_chunks = payload.get("batch_to_runtime_chunks")
-    raw_runtime_segments = payload.get("runtime_chunk_to_segment_ids")
-    if not isinstance(raw_batch_chunks, Mapping):
-        problems.append("provenance map lacks batch-to-runtime-chunk edges")
-        raw_batch_chunks = {}
-    if not isinstance(raw_runtime_segments, Mapping):
-        problems.append("provenance map lacks runtime-chunk-to-segment edges")
-        raw_runtime_segments = {}
-    if set(raw_batch_chunks) != set(expected_batches):
-        problems.append("provenance batch map does not contain exactly the staged batches")
-    else:
-        expected_runtime_ids: set[str] = set()
-        for batch_id, batch in expected_batches.items():
-            runtime_ids = raw_batch_chunks.get(batch_id)
-            if not isinstance(runtime_ids, list) or len(runtime_ids) != 1 or not isinstance(runtime_ids[0], str):
-                problems.append(
-                    f"batch {batch_id!r} did not persist as exactly one LightRAG chunk"
-                )
-                continue
-            runtime_id = runtime_ids[0]
-            expected_runtime_ids.add(runtime_id)
-            runtime = corpus.runtime_chunks.get(runtime_id)
-            if not isinstance(runtime, Mapping):
-                problems.append(f"runtime chunk {runtime_id!r} is absent from the provenance map")
-                continue
-            observed_segments = raw_runtime_segments.get(runtime_id)
-            if not isinstance(observed_segments, list) or tuple(observed_segments) != batch.segment_ids:
-                problems.append(
-                    f"runtime chunk {runtime_id!r} has a non-deterministic segment mapping"
-                )
-            if (
-                runtime.get("batch_id") != batch_id
-                or tuple(runtime.get("segment_ids") or ()) != batch.segment_ids
-                or runtime.get("content_sha256") != batch.content_sha256
-                or runtime.get("provenance_status") != "full"
-            ):
-                problems.append(
-                    f"runtime chunk {runtime_id!r} does not exactly match canonical batch {batch_id!r}"
-                )
-        if expected_runtime_ids != set(corpus.runtime_chunks):
-            problems.append("provenance map contains a runtime chunk outside the staged canonical batches")
-
-    # Gold locator identity is checked once before the first query.  An absent
-    # locator is an ingestion/contract error, not a completed case with an
-    # opaque 'unverifiable' badge.  Whole Word tables are special: their
-    # envelope may legitimately be represented by partial row edges, so a
-    # deterministic table mapping means *every physical cell* has a full
-    # runtime witness, not merely that the table root has any row edge.
-    missing_gold: list[str] = []
-    for question in questions:
-        evidence_set = bundle.gold_evidence_sets.get(question.gold_evidence_set_id)
-        if evidence_set is None:
-            missing_gold.append(f"{question.case_id}/missing-evidence-set")
-            continue
-        for evidence in evidence_set.evidence:
-            if not _gold_has_deterministic_canonical_mapping(evidence, corpus):
-                missing_gold.append(f"{question.case_id}/{evidence.evidence_id}")
-    if missing_gold:
-        preview = ", ".join(missing_gold[:8])
-        suffix = " …" if len(missing_gold) > 8 else ""
-        problems.append(f"Gold Evidence lacks deterministic segment mapping: {preview}{suffix}")
-
-    if problems:
-        diagnostics = "; ".join(corpus.catalog_diagnostics)
-        message = "canonical segment acceptance gate failed before evaluation: " + "; ".join(problems)
-        if diagnostics:
-            message += f"; diagnostics: {diagnostics}"
-        raise CanonicalSegmentProvenanceContractError(message)
-
-
-def _gold_has_deterministic_canonical_mapping(
-    evidence: GoldEvidence,
-    corpus: CorpusEvidenceIndex,
-) -> bool:
-    """Return whether one Gold locator can be deterministically evaluated.
-
-    The canonical segment gate is deliberately stricter than non-empty reverse
-    edges.  A partial edge is useful for UI navigation but cannot alone prove
-    that a Gold object was retrieved or missed.  A whole table uses its
-    physical-cell footprint, which remains valid when its renderer-specific
-    table envelope is partitioned across rows.
-    """
-
-    document_id = evidence.document_id
-    locator = evidence.locator
-    if isinstance(locator, ObjectLocator) and locator.object_type == "table":
-        return corpus.has_complete_table_footprint(document_id, locator.object_id)
-
-    object_ids = corpus.object_ids_for_locator(document_id, locator)
-    if not object_ids:
-        return False
-    return all(
-        any(
-            (edge.get("coverage") or edge.get("canonical_object_coverage"))
-            == "full"
-            for edge in corpus.runtime_edges_for(document_id, object_id)
-        )
-        for object_id in object_ids
-    )
-
-
 def corpus_evidence_index_after_ingest(
     bundle: DatasetBundle,
     documents: list[DocumentInput],
@@ -2189,7 +1482,6 @@ def corpus_evidence_index_after_ingest(
         item.document_id: item.content
         for item in documents
         if isinstance(item.content, str)
-        and item.metadata.get("primary_evaluation_corpus") != "canonical_segments"
     }
     # Source-only DocumentInput values (the normal DOCX path) cannot supply
     # the native execution coordinate space.  A formal adapter may publish
@@ -2203,24 +1495,11 @@ def corpus_evidence_index_after_ingest(
             if isinstance(document_id, str) and isinstance(content, str):
                 runtime_documents.setdefault(document_id, content)
     diagnostics: list[str] = []
-    source_digests: dict[str, str] = {}
-    for item in documents:
-        if item.metadata.get("primary_evaluation_corpus") == "canonical_segments":
-            document_id = item.metadata.get("canonical_segment_source_document_id")
-            digest = item.metadata.get("canonical_segment_source_sha256")
-            if not isinstance(document_id, str) or not isinstance(digest, str):
-                diagnostics.append("canonical segment input lacks a source document checksum pin")
-                continue
-            previous = source_digests.get(document_id)
-            if previous is not None and previous != digest:
-                diagnostics.append(
-                    "canonical segment inputs disagree about a source document checksum pin"
-                )
-                continue
-            source_digests[document_id] = digest
-            continue
-        if isinstance(item.sha256, str) and item.sha256:
-            source_digests[item.document_id] = item.sha256
+    source_digests = {
+        item.document_id: item.sha256
+        for item in documents
+        if isinstance(item.sha256, str) and item.sha256
+    }
 
     fallback = CorpusEvidenceIndex(
         source_documents,
