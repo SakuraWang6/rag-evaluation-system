@@ -1,8 +1,10 @@
 # Evaluation Architecture v2
 
-ADR 0003 is the decision authority for the Native DOCX migration. These
-documents separate the audited current state, the historical explanation, the
-remaining native gap, the destination, and the executable phase plan.
+ADR 0004 is the current decision authority for the Native v2-only convergence.
+ADR 0003 remains the architectural foundation and migration history, but its
+Wire 1, Artifact 1.2, compatibility-reader, and retirement-window decisions
+are superseded. These documents separate the audited current state, historical
+explanation, destination, and executable phase plan.
 
 | Document | Role |
 | --- | --- |
@@ -18,10 +20,16 @@ remaining native gap, the destination, and the executable phase plan.
 | [`RUN_ARTIFACT_V2.md`](RUN_ARTIFACT_V2.md) | Phase 6 immutable Run artifact, checksum graph, and persisted-only eligibility |
 | [`ARTIFACT_V2_PRESENTATION.md`](ARTIFACT_V2_PRESENTATION.md) | Phase 7 persisted-only Platform API and descriptor-driven WebUI |
 | [`NATIVE_FORMAL_CUTOVER.md`](NATIVE_FORMAL_CUTOVER.md) | Phase 8 native-DOCX public admission and compatibility window |
-| [`../decisions/0003-native-document-evaluation-v2.md`](../decisions/0003-native-document-evaluation-v2.md) | Accepted architecture decision |
+| [`../decisions/0004-native-v2-only-convergence.md`](../decisions/0004-native-v2-only-convergence.md) | Current accepted convergence and compatibility decision |
+| [`../decisions/0003-native-document-evaluation-v2.md`](../decisions/0003-native-document-evaluation-v2.md) | Architectural foundation and migration-era decision history |
 
-The Phase 1 executable baseline is
-`tests/fixtures/native_evaluation_v2/behavior-baseline.json`, guarded by
-`tests/rag_eval_adapters/test_native_evaluation_v2_baseline.py`. It freezes
-current behavior for migration comparison; it does not make the pre-segmented
-modes part of the target architecture.
+The current convergence characterization gate is:
+
+```bash
+uv run --project platform --extra test --frozen --python 3.12.12 \
+  pytest -q -m native_v2_characterization platform/tests
+```
+
+The earlier `tests/fixtures/native_evaluation_v2/behavior-baseline.json` and
+its Adapter test remain migration-era evidence until the test-retirement phase;
+they do not define the supported post-convergence contract.
