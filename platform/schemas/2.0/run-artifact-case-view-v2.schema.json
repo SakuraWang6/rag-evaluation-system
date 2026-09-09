@@ -107,17 +107,6 @@
           "additionalProperties": true,
           "title": "Telemetry",
           "type": "object"
-        },
-        "normalization": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CompatibilityNormalization"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
         }
       },
       "required": [
@@ -256,6 +245,60 @@
       "title": "ArtifactEvidenceStatus",
       "type": "string"
     },
+    "ArtifactVerificationView": {
+      "additionalProperties": false,
+      "properties": {
+        "valid": {
+          "title": "Valid",
+          "type": "boolean"
+        },
+        "missing": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing",
+          "type": "array"
+        },
+        "unexpected": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Unexpected",
+          "type": "array"
+        },
+        "mismatched": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Mismatched",
+          "type": "array"
+        },
+        "invalid_models": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Invalid Models",
+          "type": "array"
+        }
+      },
+      "required": [
+        "valid"
+      ],
+      "title": "ArtifactVerificationView",
+      "type": "object"
+    },
+    "ArtifactViewAvailability": {
+      "enum": [
+        "available",
+        "corrupted"
+      ],
+      "title": "ArtifactViewAvailability",
+      "type": "string"
+    },
     "CanonicalExtent": {
       "additionalProperties": false,
       "properties": {
@@ -322,36 +365,6 @@
         "receipt_sha256"
       ],
       "title": "CanonicalMappingRecord",
-      "type": "object"
-    },
-    "CompatibilityNormalization": {
-      "additionalProperties": false,
-      "properties": {
-        "source_protocol_version": {
-          "const": "1.0",
-          "default": "1.0",
-          "title": "Source Protocol Version",
-          "type": "string"
-        },
-        "source_result_sha256": {
-          "pattern": "^[0-9a-f]{64}$",
-          "title": "Source Result Sha256",
-          "type": "string"
-        },
-        "limitations": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "title": "Limitations",
-          "type": "array"
-        }
-      },
-      "required": [
-        "source_result_sha256",
-        "limitations"
-      ],
-      "title": "CompatibilityNormalization",
       "type": "object"
     },
     "ContentObservation": {
@@ -1808,6 +1821,119 @@
       "title": "ReverseMappingStatus",
       "type": "string"
     },
+    "RunArtifactCaseV2": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "case_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "repetition": {
+          "minimum": 1,
+          "title": "Repetition",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "timeout",
+            "system_error",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "gold_answer": {
+          "$ref": "#/$defs/GoldAnswer"
+        },
+        "gold_evidence_set": {
+          "$ref": "#/$defs/GoldEvidenceSet"
+        },
+        "trace_validation": {
+          "$ref": "#/$defs/TraceValidationRecordV2"
+        },
+        "adapter_result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterRunResultV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evaluation": {
+          "$ref": "#/$defs/PersistedEvaluationV2"
+        },
+        "answer_judgment": {
+          "$ref": "#/$defs/ArtifactAnswerJudgment"
+        },
+        "evidence_judgment": {
+          "$ref": "#/$defs/ArtifactEvidenceJudgment"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactCaseErrorV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "completed_at": {
+          "format": "date-time",
+          "title": "Completed At",
+          "type": "string"
+        },
+        "case_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Case Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "repetition",
+        "seed",
+        "status",
+        "question",
+        "gold_answer",
+        "gold_evidence_set",
+        "trace_validation",
+        "evaluation",
+        "answer_judgment",
+        "evidence_judgment",
+        "started_at",
+        "completed_at",
+        "case_digest"
+      ],
+      "title": "RunArtifactCaseV2",
+      "type": "object"
+    },
     "RuntimeChunkRecord": {
       "additionalProperties": false,
       "properties": {
@@ -2589,107 +2715,52 @@
       "title": "Schema Version",
       "type": "string"
     },
-    "case_id": {
-      "pattern": "^[A-Za-z0-9_-]+$",
-      "title": "Case Id",
-      "type": "string"
-    },
-    "repetition": {
-      "minimum": 1,
-      "title": "Repetition",
-      "type": "integer"
-    },
-    "seed": {
-      "title": "Seed",
-      "type": "integer"
-    },
-    "status": {
-      "enum": [
-        "completed",
-        "timeout",
-        "system_error",
-        "cancelled"
-      ],
-      "title": "Status",
-      "type": "string"
-    },
-    "question": {
+    "run_id": {
       "minLength": 1,
-      "title": "Question",
+      "title": "Run Id",
       "type": "string"
     },
-    "gold_answer": {
-      "$ref": "#/$defs/GoldAnswer"
+    "artifact_contract_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Artifact Contract Version",
+      "type": "string"
     },
-    "gold_evidence_set": {
-      "$ref": "#/$defs/GoldEvidenceSet"
+    "availability": {
+      "$ref": "#/$defs/ArtifactViewAvailability"
     },
-    "trace_validation": {
-      "$ref": "#/$defs/TraceValidationRecordV2"
-    },
-    "adapter_result": {
+    "reason": {
       "anyOf": [
         {
-          "$ref": "#/$defs/AdapterRunResultV2"
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    },
+    "verification": {
+      "$ref": "#/$defs/ArtifactVerificationView"
+    },
+    "artifact_case": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunArtifactCaseV2"
         },
         {
           "type": "null"
         }
       ],
       "default": null
-    },
-    "evaluation": {
-      "$ref": "#/$defs/PersistedEvaluationV2"
-    },
-    "answer_judgment": {
-      "$ref": "#/$defs/ArtifactAnswerJudgment"
-    },
-    "evidence_judgment": {
-      "$ref": "#/$defs/ArtifactEvidenceJudgment"
-    },
-    "error": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/ArtifactCaseErrorV2"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
-    },
-    "started_at": {
-      "format": "date-time",
-      "title": "Started At",
-      "type": "string"
-    },
-    "completed_at": {
-      "format": "date-time",
-      "title": "Completed At",
-      "type": "string"
-    },
-    "case_digest": {
-      "pattern": "^sha256:[0-9a-f]{64}$",
-      "title": "Case Digest",
-      "type": "string"
     }
   },
   "required": [
-    "case_id",
-    "repetition",
-    "seed",
-    "status",
-    "question",
-    "gold_answer",
-    "gold_evidence_set",
-    "trace_validation",
-    "evaluation",
-    "answer_judgment",
-    "evidence_judgment",
-    "started_at",
-    "completed_at",
-    "case_digest"
+    "run_id",
+    "availability",
+    "verification"
   ],
-  "title": "RunArtifactCaseV2",
+  "title": "RunArtifactCaseView",
   "type": "object"
 }

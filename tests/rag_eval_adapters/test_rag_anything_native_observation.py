@@ -8,7 +8,6 @@ from typing import ClassVar
 
 import pytest
 from rag_eval.adapters.observation_tck import assert_unified_observation_tck
-from rag_eval.contracts.adapter import DocumentInput, PrepareContext
 from rag_eval.contracts.dataset import (
     GoldEvidence,
     GoldEvidenceSet,
@@ -81,7 +80,7 @@ def _canonical_record(
 
 
 def _write_native_inputs(tmp_path: Path, *, duplicate: bool = False) -> tuple[
-    PrepareContext, DocumentInput, RuntimeIngestionCapture
+    ResolvedAdapterConfigV2, OriginalDocumentV2, RuntimeIngestionCapture
 ]:
     source = tmp_path / "source"
     source.mkdir()
@@ -126,24 +125,23 @@ def _write_native_inputs(tmp_path: Path, *, duplicate: bool = False) -> tuple[
         ),
         encoding="utf-8",
     )
-    context = PrepareContext(
+    context = ResolvedAdapterConfigV2(
         run_id="run-native",
         work_dir=str(tmp_path / "work"),
         source_dir=str(source),
         platform_version="0.1.0",
+        seed=0,
+        repetition=1,
+        adapter_config={},
+        adapter_config_digest=digest_json({}),
     )
-    document = DocumentInput(
+    document = OriginalDocumentV2(
         document_id="doc-1",
         source_path=docx.name,
-        sha256=source_sha256,
-        mime_type=(
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        ),
-        metadata={
-            "original_name": "source.docx",
-            "canonical_provenance_path": sidecar.name,
-            "canonical_provenance_sha256": _sha(sidecar.read_bytes()),
-        },
+        source_sha256=source_sha256,
+        original_name="source.docx",
+        canonical_catalog_path=sidecar.name,
+        canonical_catalog_sha256=_sha(sidecar.read_bytes()),
     )
     capture = RuntimeIngestionCapture(
         chunks={
@@ -170,22 +168,12 @@ def _write_native_inputs(tmp_path: Path, *, duplicate: bool = False) -> tuple[
 
 async def _prepare_direct(
     adapter: RAGAnythingAdapter,
-    context: PrepareContext,
-    document: DocumentInput,
+    context: ResolvedAdapterConfigV2,
+    document: OriginalDocumentV2,
     config: dict[str, object],
 ) -> PreparedSystemV2:
-    original_name = str(document.metadata["original_name"])
-    canonical_path = str(document.metadata["canonical_provenance_path"])
-    canonical_sha = str(document.metadata["canonical_provenance_sha256"])
     return await adapter.prepare(
-        OriginalDocumentV2(
-            document_id=document.document_id,
-            source_path=document.source_path or "",
-            source_sha256=document.sha256 or "",
-            original_name=original_name,
-            canonical_catalog_path=canonical_path,
-            canonical_catalog_sha256=canonical_sha,
-        ),
+        document,
         ResolvedAdapterConfigV2(
             run_id=context.run_id,
             work_dir=context.work_dir,
@@ -453,7 +441,6 @@ async def test_adapter_emits_typed_native_trace_and_unions_split_evidence(
         "observation_status"
     ] == "observed"
     assert result.trace.answer.content == "42 ms"
-    assert result.normalization is None
     observed = AdapterRunResultV2.model_validate(result)
     assert_unified_observation_tck(
         observed,
@@ -512,11 +499,9 @@ async def test_adapter_emits_typed_native_trace_and_unions_split_evidence(
         source_identities=(
             GoldSourceIdentity(
                 document_id="doc-1",
-                source_sha256=document.sha256,
+                source_sha256=document.source_sha256,
                 source_coordinate_schema="ooxml-structural-v1",
-                canonical_catalog_sha256=document.metadata[
-                    "canonical_provenance_sha256"
-                ],
+                canonical_catalog_sha256=document.canonical_catalog_sha256,
             ),
         ),
     )

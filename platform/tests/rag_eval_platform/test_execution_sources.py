@@ -5,18 +5,18 @@ from pathlib import Path
 
 from rag_eval.contracts.dataset import DatasetBundleManifest
 from rag_eval.datasets.bundle import DatasetBundle
-from rag_eval.execution import source_only_documents
+from rag_eval.execution import stage_original_document
 
 
-def test_source_only_documents_stages_canonical_provenance_sidecar(
+def test_original_document_staging_pins_canonical_catalog(
     tmp_path: Path,
 ) -> None:
     bundle_root = tmp_path / "bundle"
-    document_path = bundle_root / "documents" / "document.md"
+    document_path = bundle_root / "documents" / "document.docx"
     canonical_path = bundle_root / "canonical" / "evidence.jsonl"
     document_path.parent.mkdir(parents=True)
     canonical_path.parent.mkdir(parents=True)
-    document_path.write_text("# Heading\n\nGrounded statement.\n", encoding="utf-8")
+    document_path.write_bytes(b"PK\x03\x04native-docx-fixture")
     canonical_path.write_text(
         '{"document_id":"doc-1","object_id":"doc-1:block:00001"}\n',
         encoding="utf-8",
@@ -33,12 +33,15 @@ def test_source_only_documents_stages_canonical_provenance_sidecar(
                 "documents": [
                     {
                         "document_id": "doc-1",
-                        "path": "documents/document.md",
+                        "path": "documents/document.docx",
                         "canonical_path": "canonical/evidence.jsonl",
                         "sha256": hashlib.sha256(
                             document_path.read_bytes()
                         ).hexdigest(),
-                        "mime_type": "text/markdown",
+                        "mime_type": (
+                            "application/vnd.openxmlformats-officedocument."
+                            "wordprocessingml.document"
+                        ),
                     }
                 ],
             }
@@ -48,17 +51,14 @@ def test_source_only_documents_stages_canonical_provenance_sidecar(
         gold_evidence_sets={},
     )
 
-    documents = source_only_documents(bundle, tmp_path / "run" / "source")
+    document = stage_original_document(bundle, tmp_path / "run" / "source")
 
-    assert len(documents) == 1
-    metadata = documents[0].metadata
-    staged_name = metadata["canonical_provenance_path"]
-    assert isinstance(staged_name, str)
+    staged_name = document.canonical_catalog_path
     assert "/" not in staged_name
     assert (
         tmp_path / "run" / "source" / staged_name
     ).read_bytes() == canonical_path.read_bytes()
     assert (
-        metadata["canonical_provenance_sha256"]
+        document.canonical_catalog_sha256
         == hashlib.sha256(canonical_path.read_bytes()).hexdigest()
     )

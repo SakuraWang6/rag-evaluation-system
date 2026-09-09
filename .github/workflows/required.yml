@@ -64,7 +64,7 @@ jobs:
         run: |
           uv run --project platform --frozen --python "${{ matrix.python }}" \
             rag-eval --home "${RUNNER_TEMP}/rag-eval" export-schemas "${RUNNER_TEMP}/schemas"
-          diff -ru platform/schemas/1.2 "${RUNNER_TEMP}/schemas"
+          diff -ru platform/schemas/2.0 "${RUNNER_TEMP}/schemas"
 
   ci-tooling:
     name: ci / policy tooling

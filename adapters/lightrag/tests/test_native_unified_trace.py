@@ -752,7 +752,6 @@ def test_run_result_v2_observes_same_native_stage_items_without_second_execution
     assert len(calls) == 1
     assert calls[0][1]["evaluation_trace"] is True
     assert isinstance(observed, AdapterRunResultV2)
-    assert observed.normalization is None
     assert observed.trace.raw_retrieval.items[0].native_chunk_id == "chunk-1"
     assert observed.trace.ranked_retrieval.items[0].native_rank == 1
     assert observed.trace.final_context.items[0].content == value

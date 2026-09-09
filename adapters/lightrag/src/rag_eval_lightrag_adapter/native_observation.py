@@ -12,11 +12,10 @@ import hashlib
 import json
 import math
 import unicodedata
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from rag_eval.contracts.adapter import RAGEvidenceItem
 from rag_eval.contracts.canonical import SourceSpan, canonical_json
 from rag_eval.contracts.native import OriginalDocumentV2
 from rag_eval.contracts.observation import (
@@ -364,7 +363,7 @@ class NativeObservationSnapshot:
     mapping_diagnostics: tuple[MappingDiagnostic, ...]
     validation_receipts: tuple[ValidationReceipt, ...]
     runtime_chunks: dict[str, RuntimeChunkRecord]
-    legacy_mappings: dict[str, dict[str, Any]]
+    runtime_mappings: dict[str, dict[str, Any]]
     provenance_edge_ids_by_chunk: dict[str, tuple[str, ...]]
     candidate_completeness: ObservationCompleteness
 
@@ -890,7 +889,7 @@ def build_native_observation_snapshot(
         ),
         validation_receipts=receipts,
         runtime_chunks=runtime_chunks,
-        legacy_mappings=mappings,
+        runtime_mappings=mappings,
         provenance_edge_ids_by_chunk=edge_ids_by_chunk,
         candidate_completeness=candidate_completeness,
     )
@@ -954,7 +953,7 @@ def _stage_observation(
                 configured_cutoff=configured_cutoff,
             )
         runtime = snapshot.runtime_chunks.get(native_id)
-        mapping = snapshot.legacy_mappings.get(native_id)
+        mapping = snapshot.runtime_mappings.get(native_id)
         if runtime is None or mapping is None:
             return _corrupted_stage(
                 stage,
@@ -1135,53 +1134,9 @@ def build_native_run_result_v2(
     )
 
 
-def verify_wire_v1_shadow(
-    result: AdapterRunResultV2,
-    *,
-    raw_retrieval: Iterable[RAGEvidenceItem] | None,
-    ranked_retrieval: Iterable[RAGEvidenceItem] | None,
-    final_context: Iterable[RAGEvidenceItem] | None,
-) -> dict[str, Any]:
-    """Prove that the additive v2 observer did not alter Wire 1.0 outputs."""
-
-    pairs = (
-        ("raw_retrieval", raw_retrieval, result.trace.raw_retrieval),
-        ("ranked_retrieval", ranked_retrieval, result.trace.ranked_retrieval),
-        ("final_context", final_context, result.trace.final_context),
-    )
-    compared: dict[str, int] = {}
-    for name, legacy, observed in pairs:
-        if observed.observation_status != ObservationStatus.OBSERVED:
-            compared[name] = 0
-            continue
-        legacy_items = list(legacy or ())
-        left = [
-            (item.native_id, item.rank, item.content, item.score)
-            for item in legacy_items
-        ]
-        right = [
-            (
-                item.native_chunk_id,
-                item.native_rank,
-                item.content,
-                item.runtime_score,
-            )
-            for item in observed.items
-        ]
-        if left != right:
-            raise ValueError(f"Wire 1.0/v2 shadow mismatch at {name}")
-        compared[name] = len(right)
-    return {
-        "status": "verified",
-        "comparison": "native_id+rank+content+score",
-        "stage_item_counts": compared,
-    }
-
-
 __all__ = [
     "NativeObservationSnapshot",
     "build_native_observation_snapshot",
     "build_native_run_result_v2",
     "build_prepared_identities",
-    "verify_wire_v1_shadow",
 ]

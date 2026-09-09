@@ -12,6 +12,7 @@ import socket
 import subprocess
 import sys
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
@@ -21,16 +22,6 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 from rag_eval.adapters.native_observation import unavailable_native_result
-from rag_eval.contracts.adapter import (
-    AdapterCapabilities,
-    DocumentInput,
-    IngestionResult,
-    PrepareContext,
-    PreparedSystem,
-    RAGEvidenceItem,
-    ResetResult,
-)
-from rag_eval.contracts.dataset import ObjectLocator, TableCellLocator
 from rag_eval.contracts.native import (
     IngestionReceiptV2,
     NativeHealthReportV2,
@@ -48,8 +39,6 @@ from rag_eval_lightrag_adapter.canonical_provenance import (
     NativeDocxDocumentMap,
     build_native_docx_provenance_manifest,
     load_native_docx_document_map,
-    normalize_source_span,
-    sha256_text,
     write_provenance_manifest,
 )
 from rag_eval_lightrag_adapter.native_observation import (
@@ -65,23 +54,18 @@ ADAPTER_VERSION = "0.1.0"
 # experiment contract; this short, non-configurable allowance is only for the
 # loopback server to serialize and return that result without racing httpx.
 QUERY_RESPONSE_GRACE_SECONDS = 15.0
-CAPABILITIES = AdapterCapabilities(
-    answer=True,
-    raw_retrieval=True,
-    ranked_retrieval=True,
-    final_context=True,
-    object_provenance=True,
-    # LightRAG's evaluation trace exposes the rendered final prompt when the
-    # native server supplies ``final_prompt``.  The query method still marks
-    # it unavailable on a per-result basis when that field is absent.
-    prompt_trace=True,
-    rerank_trace=False,
-    latency_breakdown=True,
-    token_usage=False,
-    reset=False,
-    segment_traces=True,
-    strict_segment_ranking=True,
-)
+
+
+@dataclass(frozen=True, slots=True)
+class _RuntimePreparation:
+    effective_config: dict[str, Any]
+    system_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class _IngestionOutcome:
+    index_fingerprint: str
+    details: dict[str, Any]
 
 
 class ChunkingConfig(BaseModel):
@@ -191,7 +175,7 @@ def resolve_config(raw: dict[str, Any]) -> LightRAGAdapterConfig:
 class LightRAGAdapter:
     def __init__(self) -> None:
         self._config: LightRAGAdapterConfig | None = None
-        self._context: PrepareContext | None = None
+        self._resolved_config: ResolvedAdapterConfigV2 | None = None
         self._server: subprocess.Popen[str] | None = None
         self._server_log = None
         self._server_log_path: Path | None = None
@@ -217,34 +201,11 @@ class LightRAGAdapter:
         original_docx: OriginalDocumentV2,
         resolved_config: ResolvedAdapterConfigV2,
     ) -> PreparedSystemV2:
-        context = PrepareContext(
-            run_id=resolved_config.run_id,
-            work_dir=resolved_config.work_dir,
-            source_dir=resolved_config.source_dir,
-            platform_version=resolved_config.platform_version,
-            seed=resolved_config.seed,
-            repetition=resolved_config.repetition,
-        )
         prepared = await self._prepare_runtime(
-            context,
+            resolved_config,
             dict(resolved_config.adapter_config),
         )
-        document = DocumentInput(
-            document_id=original_docx.document_id,
-            source_path=original_docx.source_path,
-            sha256=original_docx.source_sha256,
-            mime_type=original_docx.media_type,
-            metadata={
-                "original_name": original_docx.original_name,
-                "canonical_provenance_path": original_docx.canonical_catalog_path,
-                "canonical_provenance_sha256": (
-                    original_docx.canonical_catalog_sha256
-                ),
-            },
-        )
-        ingestion = await self._ingest_documents([document])
-        if ingestion.index_fingerprint is None:
-            raise RuntimeError("LightRAG did not return an index fingerprint")
+        ingestion = await self._ingest_document(original_docx)
         source, runtime, observation = build_prepared_identities(
             document=original_docx,
             runtime_config=self._require_prepared().model_dump(mode="json"),
@@ -279,14 +240,14 @@ class LightRAGAdapter:
         return self._prepared_system
 
     async def _prepare_runtime(
-        self, context: PrepareContext, config: dict[str, Any]
-    ) -> PreparedSystem:
+        self, resolved_config: ResolvedAdapterConfigV2, config: dict[str, Any]
+    ) -> _RuntimePreparation:
         if self._closed:
             raise RuntimeError("adapter is closed")
         if self._config is not None:
             raise RuntimeError("adapter is already prepared")
         effective = resolve_config(config)
-        work_dir = Path(context.work_dir).resolve()
+        work_dir = Path(resolved_config.work_dir).resolve()
         if work_dir.exists() and any(work_dir.iterdir()):
             raise RuntimeError(
                 "run work directory is not empty; refusing stale index reuse"
@@ -295,7 +256,7 @@ class LightRAGAdapter:
         (work_dir / "inputs").mkdir()
         (work_dir / "storage").mkdir()
 
-        self._context = context
+        self._resolved_config = resolved_config
         self._config = effective
         self._work_dir = work_dir
         await self._start_server(work_dir)
@@ -303,7 +264,7 @@ class LightRAGAdapter:
             build_server_environment(effective, work_dir)
         )
         model_artifacts = await ollama_model_artifacts(runtime_identity)
-        return PreparedSystem(
+        return _RuntimePreparation(
             effective_config={
                 **effective.model_dump(mode="json"),
                 "ingestion_policy": {
@@ -321,7 +282,6 @@ class LightRAGAdapter:
                 "isolation": "run_scoped_managed_process",
                 "code_identity": code_identity(),
             },
-            capabilities=CAPABILITIES,
             system_version=system_version(),
         )
 
@@ -350,17 +310,9 @@ class LightRAGAdapter:
             details={"endpoint": "loopback", "prepared": True},
         )
 
-    async def _ingest_documents(
-        self, documents: list[DocumentInput]
-    ) -> IngestionResult:
-        if len(documents) != 1:
-            raise ValueError("LightRAG Native v2 requires exactly one original DOCX")
-        if (
-            documents[0].content is not None
-            or documents[0].source_path is None
-            or Path(documents[0].source_path).suffix.lower() != ".docx"
-        ):
-            raise ValueError("LightRAG Native v2 accepts only a source-only DOCX")
+    async def _ingest_document(
+        self, document: OriginalDocumentV2
+    ) -> _IngestionOutcome:
         config = self._require_prepared()
         self._source_by_file = {}
         self._native_docx_provenance_by_document = {}
@@ -375,57 +327,39 @@ class LightRAGAdapter:
                 ingestion_identity(config), sort_keys=True, separators=(",", ":")
             ).encode()
         )
-        staged_documents: list[tuple[DocumentInput, str, bytes]] = []
-        for index, document in enumerate(documents):
-            source_name, source_bytes = self._materialize_document(
-                index, document
-            )
-            digest.update(document.document_id.encode())
-            digest.update(b"\0")
-            digest.update(source_bytes)
-            digest.update(b"\0")
-            self._source_by_file[source_name] = document.document_id
-            native_docx = self._load_native_docx_provenance(document)
-            if native_docx is not None:
-                observed_source_sha = hashlib.sha256(source_bytes).hexdigest()
-                if (
-                    native_docx.source_sha256
-                    and native_docx.source_sha256 != observed_source_sha
-                ):
-                    raise ValueError(
-                        "native canonical provenance source checksum does not "
-                        "match the uploaded DOCX"
-                    )
-                self._native_docx_provenance_by_document[document.document_id] = (
-                    native_docx
+        source_name, source_bytes = self._materialize_document(0, document)
+        digest.update(document.document_id.encode())
+        digest.update(b"\0")
+        digest.update(source_bytes)
+        digest.update(b"\0")
+        self._source_by_file[source_name] = document.document_id
+        native_docx = self._load_native_docx_provenance(document)
+        if native_docx is not None:
+            observed_source_sha = hashlib.sha256(source_bytes).hexdigest()
+            if native_docx.source_sha256 != observed_source_sha:
+                raise ValueError(
+                    "native canonical provenance source checksum does not "
+                    "match the uploaded DOCX"
                 )
-                digest.update(native_docx.canonical_sidecar_sha256.encode())
-                digest.update(b"\0")
-            staged_documents.append((document, source_name, source_bytes))
+            self._native_docx_provenance_by_document[document.document_id] = native_docx
+            digest.update(native_docx.canonical_sidecar_sha256.encode())
+            digest.update(b"\0")
 
-        failures: list[dict[str, str]] = []
-        for document, source_name, source_bytes in staged_documents:
-            try:
-                response = await self._post_document(
-                    source_name,
-                    source_bytes,
-                    document.mime_type,
-                )
-                track_id = response.get("track_id")
-                if not isinstance(track_id, str) or not track_id:
-                    raise RuntimeError("LightRAG ingestion did not return a track_id")
-                await self._wait_for_ingestion(track_id)
-            except Exception as exc:  # noqa: BLE001
-                failures.append(
-                    {
-                        "document_id": document.document_id,
-                        "exception_type": type(exc).__name__,
-                        "message": exception_diagnostic(exc),
-                    }
-                )
-                break
-        if failures:
-            raise RuntimeError(f"LightRAG ingestion failed: {failures}")
+        try:
+            response = await self._post_document(
+                source_name,
+                source_bytes,
+                document.media_type,
+            )
+            track_id = response.get("track_id")
+            if not isinstance(track_id, str) or not track_id:
+                raise RuntimeError("LightRAG ingestion did not return a track_id")
+            await self._wait_for_ingestion(track_id)
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                "LightRAG ingestion failed: "
+                f"{type(exc).__name__}: {exception_diagnostic(exc)}"
+            ) from exc
         provenance_manifest = self._build_ingestion_provenance_manifest()
         provenance_path = self._require_work_dir() / "canonical-provenance-map.json"
         self._provenance_map_digest = write_provenance_manifest(
@@ -490,8 +424,7 @@ class LightRAGAdapter:
                 )
             },
         }
-        return IngestionResult(
-            ingested_documents=len(documents),
+        return _IngestionOutcome(
             index_fingerprint=self._index_fingerprint,
             details=details,
         )
@@ -609,13 +542,6 @@ class LightRAGAdapter:
             )
         return result.model_copy(update={"telemetry": telemetry})
 
-    async def reset(self) -> ResetResult:
-        return ResetResult(
-            supported=False,
-            reset=False,
-            details={"reason": "adapter instances are run-scoped"},
-        )
-
     async def close(self) -> None:
         if self._closed:
             return
@@ -668,7 +594,7 @@ class LightRAGAdapter:
             "--input-dir",
             str(work_dir / "inputs"),
             "--workspace",
-            f"eval_{self._context.run_id}",
+            f"eval_{self._require_resolved_config().run_id}",
             "--workers",
             "1",
         ]
@@ -794,259 +720,8 @@ class LightRAGAdapter:
             raise RuntimeError("LightRAG returned a non-object response")
         return body
 
-    def _evidence_items(self, raw: Any, stage: str) -> list[RAGEvidenceItem]:
-        if not isinstance(raw, list):
-            raise RuntimeError(f"LightRAG trace stage {stage!r} is not observable")
-        items: list[RAGEvidenceItem] = []
-        for expected_rank, value in enumerate(raw, start=1):
-            if not isinstance(value, dict):
-                raise RuntimeError(f"LightRAG trace stage {stage!r} is malformed")
-            file_path = str(value.get("file_path") or "")
-            document_id = self._source_by_file.get(Path(file_path).name)
-            item_id = str(value.get("item_id") or f"{stage}-{expected_rank}")
-            native_id = (
-                str(value.get("native_id"))
-                if value.get("native_id") is not None
-                else None
-            )
-            content = str(value.get("content") or "")
-            mapping = (
-                self._runtime_provenance_by_chunk.get(native_id)
-                if native_id is not None
-                else None
-            )
-            trace_span = normalize_source_span(value.get("source_span"))
-            if mapping is not None:
-                document_id = (
-                    str(mapping.get("document_id") or document_id or "") or None
-                )
-            mapping_span = normalize_source_span(
-                mapping.get("source_span") if mapping is not None else None
-            )
-            mapping_mode = str(mapping.get("mapping_mode") or "") if mapping else ""
-            formal_native = mapping_mode == "native_docx_lineage"
-            trace_document_id = value.get("document_id")
-            accepted_runtime_document_ids = {
-                str(mapping.get("document_id") or "")
-                if mapping is not None
-                else "",
-                str(mapping.get("native_document_id") or "")
-                if mapping is not None
-                else "",
-                str(mapping.get("full_doc_id") or "") if mapping is not None else "",
-                str(mapping.get("input_document_id") or "")
-                if mapping is not None
-                else "",
-            }
-            accepted_runtime_document_ids.discard("")
-            document_id_matches = not (
-                mapping is not None
-                and isinstance(trace_document_id, str)
-                and trace_document_id
-                and trace_document_id not in accepted_runtime_document_ids
-            )
-            if formal_native:
-                # A formal native scope may have no linear source span (a
-                # split table row piece).  In that case the trace must also
-                # omit a span; accepting an arbitrary trace span would turn a
-                # structural edge into a guessed text coordinate.
-                span_matches = (
-                    trace_span is None
-                    if mapping_span is None
-                    else trace_span == mapping_span
-                )
-                expected_lineage_sha = mapping.get("lineage_sha256")
-                trace_lineage_sha = value.get("lineage_sha256")
-                lineage_matches = (
-                    expected_lineage_sha is None
-                    or trace_lineage_sha == expected_lineage_sha
-                )
-            else:
-                span_matches = trace_span is not None and trace_span == mapping_span
-                lineage_matches = True
-            mapping_source_sha = (
-                str(mapping.get("source_sha256") or "") if mapping else ""
-            )
-            trace_source_sha = value.get("source_sha256")
-            source_matches = not (
-                formal_native
-                and isinstance(trace_source_sha, str)
-                and trace_source_sha
-                and trace_source_sha != mapping_source_sha
-            )
-            mapping_valid = bool(
-                mapping is not None
-                and document_id_matches
-                and span_matches
-                and lineage_matches
-                and source_matches
-                and mapping.get("content_sha256") == sha256_text(content)
-            )
-            canonical_objects = (
-                list(mapping.get("canonical_objects") or [])
-                if mapping_valid and mapping is not None
-                else []
-            )
-            full_objects = [
-                entry
-                for entry in canonical_objects
-                if isinstance(entry, dict) and entry.get("coverage") == "full"
-            ]
-            runtime_structure = (
-                mapping.get("structure")
-                if mapping_valid
-                and mapping is not None
-                and isinstance(mapping.get("structure"), dict)
-                else {
-                    "metadata_status": "missing",
-                    "missing_fields": ["verified_runtime_structure"],
-                    "section_ids": [],
-                    "canonical_object_count": 0,
-                }
-            )
-            base_metadata = {
-                "file_path": file_path or None,
-                "source_type": value.get("source_type"),
-                "runtime_chunk_id": native_id,
-                "runtime_document_id": (
-                    value.get("document_id")
-                    if isinstance(value.get("document_id"), str)
-                    else (
-                        mapping.get("native_document_id")
-                        if mapping_valid and mapping is not None
-                        else None
-                    )
-                ),
-                "provenance_status": (
-                    mapping.get("provenance_status")
-                    if mapping_valid and mapping is not None
-                    else "missing"
-                ),
-                "provenance_reason": (
-                    mapping.get("reason")
-                    if mapping_valid and mapping is not None
-                    else "trace_ingestion_mapping_mismatch"
-                ),
-                "canonical_object_ids": [
-                    entry.get("object_id")
-                    for entry in canonical_objects
-                    if isinstance(entry, dict)
-                ],
-                "canonical_full_object_ids": [
-                    entry.get("object_id") for entry in full_objects
-                ],
-                "canonical_partial_object_ids": [
-                    entry.get("object_id")
-                    for entry in canonical_objects
-                    if isinstance(entry, dict) and entry.get("coverage") == "partial"
-                ],
-                "runtime_structure": runtime_structure,
-                "canonical_object_structures": [
-                    entry.get("structure")
-                    for entry in canonical_objects
-                    if isinstance(entry, dict)
-                    and isinstance(entry.get("structure"), dict)
-                ],
-                # The edge list is intentionally metadata on one runtime
-                # item.  It must not be expanded into one ranked item per
-                # canonical object: doing so changes top-k/rank semantics.
-                "canonical_edges": canonical_objects,
-                "canonical_edge_count": len(canonical_objects),
-                "canonical_provenance_map_digest": self._provenance_map_digest,
-            }
-            if trace_span is not None:
-                # Do not emit a null span.  Null is not an unavailable value
-                # in the wire metadata: a present-but-null span is malformed
-                # to the evaluator.  Spanless native row pieces simply omit
-                # this field and rely on their structural lineage digest.
-                base_metadata["runtime_source_span"] = {
-                    "start": trace_span[0],
-                    "end": trace_span[1],
-                }
-            if mapping_valid and mapping is not None:
-                base_metadata["content_sha256"] = mapping.get("content_sha256")
-                base_metadata["canonical_objects"] = canonical_objects
-                diagnostics = mapping.get("diagnostic_edges")
-                if isinstance(diagnostics, list) and diagnostics:
-                    # Diagnostic projections (partial scopes, renderer-only
-                    # merge continuations, or out-of-bounds spans) are
-                    # observable but never promoted to formal canonical
-                    # edges.  Keeping them separate prevents the evaluator's
-                    # forward/reverse catalog round-trip from treating a
-                    # non-proof witness as a retrievable object.
-                    base_metadata["provenance_diagnostics"] = diagnostics
-                if formal_native:
-                    base_metadata["provenance_schema"] = "canonical-runtime/v2"
-                else:
-                    base_metadata["provenance_schema"] = "canonical-provenance/v2"
-                for key in (
-                    "source_sha256",
-                    "lineage_sha256",
-                    "source_witness_sha256",
-                ):
-                    candidate = mapping.get(key)
-                    if candidate is not None:
-                        base_metadata[key] = candidate
-            if (
-                mapping_valid
-                and mapping is not None
-                and mapping.get("reason")
-                and isinstance(mapping.get("reason"), str)
-            ):
-                base_metadata["provenance_reason"] = mapping["reason"]
-            locator = None
-            if len(canonical_objects) == 1 and len(full_objects) == 1:
-                raw_locator = full_objects[0].get("locator")
-                if isinstance(raw_locator, dict):
-                    try:
-                        locator = (
-                            TableCellLocator.model_validate(raw_locator)
-                            if raw_locator.get("type") == "table_cell"
-                            else ObjectLocator.model_validate(raw_locator)
-                        )
-                    except (TypeError, ValueError):
-                        base_metadata["locator_status"] = "malformed"
-            items.append(
-                self._evidence_item(
-                    stage=stage,
-                    item_id=item_id,
-                    expected_rank=expected_rank,
-                    content=content,
-                    document_id=document_id,
-                    native_id=native_id,
-                    score=value.get("score"),
-                    locator=locator,
-                    metadata=base_metadata,
-                )
-            )
-        return items
-
-    @staticmethod
-    def _evidence_item(
-        *,
-        stage: str,
-        item_id: str,
-        expected_rank: int,
-        content: str,
-        document_id: str | None,
-        native_id: str | None,
-        score: Any,
-        locator: ObjectLocator | TableCellLocator | None,
-        metadata: dict[str, Any],
-    ) -> RAGEvidenceItem:
-        return RAGEvidenceItem(
-            item_id=f"{stage}:{item_id}",
-            rank=expected_rank,
-            content=content,
-            document_id=document_id,
-            locator=locator,
-            score=score if isinstance(score, (int, float)) else None,
-            native_id=native_id,
-            metadata=metadata,
-        )
-
     def _load_native_docx_provenance(
-        self, document: DocumentInput
+        self, document: OriginalDocumentV2
     ) -> NativeDocxDocumentMap | None:
         """Load a v2 table graph for a source-only native DOCX.
 
@@ -1056,14 +731,8 @@ class LightRAGAdapter:
         available. All other native content remains deliberately unmapped.
         """
 
-        if document.content is not None:
-            return None
-        if document.source_path is None or Path(document.source_path).suffix.lower() != ".docx":
-            return None
-        raw_path = document.metadata.get("canonical_provenance_path")
-        raw_digest = document.metadata.get("canonical_provenance_sha256")
-        if raw_path is None and raw_digest is None:
-            return None
+        raw_path = document.canonical_catalog_path
+        raw_digest = document.canonical_catalog_sha256
         if not isinstance(raw_path, str) or Path(raw_path).name != raw_path:
             raise ValueError("canonical provenance path is not a safe staged filename")
         if not raw_path.lower().endswith(".jsonl"):
@@ -1074,9 +743,7 @@ class LightRAGAdapter:
             or any(character not in "0123456789abcdef" for character in raw_digest)
         ):
             raise ValueError("canonical provenance digest is malformed")
-        if self._context is None:
-            raise RuntimeError("canonical provenance requires a prepared source sandbox")
-        sidecar_path = Path(self._context.source_dir) / raw_path
+        sidecar_path = Path(self._require_resolved_config().source_dir) / raw_path
         if not sidecar_path.is_file():
             raise ValueError("canonical provenance sidecar is missing from source sandbox")
         native = load_native_docx_document_map(
@@ -1091,19 +758,13 @@ class LightRAGAdapter:
         )
 
     def _materialize_document(
-        self, index: int, document: DocumentInput
+        self, index: int, document: OriginalDocumentV2
     ) -> tuple[str, bytes]:
         """Checksum the one original DOCX inside the worker source sandbox."""
 
-        if (
-            document.content is not None
-            or self._context is None
-            or document.source_path is None
-        ):
-            raise RuntimeError("Native v2 requires a source-only DOCX")
         if Path(document.source_path).suffix.lower() != ".docx":
             raise ValueError("Native v2 accepts only DOCX input")
-        source_root = Path(self._context.source_dir).resolve()
+        source_root = Path(self._require_resolved_config().source_dir).resolve()
         source_path = (source_root / document.source_path).resolve()
         try:
             source_path.relative_to(source_root)
@@ -1113,8 +774,8 @@ class LightRAGAdapter:
             raise ValueError("source-only document is missing from source sandbox")
         payload = source_path.read_bytes()
         observed_digest = hashlib.sha256(payload).hexdigest()
-        if document.sha256 is not None and observed_digest != document.sha256:
-            raise ValueError("source-only document checksum does not match DocumentInput")
+        if observed_digest != document.source_sha256:
+            raise ValueError("source-only DOCX checksum does not match OriginalDocumentV2")
         return safe_source_name(index, document.document_id, source_path.suffix), payload
 
     def _build_ingestion_provenance_manifest(self) -> dict[str, Any]:
@@ -1169,6 +830,11 @@ class LightRAGAdapter:
         if self._work_dir is None:
             raise RuntimeError("adapter work directory is not initialized")
         return self._work_dir
+
+    def _require_resolved_config(self) -> ResolvedAdapterConfigV2:
+        if self._resolved_config is None:
+            raise RuntimeError("adapter has no resolved Native v2 configuration")
+        return self._resolved_config
 
 
 def exception_diagnostic(exc: BaseException) -> str:

@@ -127,11 +127,6 @@ class TraceValidator:
         expected_system_id: str | None = None,
         expected_system_version: str | None = None,
     ) -> TraceValidationResult:
-        if result.normalization is not None:
-            return self._unavailable(
-                ObservationStatus.CORRUPTED,
-                "Direct Wire 2.0 result contains legacy normalization",
-            )
         identity_error = self._identity_error(
             result,
             expected_case_id=expected_case_id,

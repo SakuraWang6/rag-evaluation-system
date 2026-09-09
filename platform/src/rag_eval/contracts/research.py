@@ -1,4 +1,4 @@
-"""Artifact Contract 1.2 models for controlled research evaluation.
+"""Native v2 contracts for controlled research evaluation.
 
 These contracts are transport-neutral.  In particular, they deliberately do
 not import an adapter implementation or a RAG core package.
@@ -7,7 +7,6 @@ not import an adapter implementation or a RAG core package.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -51,52 +50,6 @@ class ModelLock(ContractModel):
         if unverified:
             raise ValueError(f"model lock contains unverified models: {sorted(unverified)}")
         return self
-
-
-class SourceIdentity(ContractModel):
-    package_version: str | None = None
-    git_commit: str | None = None
-    dirty_patch_digest: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
-    )
-    direct_url: str | None = None
-
-
-class FailureLabel(StrEnum):
-    PROVENANCE_UNAVAILABLE = "provenance_unavailable"
-    RETRIEVAL_MISSING = "retrieval_missing"
-    RANKING_FAILURE = "ranking_failure"
-    CONTEXT_SELECTION_LOSS = "context_selection_loss"
-    GENERATION_FAILURE = "generation_failure"
-    UNSUPPORTED_ANSWER = "unsupported_answer"
-    TIMEOUT = "timeout"
-    ADAPTER_ERROR = "adapter_error"
-    DATASET_ISSUE = "dataset_issue"
-    PARTIAL_COVERAGE = "partial_coverage"
-    UNSUPPORTED_STAGE = "unsupported_stage"
-    RUNTIME_ERROR = "runtime_error"
-    MAPPING_CORRUPTED = "mapping_corrupted"
-    NEEDS_REVIEW = "needs_review"
-
-
-class FailureAssessment(ContractModel):
-    labels: list[FailureLabel] = Field(default_factory=list)
-    certainty: Literal["deterministic", "reviewed", "unknown"] = "unknown"
-    reasons: list[str] = Field(default_factory=list)
-    review_required: bool = False
-
-
-class LatencyMeasurement(ContractModel):
-    """Monotonic timing values expressed in seconds.
-
-    Only ``end_to_end_query_latency`` is a cross-system candidate metric.  The
-    native breakdown is adapter diagnostics and must remain optional.
-    """
-
-    end_to_end_query_latency: float = Field(ge=0)
-    native_query_latency: float | None = Field(default=None, ge=0)
-    retrieval_latency: float | None = Field(default=None, ge=0)
-    generation_latency: float | None = Field(default=None, ge=0)
 
 
 class LatencyProtocol(ContractModel):

@@ -316,12 +316,12 @@ def test_product_profiles_declare_ui_capabilities_without_rag_name_logic(
 
 
 def test_artifact_presentation_schemas_are_exported() -> None:
-    schema_root = Path(__file__).resolve().parents[2] / "schemas" / "1.2"
+    schema_root = Path(__file__).resolve().parents[2] / "schemas" / "2.0"
     for name in (
-        "run-artifact-overview-view-v1",
-        "run-artifact-case-index-view-v1",
-        "run-artifact-case-view-v1",
-        "run-artifact-case-collection-view-v1",
+        "run-artifact-overview-view-v2",
+        "run-artifact-case-index-view-v2",
+        "run-artifact-case-view-v2",
+        "run-artifact-case-collection-view-v2",
     ):
         observed = json.loads(
             (schema_root / f"{name}.schema.json").read_text(encoding="utf-8")

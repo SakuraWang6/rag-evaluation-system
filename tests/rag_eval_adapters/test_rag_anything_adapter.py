@@ -6,9 +6,14 @@ from pathlib import Path
 
 import pytest
 import rag_eval_rag_anything_adapter.adapter as adapter_module
-from rag_eval.contracts.adapter import DocumentInput, PrepareContext, RAGQuery
+from rag_eval.contracts.native import (
+    NativeQueryV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
+)
+from rag_eval.runs.plans import digest_json
 from rag_eval_rag_anything_adapter.adapter import (
-    CAPABILITIES,
     INGESTION_LIVENESS_FILE,
     IngestionLiveness,
     OfficialRAGAnythingRuntime,
@@ -88,20 +93,30 @@ class FakeRuntime:
         self.closed += 1
 
 
-def context(tmp_path: Path) -> PrepareContext:
+def context(tmp_path: Path) -> ResolvedAdapterConfigV2:
     source = tmp_path / "source"
     source.mkdir()
-    return PrepareContext(
+    config: dict[str, object] = {}
+    return ResolvedAdapterConfigV2(
         run_id="run-1",
         work_dir=str(tmp_path / "work"),
         source_dir=str(source),
         platform_version="0.1.0",
+        seed=0,
+        repetition=1,
+        adapter_config=config,
+        adapter_config_digest=digest_json(config),
     )
 
 
 async def prepare_with_fake(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> tuple[RAGAnythingAdapter, FakeRuntime, PrepareContext]:
+) -> tuple[
+    RAGAnythingAdapter,
+    FakeRuntime,
+    ResolvedAdapterConfigV2,
+    PreparedSystemV2,
+]:
     runtime = FakeRuntime()
 
     async def create(_config, _work_dir, _run_id):
@@ -110,19 +125,26 @@ async def prepare_with_fake(
     monkeypatch.setattr(OfficialRAGAnythingRuntime, "create", create)
     adapter = RAGAnythingAdapter()
     prepare_context = context(tmp_path)
-    prepared = await adapter.prepare(prepare_context, {})
-    assert prepared.system_version == "1.3.1"
+    source = Path(prepare_context.source_dir)
+    docx = source / "source.docx"
+    docx.write_bytes(b"PK\x03\x04native-docx")
+    canonical = source / "canonical.jsonl"
+    canonical.write_text(
+        '{"document_id":"doc-native","object_id":"paragraph-1"}\n',
+        encoding="utf-8",
+    )
+    original = OriginalDocumentV2(
+        document_id="doc-native",
+        source_path=docx.name,
+        source_sha256=hashlib.sha256(docx.read_bytes()).hexdigest(),
+        original_name="source.docx",
+        canonical_catalog_path=canonical.name,
+        canonical_catalog_sha256=hashlib.sha256(canonical.read_bytes()).hexdigest(),
+    )
+    prepared = await adapter.prepare(original, prepare_context)
+    assert prepared.runtime_profile.system_version == "1.3.1"
     assert prepared.effective_config["runtime"]["lightrag_version"] == "1.4.9"
-    return adapter, runtime, prepare_context
-
-
-def test_capabilities_are_honest_about_public_api_observability() -> None:
-    assert CAPABILITIES.answer
-    assert CAPABILITIES.latency_breakdown
-    assert not CAPABILITIES.raw_retrieval
-    assert not CAPABILITIES.ranked_retrieval
-    assert not CAPABILITIES.final_context
-    assert not CAPABILITIES.object_provenance
+    return adapter, runtime, prepare_context, prepared
 
 
 def test_config_is_strict_and_model_identity_is_explicit() -> None:
@@ -181,44 +203,21 @@ def test_rag_anything_clears_lightrag_experiment_environment(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
-async def test_text_and_binary_ingestion_use_source_only_sandbox(
+async def test_native_docx_prepare_ingests_one_source_and_records_liveness(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    adapter, runtime, prepare_context = await prepare_with_fake(monkeypatch, tmp_path)
-    source = Path(prepare_context.source_dir)
-    text_path = source / "source-00000.txt"
-    text_path.write_text("The controlled latency is 42 ms.", encoding="utf-8")
-    pdf_path = source / "source-00001.pdf"
-    pdf_path.write_bytes(b"%PDF-1.4 controlled")
-    documents = [
-        DocumentInput(
-            document_id="doc-text",
-            content=text_path.read_text(),
-            source_path=text_path.name,
-            sha256=hashlib.sha256(text_path.read_bytes()).hexdigest(),
-            metadata={"original_name": "facts.txt"},
-        ),
-        DocumentInput(
-            document_id="doc-pdf",
-            source_path=pdf_path.name,
-            sha256=hashlib.sha256(pdf_path.read_bytes()).hexdigest(),
-            mime_type="application/pdf",
-            metadata={"original_name": "report.pdf"},
-        ),
-    ]
+    adapter, runtime, resolved_config, prepared = await prepare_with_fake(
+        monkeypatch, tmp_path
+    )
 
-    ingestion = await adapter.ingest(documents)
-
-    assert ingestion.ingested_documents == 2
-    assert len(ingestion.index_fingerprint or "") == 64
-    assert runtime.text_documents == [
-        ("The controlled latency is 42 ms.", "doc-text", "facts.txt")
-    ]
-    assert runtime.binary_documents[0][1:] == ("doc-pdf", "report.pdf")
+    assert prepared.ingestion_receipt.ingested_documents == 1
+    assert len(prepared.ingestion_receipt.index_fingerprint) == 64
+    assert runtime.binary_documents[0][1:] == ("doc-native", "source.docx")
     status = adapter._liveness.snapshot()
     assert status["stage"] == "completed"
-    assert status["details"]["ingested_documents"] == 2
-    assert (Path(prepare_context.work_dir) / INGESTION_LIVENESS_FILE).is_file()
+    assert status["details"]["ingested_documents"] == 1
+    assert (Path(resolved_config.work_dir) / INGESTION_LIVENESS_FILE).is_file()
+    assert not prepared.observation_profile.capabilities.ingestion_catalog
     await adapter.close()
 
 
@@ -254,25 +253,30 @@ def test_ps_cpu_time_parser_supports_mineru_process_formats() -> None:
 
 
 @pytest.mark.asyncio
-async def test_query_returns_none_for_unobservable_stages(
+async def test_direct_query_preserves_unobservable_stage_semantics(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    adapter, runtime, _prepare_context = await prepare_with_fake(monkeypatch, tmp_path)
+    adapter, runtime, _resolved_config, prepared = await prepare_with_fake(
+        monkeypatch, tmp_path
+    )
 
     result = await adapter.query(
-        RAGQuery(
+        prepared,
+        NativeQueryV2(
             case_id="case-1",
             question="What is the latency?",
+            generate_answer=True,
             retrieval_candidate_k=7,
             final_context_k=3,
             max_context_tokens=900,
-        )
+            generation_options={},
+        ),
     )
 
-    assert result.answer == "42 ms"
-    assert result.raw_retrieval is None
-    assert result.ranked_retrieval is None
-    assert result.final_context is None
+    assert result.trace.answer.content == "42 ms"
+    assert result.trace.raw_retrieval.observation_status == "unsupported"
+    assert result.trace.ranked_retrieval.observation_status == "unsupported"
+    assert result.trace.final_context.observation_status == "unsupported"
     assert runtime.queries[0]["options"]["top_k"] == 7
     assert runtime.queries[0]["options"]["chunk_top_k"] == 3
     assert runtime.queries[0]["options"]["max_total_tokens"] == 900
@@ -284,12 +288,13 @@ async def test_query_returns_none_for_unobservable_stages(
 def test_source_path_cannot_escape_sandbox(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()
-    outside = tmp_path / "outside.pdf"
-    outside.write_bytes(b"outside")
-    document = DocumentInput(
+    document = OriginalDocumentV2(
         document_id="doc",
-        content="inline",
-        source_path="inside.txt",
+        source_path="inside.docx",
+        source_sha256="a" * 64,
+        original_name="inside.docx",
+        canonical_catalog_path="canonical.jsonl",
+        canonical_catalog_sha256="b" * 64,
     )
     with pytest.raises(ValueError, match="escapes or is absent"):
         verified_source_path(source, document)

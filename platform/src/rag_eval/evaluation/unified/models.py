@@ -46,12 +46,6 @@ class FailureKind(StrEnum):
     UNOBSERVABLE = "UNOBSERVABLE"
 
 
-class ShadowDifferenceKind(StrEnum):
-    EQUIVALENT = "equivalent"
-    EXPECTED_SEMANTIC_CHANGE = "expected_semantic_change"
-    NOT_COMPARABLE = "not_comparable"
-
-
 class EvaluationProfile(EvaluationModel):
     """Versioned scoring window, independent of any Adapter profile."""
 
@@ -196,16 +190,3 @@ class UnifiedEvaluationResult(EvaluationModel):
             and by_id[metric_id].status == EvaluationMetricStatus.OBSERVED
             for metric_id in FORMAL_CORE_METRIC_IDS
         )
-
-
-class ShadowDifference(EvaluationModel):
-    legacy_metric_id: str = Field(min_length=1)
-    unified_metric_id: str = Field(min_length=1)
-    kind: ShadowDifferenceKind
-    reason: str = Field(min_length=1)
-
-
-class UnifiedShadowComparison(EvaluationModel):
-    legacy_scorer_version: str = Field(min_length=1)
-    unified_scorer_version: str = Field(min_length=1)
-    differences: tuple[ShadowDifference, ...]

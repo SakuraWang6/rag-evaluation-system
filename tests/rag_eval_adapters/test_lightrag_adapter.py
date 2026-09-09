@@ -4,10 +4,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+import rag_eval_lightrag_adapter.adapter as adapter_module
 from rag_eval.contracts.native import OriginalDocumentV2, ResolvedAdapterConfigV2
 from rag_eval.runs.plans import digest_json
 from rag_eval_lightrag_adapter.adapter import (
-    CAPABILITIES,
     LightRAGAdapter,
     QUERY_RESPONSE_GRACE_SECONDS,
     build_server_environment,
@@ -130,11 +130,27 @@ def test_explicit_values_override_profile_defaults() -> None:
 
 
 def test_capabilities_claim_object_provenance_and_prompt_trace() -> None:
-    assert CAPABILITIES.raw_retrieval
-    assert CAPABILITIES.ranked_retrieval
-    assert CAPABILITIES.final_context
-    assert CAPABILITIES.prompt_trace
-    assert CAPABILITIES.object_provenance
+    document = OriginalDocumentV2(
+        document_id="doc",
+        source_path="source.docx",
+        source_sha256="a" * 64,
+        original_name="source.docx",
+        canonical_catalog_path="canonical.jsonl",
+        canonical_catalog_sha256="b" * 64,
+    )
+    source, _runtime, observation = adapter_module.build_prepared_identities(
+        document=document,
+        runtime_config=resolve_config({}).model_dump(mode="json"),
+        system_version="fixture",
+        adapter_version=adapter_module.ADAPTER_VERSION,
+    )
+
+    assert source.document_id == "doc"
+    assert observation.capabilities.candidate_retrieval
+    assert observation.capabilities.ranked_retrieval
+    assert observation.capabilities.final_context
+    assert observation.capabilities.prompt_trace
+    assert observation.capabilities.provenance
 
 
 def test_source_name_is_safe_and_deterministic() -> None:

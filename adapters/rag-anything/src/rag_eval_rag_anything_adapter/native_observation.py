@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from rag_eval.contracts.adapter import DocumentInput
 from rag_eval.contracts.canonical import SourceSpan, canonical_json
 from rag_eval.contracts.native import OriginalDocumentV2
 from rag_eval.contracts.observation import (
@@ -264,11 +263,11 @@ def _canonical_extent(
 
 def _load_canonical_objects(
     *,
-    document: DocumentInput,
+    document: OriginalDocumentV2,
     source_dir: Path,
 ) -> tuple[tuple[_CanonicalTextObject, ...], str, tuple[MappingDiagnostic, ...]]:
-    raw_path = document.metadata.get("canonical_provenance_path")
-    expected_digest = document.metadata.get("canonical_provenance_sha256")
+    raw_path = document.canonical_catalog_path
+    expected_digest = document.canonical_catalog_sha256
     if not isinstance(raw_path, str) or Path(raw_path).name != raw_path:
         raise ValueError("canonical provenance path is not a safe staged filename")
     if not isinstance(expected_digest, str) or len(expected_digest) != 64:
@@ -312,7 +311,7 @@ def _load_canonical_objects(
             if isinstance(provenance, Mapping)
             else None
         )
-        if source_sha256 != document.sha256:
+        if source_sha256 != document.source_sha256:
             raise ValueError("canonical object uses a different source identity")
         locator = _source_span(record)
         if locator is None:
@@ -368,7 +367,7 @@ def _load_canonical_objects(
 
 def _native_lineage(
     *,
-    document: DocumentInput,
+    document: OriginalDocumentV2,
     chunk_id: str,
     row: Mapping[str, Any],
     full_text: str | None,
@@ -392,7 +391,7 @@ def _native_lineage(
     }
     lineage = NativeLineage.build(
         schema_version="rag-anything-runtime-chunk-lineage/1",
-        source_sha256=str(document.sha256),
+        source_sha256=document.source_sha256,
         payload=payload,
     )
     span = (
@@ -409,7 +408,7 @@ def _native_lineage(
 
 def _runtime_chunks(
     *,
-    document: DocumentInput,
+    document: OriginalDocumentV2,
     capture: RuntimeIngestionCapture,
     runtime_config: Mapping[str, Any],
     core_version: str,
@@ -573,7 +572,7 @@ def _capabilities(
 
 def build_native_observation_snapshot(
     *,
-    document: DocumentInput,
+    document: OriginalDocumentV2,
     source_dir: Path,
     capture: RuntimeIngestionCapture,
     runtime_config: Mapping[str, Any],
@@ -584,8 +583,6 @@ def build_native_observation_snapshot(
 ) -> NativeObservationSnapshot:
     """Build the immutable catalog/crosswalk without consulting Benchmark Gold."""
 
-    if document.sha256 is None or len(document.sha256) != 64:
-        raise ValueError("native DOCX source identity is missing")
     objects, catalog_sha256, catalog_diagnostics = _load_canonical_objects(
         document=document,
         source_dir=source_dir,
@@ -646,7 +643,7 @@ def build_native_observation_snapshot(
                         ),
                         expected_extent=item.expected_extent,
                         covered_extent=covered,
-                        source_sha256=document.sha256,
+                        source_sha256=document.source_sha256,
                         native_content_sha256=runtime.content_sha256,
                         native_lineage_sha256=(
                             runtime.native_lineage.lineage_sha256
@@ -720,11 +717,8 @@ def build_native_observation_snapshot(
     }
     source_identity = SourceIdentity(
         document_id=document.document_id,
-        source_sha256=document.sha256,
-        media_type=(
-            document.mime_type
-            or "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        ),
+        source_sha256=document.source_sha256,
+        media_type=document.media_type,
         source_coordinate_schema=SOURCE_COORDINATE_SYSTEM,
         canonical_catalog_sha256=catalog_sha256,
     )
@@ -765,7 +759,7 @@ def build_native_observation_snapshot(
             receipt_kind="source_catalog_pin",
             subject_id=document.document_id,
             details={
-                "source_sha256": document.sha256,
+                "source_sha256": document.source_sha256,
                 "canonical_catalog_sha256": catalog_sha256,
             },
         ),

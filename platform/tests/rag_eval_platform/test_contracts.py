@@ -8,11 +8,6 @@ import pytest
 from pydantic import ValidationError
 
 from rag_eval.artifact_contract import artifact_digest
-from rag_eval.contracts.adapter import (
-    DocumentInput,
-    RAGEvidenceItem,
-    RAGResult,
-)
 from rag_eval.contracts.dataset import (
     GoldAnswer,
     GoldAnswerKind,
@@ -27,7 +22,7 @@ from rag_eval.contracts.research import (
     ModelArtifactIdentity,
     ModelLock,
 )
-from rag_eval.contracts.run import ExperimentSpec, MetricResult, MetricStatus
+from rag_eval.contracts.run import ExperimentSpec
 from rag_eval.contracts.schema import PUBLIC_MODELS
 from rag_eval.execution import (
     run_latency_warmup,
@@ -38,21 +33,6 @@ from tests.rag_eval_platform.test_run_artifact_v2 import (
     _observed_fixture,
     _prepared_fixture,
 )
-
-
-def test_none_and_empty_retrieval_round_trip_have_distinct_meanings() -> None:
-    unavailable = RAGResult(raw_retrieval=None)
-    observed_empty = RAGResult(raw_retrieval=[])
-
-    unavailable_round_trip = RAGResult.model_validate_json(
-        unavailable.model_dump_json()
-    )
-    empty_round_trip = RAGResult.model_validate_json(
-        observed_empty.model_dump_json()
-    )
-
-    assert unavailable_round_trip.raw_retrieval is None
-    assert empty_round_trip.raw_retrieval == []
 
 
 def test_evidence_groups_are_non_empty_and_reference_known_ids() -> None:
@@ -108,29 +88,6 @@ def test_non_abstain_answer_requires_canonical_value() -> None:
         GoldAnswer(gold_answer_id="a-1", kind=GoldAnswerKind.TEXT)
 
 
-def test_metric_status_never_conflates_unavailable_with_zero() -> None:
-    unavailable = MetricResult(
-        metric_id="raw_recall@5",
-        status=MetricStatus.UNAVAILABLE,
-        scorer_id="retrieval-groups",
-        scorer_version="1.0",
-        scorer_digest="sha256:test",
-        reason="raw retrieval is not observable",
-    )
-    zero = MetricResult(
-        metric_id="raw_recall@5",
-        status=MetricStatus.OBSERVED,
-        value=0.0,
-        numerator=0,
-        denominator=1,
-        scorer_id="retrieval-groups",
-        scorer_version="1.0",
-        scorer_digest="sha256:test",
-    )
-    assert unavailable.value is None
-    assert zero.value == 0.0
-
-
 def test_all_public_contracts_emit_json_schema() -> None:
     for name, model in PUBLIC_MODELS.items():
         schema = model.model_json_schema()
@@ -152,11 +109,6 @@ def test_platform_source_has_no_lightrag_or_raganything_imports() -> None:
             else:
                 continue
             assert all(not name.startswith(forbidden) for name in names), path
-
-
-def test_evidence_item_requires_positive_rank() -> None:
-    with pytest.raises(ValidationError):
-        RAGEvidenceItem(item_id="x", rank=0, content="")
 
 
 def test_contract_does_not_define_hallucination_metric() -> None:
@@ -311,18 +263,3 @@ def test_latency_protocol_requires_observed_cache_policy_and_warms_once() -> Non
     )
     assert len(client.requests) == 1
     assert client.requests[0].generate_answer is False
-
-
-def test_binary_document_uses_safe_source_only_reference() -> None:
-    document = DocumentInput(
-        document_id="pdf-1",
-        source_path="source-00000.pdf",
-        mime_type="application/pdf",
-    )
-    assert document.content is None
-    with pytest.raises(ValidationError, match="safe relative"):
-        DocumentInput(
-            document_id="pdf-1",
-            source_path="../gold_answers.jsonl",
-            mime_type="application/pdf",
-        )

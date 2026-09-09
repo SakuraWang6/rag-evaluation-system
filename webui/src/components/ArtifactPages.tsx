@@ -173,7 +173,7 @@ function PersistedCaseDetail({ value, run }: { value: RunArtifactCaseV2; run?: R
     </section>
     <div className="answer-pair"><Surface tone="inset"><span>Gold answer</span><p>{Array.isArray(answer) ? answer.join(' · ') : answer ?? '—'} {value.gold_answer.unit ?? ''}</p></Surface><Surface><span>Generated answer</span><p>{trace?.answer.content ?? 'UNAVAILABLE'}</p><small>{trace ? `${trace.answer.observation_status} · ${trace.answer.completeness}` : value.trace_validation.status}</small></Surface></div>
     <details className="case-audit-details" open><summary>Unified Trace 与证明</summary><div className="case-audit-details__body">
-      {!trace && <p className="historical-metric-note">{value.trace_validation.reason ?? 'Unified Trace is unavailable.'}</p>}
+      {!trace && <p className="artifact-unavailable-note">{value.trace_validation.reason ?? 'Unified Trace is unavailable.'}</p>}
       {trace && <>
         <Surface tone="inset"><span className="eyebrow">Ingestion catalog</span><p>{trace.ingestion_catalog.observation_status} · {trace.ingestion_catalog.completeness} · {trace.ingestion_catalog.items.length} runtime item(s)</p>{trace.ingestion_catalog.reason && <small>{trace.ingestion_catalog.reason}</small>}</Surface>
         <StageObservationPanel title="Candidate" observation={trace.raw_retrieval} />

@@ -2,19 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
-from rag_eval_lightrag_adapter.adapter import (
-    CAPABILITIES as LIGHTRAG_CAPABILITIES,
-)
 from rag_eval_lightrag_adapter.adapter import resolve_config as resolve_lightrag_config
-from rag_eval_rag_anything_adapter.adapter import (
-    CAPABILITIES as RAG_ANYTHING_CAPABILITIES,
-)
 from rag_eval_rag_anything_adapter.adapter import (
     resolve_config as resolve_rag_anything_config,
 )
@@ -40,7 +33,7 @@ def _assert_partial_mapping(
         assert actual[key] == value
 
 
-def test_v2_baseline_pins_native_contract_and_offline_artifacts() -> None:
+def test_v2_baseline_pins_native_contract() -> None:
     baseline = _baseline()
 
     assert baseline["schema_version"] == "native-v2-input-baseline/1"
@@ -55,19 +48,13 @@ def test_v2_baseline_pins_native_contract_and_offline_artifacts() -> None:
         with pytest.raises(ValueError):
             resolver({"evaluation_corpus": "source_document"})
 
-    for pinned in baseline["offline_artifacts"]:
-        artifact = REPOSITORY_ROOT / pinned["path"]
-        payload = artifact.read_bytes()
-        assert len(payload) == pinned["size_bytes"]
-        assert hashlib.sha256(payload).hexdigest() == pinned["sha256"]
-
 
 def test_v2_baseline_characterization_nodes_still_exist() -> None:
     baseline = _baseline()
 
     assert set(baseline["characterization_nodes"]) == {
         "source_document",
-        "rag-anything_answer_only",
+        "rag-anything_native_wire2",
         "artifact_v2_authority",
         "p0_unobservable_semantics",
     }
@@ -79,23 +66,18 @@ def test_v2_baseline_characterization_nodes_still_exist() -> None:
             assert f"def {function_name}(" in source
 
 
-def test_v2_baseline_separates_runtime_and_observation_profiles() -> None:
+def test_v2_baseline_pins_runtime_profiles_without_legacy_capability_dtos() -> None:
     profiles = _baseline()["adapter_profiles"]
 
     lightrag = profiles["lightrag"]
+    assert "observation_profile" not in lightrag
     _assert_partial_mapping(
         resolve_lightrag_config({}).model_dump(mode="json"),
         lightrag["runtime_profile"],
     )
-    assert LIGHTRAG_CAPABILITIES.model_dump(mode="json") == lightrag[
-        "observation_profile"
-    ]
-
     rag_anything = profiles["rag-anything"]
+    assert "observation_profile" not in rag_anything
     _assert_partial_mapping(
         resolve_rag_anything_config({}).model_dump(mode="json"),
         rag_anything["runtime_profile"],
     )
-    assert RAG_ANYTHING_CAPABILITIES.model_dump(mode="json") == rag_anything[
-        "observation_profile"
-    ]

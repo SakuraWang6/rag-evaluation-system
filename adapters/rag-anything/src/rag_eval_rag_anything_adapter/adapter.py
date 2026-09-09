@@ -24,14 +24,6 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 from rag_eval.adapters.native_observation import unavailable_native_result
-from rag_eval.contracts.adapter import (
-    AdapterCapabilities,
-    DocumentInput,
-    IngestionResult,
-    PrepareContext,
-    PreparedSystem,
-    ResetResult,
-)
 from rag_eval.contracts.native import (
     IngestionReceiptV2,
     NativeHealthReportV2,
@@ -56,24 +48,6 @@ from rag_eval_rag_anything_adapter.native_observation import (
 ADAPTER_VERSION = "0.1.0"
 SUPPORTED_RAG_ANYTHING_MAJOR_MINOR = "1.3"
 INGESTION_LIVENESS_FILE = "ingestion-liveness.json"
-CAPABILITIES = AdapterCapabilities(
-    answer=True,
-    raw_retrieval=False,
-    ranked_retrieval=False,
-    final_context=False,
-    object_provenance=False,
-    prompt_trace=False,
-    rerank_trace=False,
-    latency_breakdown=True,
-    token_usage=False,
-    reset=False,
-    # Native retrieval facts remain explicit observations so an unsupported
-    # stage cannot turn into an observed-empty result.
-    segment_traces=True,
-    strict_segment_ranking=False,
-)
-
-
 @dataclass(slots=True)
 class _ActiveQueryCapture:
     query_results: list[Mapping[str, Any]] = field(default_factory=list)
@@ -82,6 +56,18 @@ class _ActiveQueryCapture:
         default_factory=list
     )
     errors: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class _RuntimePreparation:
+    effective_config: dict[str, Any]
+    system_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class _IngestionOutcome:
+    index_fingerprint: str
+    details: dict[str, object]
 
 
 class OllamaModelConfig(BaseModel):
@@ -761,7 +747,7 @@ class IngestionLiveness:
 
 class RAGAnythingAdapter:
     def __init__(self) -> None:
-        self._context: PrepareContext | None = None
+        self._resolved_config: ResolvedAdapterConfigV2 | None = None
         self._config: RAGAnythingAdapterConfig | None = None
         self._runtime: Runtime | None = None
         self._closed = False
@@ -778,34 +764,11 @@ class RAGAnythingAdapter:
         original_docx: OriginalDocumentV2,
         resolved_config: ResolvedAdapterConfigV2,
     ) -> PreparedSystemV2:
-        context = PrepareContext(
-            run_id=resolved_config.run_id,
-            work_dir=resolved_config.work_dir,
-            source_dir=resolved_config.source_dir,
-            platform_version=resolved_config.platform_version,
-            seed=resolved_config.seed,
-            repetition=resolved_config.repetition,
-        )
         prepared = await self._prepare_runtime(
-            context,
+            resolved_config,
             dict(resolved_config.adapter_config),
         )
-        document = DocumentInput(
-            document_id=original_docx.document_id,
-            source_path=original_docx.source_path,
-            sha256=original_docx.source_sha256,
-            mime_type=original_docx.media_type,
-            metadata={
-                "original_name": original_docx.original_name,
-                "canonical_provenance_path": original_docx.canonical_catalog_path,
-                "canonical_provenance_sha256": (
-                    original_docx.canonical_catalog_sha256
-                ),
-            },
-        )
-        ingestion = await self._ingest_documents([document])
-        if ingestion.index_fingerprint is None:
-            raise RuntimeError("RAG-Anything did not return an index fingerprint")
+        ingestion = await self._ingest_document(original_docx)
         runtime = self._require_prepared()[0]
         runtime_config = self._require_prepared()[1]
         query_observation_supported = (
@@ -854,23 +817,23 @@ class RAGAnythingAdapter:
         return self._prepared_system
 
     async def _prepare_runtime(
-        self, context: PrepareContext, config: dict[str, Any]
-    ) -> PreparedSystem:
+        self, resolved_config: ResolvedAdapterConfigV2, config: dict[str, Any]
+    ) -> _RuntimePreparation:
         if self._closed:
             raise RuntimeError("adapter is closed")
         if self._runtime is not None:
             raise RuntimeError("adapter is already prepared")
         effective = resolve_config(config)
-        work_dir = Path(context.work_dir).resolve()
+        work_dir = Path(resolved_config.work_dir).resolve()
         if work_dir.exists() and any(work_dir.iterdir()):
             raise RuntimeError(
                 "run work directory is not empty; refusing stale index reuse"
             )
         work_dir.mkdir(parents=True, exist_ok=True)
-        source_dir = Path(context.source_dir).resolve()
+        source_dir = Path(resolved_config.source_dir).resolve()
         if not source_dir.is_dir():
             raise RuntimeError("source-only sandbox does not exist")
-        self._context = context
+        self._resolved_config = resolved_config
         self._config = effective
         self._work_dir = work_dir
         self._liveness = IngestionLiveness(
@@ -878,9 +841,9 @@ class RAGAnythingAdapter:
             stall_timeout_seconds=effective.native_liveness.stall_timeout_seconds,
         )
         self._runtime = await OfficialRAGAnythingRuntime.create(
-            effective, work_dir, context.run_id
+            effective, work_dir, resolved_config.run_id
         )
-        return PreparedSystem(
+        return _RuntimePreparation(
             effective_config={
                 **effective.model_dump(mode="json"),
                 "runtime": {
@@ -896,7 +859,6 @@ class RAGAnythingAdapter:
                 "cache_policy": {"answer": False, "query": False, "llm": False},
                 "code_identity": code_identity(),
             },
-            capabilities=CAPABILITIES,
             system_version=self._runtime.system_version,
         )
 
@@ -914,78 +876,65 @@ class RAGAnythingAdapter:
             details={"prepared": self._runtime is not None, "ingestion": liveness},
         )
 
-    async def _ingest_documents(
-        self, documents: list[DocumentInput]
-    ) -> IngestionResult:
-        runtime, config, context = self._require_prepared()
-        if len(documents) != 1:
-            raise ValueError("RAG-Anything Native v2 requires exactly one original DOCX")
-        document = documents[0]
-        if (
-            document.content is not None
-            or document.source_path is None
-            or Path(document.source_path).suffix.lower() != ".docx"
-        ):
-            raise ValueError("RAG-Anything Native v2 accepts only a source-only DOCX")
+    async def _ingest_document(
+        self, document: OriginalDocumentV2
+    ) -> _IngestionOutcome:
+        runtime, config, resolved_config = self._require_prepared()
         digest = hashlib.sha256()
         digest.update(
             ingestion_identity(
                 config, runtime.system_version, runtime.core_version
             ).encode()
         )
-        source_dir = Path(context.source_dir).resolve()
-        for document in documents:
-            path = verified_source_path(source_dir, document)
-            digest.update(document.document_id.encode())
-            digest.update(b"\0")
-            digest.update(document_digest(document, path).encode())
-            digest.update(b"\0")
-            file_name = str(document.metadata.get("original_name") or path.name)
-            self._set_liveness(
-                "parsing",
-                document_id=document.document_id,
-                details={"execution_view": "native-document/v2", "event": "submitted"},
-            )
-            monitor_stop = asyncio.Event()
-            monitor = asyncio.create_task(
-                self._monitor_native_activity(monitor_stop),
-                name=f"native-liveness-{document.document_id}",
-            )
-            try:
-                await runtime.process_document(
-                    path,
-                    document_id=document.document_id,
-                    file_name=file_name,
-                    progress=self._native_progress,
-                )
-            except asyncio.CancelledError:
-                self._set_liveness(
-                    "cancelling",
-                    document_id=document.document_id,
-                    details={"stage": self._active_liveness_stage()},
-                )
-                raise
-            except Exception as exc:
-                self._set_liveness(
-                    "failed",
-                    document_id=document.document_id,
-                    details=exception_details(
-                        exc, stage=self._active_liveness_stage()
-                    ),
-                )
-                raise
-            finally:
-                monitor_stop.set()
-                await monitor
+        source_dir = Path(resolved_config.source_dir).resolve()
+        path = verified_source_path(source_dir, document)
+        digest.update(document.document_id.encode())
+        digest.update(b"\0")
+        digest.update(document.source_sha256.encode())
+        digest.update(b"\0")
         self._set_liveness(
-            "completed", details={"ingested_documents": len(documents)}
+            "parsing",
+            document_id=document.document_id,
+            details={"execution_view": "native-document/v2", "event": "submitted"},
+        )
+        monitor_stop = asyncio.Event()
+        monitor = asyncio.create_task(
+            self._monitor_native_activity(monitor_stop),
+            name=f"native-liveness-{document.document_id}",
+        )
+        try:
+            await runtime.process_document(
+                path,
+                document_id=document.document_id,
+                file_name=document.original_name,
+                progress=self._native_progress,
+            )
+        except asyncio.CancelledError:
+            self._set_liveness(
+                "cancelling",
+                document_id=document.document_id,
+                details={"stage": self._active_liveness_stage()},
+            )
+            raise
+        except Exception as exc:
+            self._set_liveness(
+                "failed",
+                document_id=document.document_id,
+                details=exception_details(exc, stage=self._active_liveness_stage()),
+            )
+            raise
+        finally:
+            monitor_stop.set()
+            await monitor
+        self._set_liveness(
+            "completed", details={"ingested_documents": 1}
         )
         self._index_fingerprint = digest.hexdigest()
         await self._capture_native_observation_snapshot(
-            documents=documents,
+            document=document,
             runtime=runtime,
             config=config,
-            context=context,
+            resolved_config=resolved_config,
         )
         details: dict[str, object] = {
             "failed_documents": 0,
@@ -1002,8 +951,7 @@ class RAGAnythingAdapter:
                 ),
             },
         }
-        return IngestionResult(
-            ingested_documents=len(documents),
+        return _IngestionOutcome(
             index_fingerprint=self._index_fingerprint,
             details=details,
         )
@@ -1015,7 +963,7 @@ class RAGAnythingAdapter:
     ) -> AdapterRunResultV2:
         if self._prepared_system is None or prepared_system != self._prepared_system:
             raise ValueError("query references a different prepared system")
-        runtime, config, _context = self._require_prepared()
+        runtime, config, _resolved_config = self._require_prepared()
         reserved = {"mode", "only_need_context", "only_need_prompt"}
         invalid = reserved.intersection(request.generation_options)
         if invalid:
@@ -1125,25 +1073,16 @@ class RAGAnythingAdapter:
     async def _capture_native_observation_snapshot(
         self,
         *,
-        documents: list[DocumentInput],
+        document: OriginalDocumentV2,
         runtime: Runtime,
         config: RAGAnythingAdapterConfig,
-        context: PrepareContext,
+        resolved_config: ResolvedAdapterConfigV2,
     ) -> None:
         self._native_observation_snapshot = None
         self._native_observation_status = ObservationStatus.UNOBSERVED
         self._native_observation_reason = (
             "native observation requires one source-document DOCX with a canonical sidecar"
         )
-        if len(documents) != 1:
-            return
-        document = documents[0]
-        if (
-            document.content is not None
-            or document.source_path is None
-            or Path(document.source_path).suffix.lower() != ".docx"
-        ):
-            return
         observe_catalog = getattr(runtime, "observe_ingestion_catalog", None)
         if not callable(observe_catalog):
             self._native_observation_status = ObservationStatus.UNSUPPORTED
@@ -1157,7 +1096,7 @@ class RAGAnythingAdapter:
                 raise TypeError("runtime ingestion observation has an invalid type")
             snapshot = build_native_observation_snapshot(
                 document=document,
-                source_dir=Path(context.source_dir),
+                source_dir=Path(resolved_config.source_dir),
                 capture=capture,
                 runtime_config=config.model_dump(mode="json"),
                 system_version=runtime.system_version,
@@ -1178,13 +1117,6 @@ class RAGAnythingAdapter:
         self._native_observation_snapshot = snapshot
         self._native_observation_status = ObservationStatus.OBSERVED
         self._native_observation_reason = None
-
-    async def reset(self) -> ResetResult:
-        return ResetResult(
-            supported=False,
-            reset=False,
-            details={"reason": "adapter instances are run-scoped"},
-        )
 
     async def close(self) -> None:
         if self._closed:
@@ -1237,12 +1169,16 @@ class RAGAnythingAdapter:
 
     def _require_prepared(
         self,
-    ) -> tuple[Runtime, RAGAnythingAdapterConfig, PrepareContext]:
+    ) -> tuple[Runtime, RAGAnythingAdapterConfig, ResolvedAdapterConfigV2]:
         if self._closed:
             raise RuntimeError("adapter is closed")
-        if self._runtime is None or self._config is None or self._context is None:
+        if (
+            self._runtime is None
+            or self._config is None
+            or self._resolved_config is None
+        ):
             raise RuntimeError("adapter is not prepared")
-        return self._runtime, self._config, self._context
+        return self._runtime, self._config, self._resolved_config
 
     def _require_work_dir(self) -> Path:
         if self._work_dir is None:
@@ -1338,20 +1274,14 @@ def parse_cpu_time(value: str) -> float:
     return days * 86400 + int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
-def verified_source_path(source_dir: Path, document: DocumentInput) -> Path:
-    if document.source_path is None:
-        raise ValueError("RAG-Anything requires a source-only sandbox path")
+def verified_source_path(source_dir: Path, document: OriginalDocumentV2) -> Path:
     path = (source_dir / document.source_path).resolve()
     if path.parent != source_dir or not path.is_file():
         raise ValueError("document source_path escapes or is absent from the sandbox")
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    if document.sha256 is not None and digest != document.sha256:
+    if digest != document.source_sha256:
         raise ValueError(f"source checksum mismatch for {document.document_id}")
     return path
-
-
-def document_digest(document: DocumentInput, path: Path) -> str:
-    return document.sha256 or hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def ingestion_identity(

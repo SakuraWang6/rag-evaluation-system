@@ -1,0 +1,456 @@
+{
+  "$defs": {
+    "BenchmarkReleaseIdentityV2": {
+      "additionalProperties": false,
+      "properties": {
+        "release_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Release Id",
+          "type": "string"
+        },
+        "release_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Release Digest",
+          "type": "string"
+        },
+        "validation_report_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Validation Report Digest",
+          "type": "string"
+        },
+        "runtime_bundle_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Runtime Bundle Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "release_id",
+        "release_digest",
+        "validation_report_digest",
+        "runtime_bundle_id"
+      ],
+      "title": "BenchmarkReleaseIdentityV2",
+      "type": "object"
+    },
+    "EvaluationProfile": {
+      "additionalProperties": false,
+      "description": "Versioned scoring window, independent of any Adapter profile.",
+      "properties": {
+        "candidate_cutoff": {
+          "minimum": 1,
+          "title": "Candidate Cutoff",
+          "type": "integer"
+        },
+        "ranked_cutoffs": {
+          "default": [
+            1,
+            3,
+            5
+          ],
+          "items": {
+            "type": "integer"
+          },
+          "title": "Ranked Cutoffs",
+          "type": "array"
+        },
+        "ranked_mrr_cutoff": {
+          "default": 5,
+          "minimum": 1,
+          "title": "Ranked Mrr Cutoff",
+          "type": "integer"
+        },
+        "context_budget": {
+          "minimum": 1,
+          "title": "Context Budget",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidate_cutoff",
+        "context_budget"
+      ],
+      "title": "EvaluationProfile",
+      "type": "object"
+    },
+    "MetricDescriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_id": {
+          "minLength": 1,
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "scorer_id": {
+          "const": "canonical-unified-evidence",
+          "default": "canonical-unified-evidence",
+          "title": "Scorer Id",
+          "type": "string"
+        },
+        "scorer_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Scorer Version",
+          "type": "string"
+        },
+        "scorer_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Scorer Digest",
+          "type": "string"
+        },
+        "aggregation": {
+          "enum": [
+            "mses_clause_equal_weight",
+            "canonical_extent_union"
+          ],
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageName"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cutoff": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cutoff"
+        },
+        "candidate_cutoff": {
+          "minimum": 1,
+          "title": "Candidate Cutoff",
+          "type": "integer"
+        },
+        "ranked_cutoff": {
+          "minimum": 1,
+          "title": "Ranked Cutoff",
+          "type": "integer"
+        },
+        "context_budget": {
+          "minimum": 1,
+          "title": "Context Budget",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "metric_id",
+        "scorer_digest",
+        "aggregation",
+        "candidate_cutoff",
+        "ranked_cutoff",
+        "context_budget"
+      ],
+      "title": "MetricDescriptor",
+      "type": "object"
+    },
+    "NativeMetricConfigV2": {
+      "additionalProperties": false,
+      "description": "The only formal metric window supported by Native v2.",
+      "properties": {
+        "k_values": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "K Values",
+          "type": "array"
+        }
+      },
+      "required": [
+        "k_values"
+      ],
+      "title": "NativeMetricConfigV2",
+      "type": "object"
+    },
+    "NativeQueryConfigV2": {
+      "additionalProperties": false,
+      "description": "The complete Platform-owned query configuration for a native Run.",
+      "properties": {
+        "generate_answer": {
+          "title": "Generate Answer",
+          "type": "boolean"
+        },
+        "retrieval_candidate_k": {
+          "minimum": 1,
+          "title": "Retrieval Candidate K",
+          "type": "integer"
+        },
+        "final_context_k": {
+          "minimum": 1,
+          "title": "Final Context K",
+          "type": "integer"
+        },
+        "max_context_tokens": {
+          "minimum": 1,
+          "title": "Max Context Tokens",
+          "type": "integer"
+        },
+        "generation_options": {
+          "additionalProperties": true,
+          "title": "Generation Options",
+          "type": "object"
+        }
+      },
+      "required": [
+        "generate_answer",
+        "retrieval_candidate_k",
+        "final_context_k",
+        "max_context_tokens",
+        "generation_options"
+      ],
+      "title": "NativeQueryConfigV2",
+      "type": "object"
+    },
+    "OriginalDocumentIdentityV2": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "runtime_path": {
+          "minLength": 1,
+          "title": "Runtime Path",
+          "type": "string"
+        },
+        "mime_type": {
+          "minLength": 1,
+          "title": "Mime Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "runtime_path",
+        "mime_type"
+      ],
+      "title": "OriginalDocumentIdentityV2",
+      "type": "object"
+    },
+    "ResolvedResourceLimitsV2": {
+      "additionalProperties": false,
+      "properties": {
+        "worker_request_timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Worker Request Timeout Seconds",
+          "type": "number"
+        },
+        "max_context_tokens": {
+          "minimum": 1,
+          "title": "Max Context Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "worker_request_timeout_seconds",
+        "max_context_tokens"
+      ],
+      "title": "ResolvedResourceLimitsV2",
+      "type": "object"
+    },
+    "ResolvedSystemIdentityV2": {
+      "additionalProperties": false,
+      "description": "Secret-free identity of the exact system/worker profile admitted.",
+      "properties": {
+        "system_id": {
+          "minLength": 1,
+          "title": "System Id",
+          "type": "string"
+        },
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_factory": {
+          "pattern": "^[A-Za-z_][\\w.]*:[A-Za-z_]\\w*$",
+          "title": "Adapter Factory",
+          "type": "string"
+        },
+        "worker_profile_kind": {
+          "enum": [
+            "product_profile",
+            "registered_system"
+          ],
+          "title": "Worker Profile Kind",
+          "type": "string"
+        },
+        "worker_profile_id": {
+          "minLength": 1,
+          "title": "Worker Profile Id",
+          "type": "string"
+        },
+        "worker_profile_version": {
+          "minLength": 1,
+          "title": "Worker Profile Version",
+          "type": "string"
+        },
+        "worker_profile_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Worker Profile Digest",
+          "type": "string"
+        },
+        "system_config_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "System Config Digest",
+          "type": "string"
+        },
+        "execution_provider": {
+          "minLength": 1,
+          "title": "Execution Provider",
+          "type": "string"
+        },
+        "worker_request_timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Worker Request Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "system_id",
+        "adapter_id",
+        "adapter_factory",
+        "worker_profile_kind",
+        "worker_profile_id",
+        "worker_profile_version",
+        "worker_profile_digest",
+        "system_config_digest",
+        "execution_provider",
+        "worker_request_timeout_seconds"
+      ],
+      "title": "ResolvedSystemIdentityV2",
+      "type": "object"
+    },
+    "StageName": {
+      "enum": [
+        "candidate",
+        "ranked",
+        "context"
+      ],
+      "title": "StageName",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Content-addressed snapshot required before a native Run is queued.",
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "execution_contract": {
+      "const": "native-document/v2",
+      "default": "native-document/v2",
+      "title": "Execution Contract",
+      "type": "string"
+    },
+    "experiment_id": {
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "experiment_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Experiment Digest",
+      "type": "string"
+    },
+    "benchmark_release": {
+      "$ref": "#/$defs/BenchmarkReleaseIdentityV2"
+    },
+    "original_document": {
+      "$ref": "#/$defs/OriginalDocumentIdentityV2"
+    },
+    "system": {
+      "$ref": "#/$defs/ResolvedSystemIdentityV2"
+    },
+    "adapter_config_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Adapter Config Digest",
+      "type": "string"
+    },
+    "query_config": {
+      "$ref": "#/$defs/NativeQueryConfigV2"
+    },
+    "metric_config": {
+      "$ref": "#/$defs/NativeMetricConfigV2"
+    },
+    "evaluation_profile": {
+      "$ref": "#/$defs/EvaluationProfile"
+    },
+    "metric_descriptors": {
+      "items": {
+        "$ref": "#/$defs/MetricDescriptor"
+      },
+      "title": "Metric Descriptors",
+      "type": "array"
+    },
+    "case_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Case Ids",
+      "type": "array"
+    },
+    "case_selection_id": {
+      "minLength": 1,
+      "title": "Case Selection Id",
+      "type": "string"
+    },
+    "seed": {
+      "title": "Seed",
+      "type": "integer"
+    },
+    "repetitions": {
+      "minimum": 1,
+      "title": "Repetitions",
+      "type": "integer"
+    },
+    "resource_limits": {
+      "$ref": "#/$defs/ResolvedResourceLimitsV2"
+    }
+  },
+  "required": [
+    "experiment_id",
+    "experiment_digest",
+    "benchmark_release",
+    "original_document",
+    "system",
+    "adapter_config_digest",
+    "query_config",
+    "metric_config",
+    "evaluation_profile",
+    "metric_descriptors",
+    "case_ids",
+    "case_selection_id",
+    "seed",
+    "repetitions",
+    "resource_limits"
+  ],
+  "title": "ResolvedRunPlanV2",
+  "type": "object"
+}

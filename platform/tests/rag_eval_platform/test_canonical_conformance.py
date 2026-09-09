@@ -494,10 +494,8 @@ def test_canonical_and_benchmark_policy_do_not_import_adapter_capabilities() -> 
     )
     benchmark_paths = (
         root / "src" / "rag_eval" / "datasets" / "admission.py",
-        root / "src" / "rag_eval" / "datasets" / "benchmark_contract.py",
         root / "src" / "rag_eval" / "datasets" / "bundle_v3.py",
         root / "src" / "rag_eval" / "datasets" / "formal.py",
-        root / "src" / "rag_eval" / "contracts" / "benchmark.py",
     )
     canonical_forbidden = (
         "rag_eval.contracts.adapter",

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
+from pydantic import ValidationError
 
-from rag_eval.contracts.adapter import DocumentInput
-from rag_eval_lightrag_adapter.adapter import LightRAGAdapter, resolve_config
+from rag_eval.contracts.native import OriginalDocumentV2
+from rag_eval_lightrag_adapter.adapter import resolve_config
 
 
 @pytest.mark.parametrize(
@@ -23,38 +22,13 @@ def test_lightrag_config_rejects_retired_input_route_fields(
         resolve_config(retired_config)
 
 
-@pytest.mark.asyncio
-async def test_lightrag_ingestion_requires_one_document() -> None:
-    adapter = LightRAGAdapter()
-    adapter._config = resolve_config({})
-
-    with pytest.raises(ValueError, match="exactly one original DOCX"):
-        await adapter._ingest_documents([])
-
-
-@pytest.mark.asyncio
-async def test_lightrag_ingestion_rejects_inline_text() -> None:
-    adapter = LightRAGAdapter()
-    adapter._config = resolve_config({})
-    document = DocumentInput(
-        document_id="inline",
-        content="retired pre-segmented input",
-        mime_type="text/plain",
-    )
-
-    with pytest.raises(ValueError, match="source-only DOCX"):
-        await adapter._ingest_documents([document])
-
-
-@pytest.mark.asyncio
-async def test_lightrag_ingestion_rejects_non_docx_source() -> None:
-    adapter = LightRAGAdapter()
-    adapter._config = resolve_config({})
-    document = DocumentInput(
-        document_id="markdown",
-        source_path=Path("source.md").as_posix(),
-        mime_type="text/markdown",
-    )
-
-    with pytest.raises(ValueError, match="source-only DOCX"):
-        await adapter._ingest_documents([document])
+def test_lightrag_native_input_contract_rejects_non_docx_source() -> None:
+    with pytest.raises(ValidationError, match="original DOCX"):
+        OriginalDocumentV2(
+            document_id="markdown",
+            source_path="source.md",
+            source_sha256="a" * 64,
+            original_name="source.md",
+            canonical_catalog_path="canonical.jsonl",
+            canonical_catalog_sha256="b" * 64,
+        )

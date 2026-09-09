@@ -28,15 +28,6 @@ from rag_eval.datasets.admission import (
     CalibrationReferenceProcess,
     DocumentSourceRecord,
 )
-from rag_eval.datasets.benchmark_contract import (
-    BENCHMARK_GOLD_NAME,
-    BENCHMARK_MANIFEST_NAME,
-    BENCHMARK_QUESTIONS_NAME,
-    BENCHMARK_SEGMENTS_NAME,
-    build_benchmark_dataset,
-    load_benchmark_dataset,
-    publish_benchmark_dataset,
-)
 
 __all__ = [
     "DatasetBundle",
@@ -61,11 +52,4 @@ __all__ = [
     "BenchmarkAdmissionService",
     "CalibrationReferenceProcess",
     "DocumentSourceRecord",
-    "BENCHMARK_GOLD_NAME",
-    "BENCHMARK_MANIFEST_NAME",
-    "BENCHMARK_QUESTIONS_NAME",
-    "BENCHMARK_SEGMENTS_NAME",
-    "build_benchmark_dataset",
-    "load_benchmark_dataset",
-    "publish_benchmark_dataset",
 ]

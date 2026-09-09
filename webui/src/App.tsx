@@ -192,7 +192,7 @@ export default function App() {
       {route.page === 'overview' && data.productEnabled && <OverviewPage formalDatasets={data.formalDatasets} systems={productSystems} runs={data.runs.length} onNewEvaluation={() => route.go('new-evaluation')} onAddDataset={() => route.go('datasets')} onAddSystem={() => route.go('systems')} />}
       {route.page === 'new-evaluation' && data.productEnabled && <NewEvaluationPage formalDatasets={data.formalDatasets} onQueued={() => { void data.refresh(); route.go('runs') }} />}
       {route.page === 'datasets' && (data.productEnabled ? <ProductDatasetsPage datasets={data.datasets} formalDatasets={data.formalDatasets} refresh={data.refresh} /> : <DatasetsPage datasets={data.datasets} refresh={data.refresh} />)}
-      {route.page === 'systems' && (data.productEnabled ? <ProductSystemsPage legacy={data.systems} /> : <SystemsPage systems={data.systems} />)}
+      {route.page === 'systems' && (data.productEnabled ? <ProductSystemsPage /> : <SystemsPage systems={data.systems} />)}
       {route.page === 'llm' && data.productEnabled && <LLMConfigurationPage />}
       {route.page === 'experiments' && <ExperimentsPage experiments={data.experiments} />}
       {route.page === 'runs' && <RunsPage runs={data.runs} jobs={data.jobs} go={route.go} />}

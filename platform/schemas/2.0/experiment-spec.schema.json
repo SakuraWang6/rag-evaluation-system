@@ -354,31 +354,6 @@
       "default": null,
       "title": "Dataset Release Id"
     },
-    "benchmark_contract_version": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Benchmark Contract Version"
-    },
-    "benchmark_contract_digest": {
-      "anyOf": [
-        {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Benchmark Contract Digest"
-    },
     "system_id": {
       "minLength": 1,
       "title": "System Id",

@@ -78,15 +78,6 @@ def admit_new_public_experiment(
     """Validate every public boundary and resolve its immutable Native v2 plan."""
 
     require_no_public_corpus_selector(experiment.adapter_config)
-    if (
-        experiment.benchmark_contract_version is not None
-        or experiment.benchmark_contract_digest is not None
-    ):
-        raise NewRunAdmissionError(
-            "pre-segmented benchmark contracts cannot create new Runs; use "
-            "the release-pinned native DOCX route"
-        )
-
     metadata = bundle.manifest.metadata
     declared_corpus = metadata.get("primary_evaluation_corpus")
     if isinstance(declared_corpus, str) and declared_corpus in _PRESEGMENTED_CORPORA:

@@ -46,13 +46,10 @@ from rag_eval.contracts.observation import (
     TransformationRecord,
     UnifiedTrace,
 )
-from rag_eval.contracts.run import MetricResult, MetricStatus
 from rag_eval.evaluation.unified import (
     EvaluationMetricStatus,
     EvaluationProfile,
     FailureKind,
-    ShadowDifferenceKind,
-    compare_legacy_shadow,
     evaluate_unified_trace,
 )
 
@@ -1035,43 +1032,3 @@ def test_unified_scorer_has_no_rag_or_corpus_mode_branches() -> None:
         assert not any(
             token in value for token in forbidden for value in strings
         ), path
-
-
-def test_legacy_shadow_comparison_is_explicitly_versioned() -> None:
-    chunk = _chunk("gold")
-    extent = _text_extent("gold-a")
-    edge = _edge(chunk, "gold-a", extent, extent)
-    item = _item(chunk, 1, (edge,))
-    result = evaluate_unified_trace(
-        _gold(("gold-a",)),
-        _trace(
-            chunks=(chunk,),
-            edges=(edge,),
-            mapping_statuses={"gold-a": ReverseMappingStatus.COMPLETE},
-            candidate=(item,),
-            ranked=(item,),
-            context=(item,),
-        ),
-        profile=_profile(1),
-    )
-    legacy = [
-        MetricResult(
-            metric_id="ranked_recall@1",
-            status=MetricStatus.OBSERVED,
-            value=1,
-            numerator=1,
-            denominator=1,
-            scorer_id="legacy",
-            scorer_version="1",
-            scorer_digest=SHA_A,
-        )
-    ]
-
-    shadow = compare_legacy_shadow(legacy, result)
-
-    assert shadow.legacy_scorer_version == "1"
-    assert shadow.unified_scorer_version == result.scorer_version
-    assert shadow.differences[0].kind == ShadowDifferenceKind.EQUIVALENT
-    assert shadow.differences[0].unified_metric_id == (
-        "ranked_complete_evidence_recall@1"
-    )

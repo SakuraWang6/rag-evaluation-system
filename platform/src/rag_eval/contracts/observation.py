@@ -1313,12 +1313,6 @@ class UnifiedTrace(ObservationModel):
         return cls(**payload, trace_digest=_digest(trace_payload))
 
 
-class CompatibilityNormalization(ObservationModel):
-    source_protocol_version: Literal["1.0"] = "1.0"
-    source_result_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    limitations: tuple[str, ...] = Field(min_length=1)
-
-
 class AdapterRunResultV2(ObservationModel):
     protocol_version: Literal["2.0"] = OBSERVATION_SCHEMA_VERSION
     adapter_id: str = Field(min_length=1)
@@ -1327,7 +1321,6 @@ class AdapterRunResultV2(ObservationModel):
     system_version: str = Field(min_length=1)
     trace: UnifiedTrace
     telemetry: dict[str, Any] = Field(default_factory=dict)
-    normalization: CompatibilityNormalization | None = None
 
     @model_validator(mode="after")
     def validate_identities(self) -> AdapterRunResultV2:

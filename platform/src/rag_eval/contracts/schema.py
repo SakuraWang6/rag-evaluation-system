@@ -1,4 +1,4 @@
-"""JSON Schema export for versioned public contracts."""
+"""JSON Schema export for the Native v2 public contract surface."""
 
 from __future__ import annotations
 
@@ -7,13 +7,6 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from rag_eval.contracts.adapter import RAGQuery, RAGResult
-from rag_eval.contracts.benchmark import (
-    BenchmarkGold,
-    BenchmarkManifest,
-    BenchmarkQuestion,
-    BenchmarkSegment,
-)
 from rag_eval.contracts.canonical import CanonicalConformanceReport, CanonicalDocument
 from rag_eval.contracts.dataset import (
     DatasetBundleManifest,
@@ -42,12 +35,9 @@ from rag_eval.contracts.research import (
     ModelArtifactIdentity,
     ModelLock,
 )
-from rag_eval.contracts.run import CaseResult, ExperimentSpec, RunManifest
+from rag_eval.contracts.run import ExperimentSpec
 from rag_eval.contracts.wire import (
-    HandshakeResponse,
-    WireRequest,
     WireRequestV2,
-    WireResponse,
     WireResponseV2,
     WorkerHealthV2,
     WorkerIdentityV2,
@@ -59,6 +49,7 @@ from rag_eval.runs.models import (
     RunArtifactSummaryV2,
 )
 from rag_eval.runs.records import RunRecordV2
+from rag_eval.runs.plans import ResolvedRunPlanV2
 from rag_eval.runs.views import (
     RunArtifactCaseCollectionView,
     RunArtifactCaseIndexView,
@@ -70,16 +61,10 @@ from rag_eval.runs.views import (
 PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "canonical-document": CanonicalDocument,
     "canonical-conformance": CanonicalConformanceReport,
-    "benchmark-manifest": BenchmarkManifest,
-    "benchmark-segment": BenchmarkSegment,
-    "benchmark-question": BenchmarkQuestion,
-    "benchmark-gold": BenchmarkGold,
     "dataset-bundle-manifest": DatasetBundleManifest,
     "question": Question,
     "gold-answer": GoldAnswer,
     "gold-evidence-set": GoldEvidenceSet,
-    "rag-query": RAGQuery,
-    "rag-result": RAGResult,
     "adapter-capabilities-v2": AdapterCapabilitiesV2,
     "unified-trace-v2": UnifiedTrace,
     "adapter-run-result-v2": AdapterRunResultV2,
@@ -90,27 +75,23 @@ PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "native-query-v2": NativeQueryV2,
     "native-health-report-v2": NativeHealthReportV2,
     "experiment-spec": ExperimentSpec,
-    "case-result": CaseResult,
-    "run-manifest": RunManifest,
+    "resolved-run-plan-v2": ResolvedRunPlanV2,
     "run-artifact-v2": RunArtifactManifestV2,
     "run-artifact-case-v2": RunArtifactCaseV2,
     "run-artifact-summary-v2": RunArtifactSummaryV2,
     "run-artifact-case-index-v2": ArtifactCaseIndexV2,
     "run-record-v2": RunRecordV2,
     "run-record-view-v2": RunRecordViewV2,
-    "run-artifact-overview-view-v1": RunArtifactOverviewView,
-    "run-artifact-case-index-view-v1": RunArtifactCaseIndexView,
-    "run-artifact-case-view-v1": RunArtifactCaseView,
-    "run-artifact-case-collection-view-v1": RunArtifactCaseCollectionView,
+    "run-artifact-overview-view-v2": RunArtifactOverviewView,
+    "run-artifact-case-index-view-v2": RunArtifactCaseIndexView,
+    "run-artifact-case-view-v2": RunArtifactCaseView,
+    "run-artifact-case-collection-view-v2": RunArtifactCaseCollectionView,
     "comparison-spec": ComparisonSpec,
     "analysis-contract": AnalysisContract,
     "blind-protocol": BlindProtocol,
     "model-artifact-identity": ModelArtifactIdentity,
     "model-lock": ModelLock,
     "latency-protocol": LatencyProtocol,
-    "worker-handshake": HandshakeResponse,
-    "wire-request": WireRequest,
-    "wire-response": WireResponse,
     "worker-identity-v2": WorkerIdentityV2,
     "worker-health-v2": WorkerHealthV2,
     "wire-request-v2": WireRequestV2,

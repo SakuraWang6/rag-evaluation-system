@@ -291,11 +291,6 @@ def _verify_adapter_result(
     identity: WorkerIdentityV2,
     case_id: str,
 ) -> None:
-    if result.normalization is not None:
-        raise WorkerRequestError(
-            "legacy_normalization_forbidden",
-            "Direct Wire 2.0 results cannot contain compatibility normalization",
-        )
     if (
         result.adapter_id != identity.adapter_id
         or result.adapter_version != identity.adapter_version

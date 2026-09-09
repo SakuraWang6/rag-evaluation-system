@@ -15,7 +15,7 @@ from rag_eval.datasets.bundle import case_selection_id
 from rag_eval.execution import (
     RunExecutor,
     execution_view_identity,
-    source_only_documents,
+    stage_original_document,
 )
 from rag_eval.products import SystemConnection
 from rag_eval.runtime_admission import NewRunAdmissionError
@@ -134,7 +134,7 @@ def test_formal_release_preview_materializes_only_the_original_docx_for_ingestio
     spec = ExperimentSpec.model_validate(preview.json())
     assert spec.dataset_release_id == release_id
     assert "evaluation_corpus" not in spec.adapter_config
-    assert spec.benchmark_contract_digest is None
+    assert "benchmark_contract_digest" not in ExperimentSpec.model_fields
 
     bundle = service.datasets.get(spec.bundle_id)
     assert "primary_evaluation_corpus" not in bundle.manifest.metadata
@@ -158,12 +158,9 @@ def test_formal_release_preview_materializes_only_the_original_docx_for_ingestio
     executor._validate_dataset_release_reference(spec, bundle)
 
     source_dir = tmp_path / "run-source"
-    documents = source_only_documents(bundle, source_dir)
-    assert len(documents) == 1
-    assert documents[0].content is None
-    assert documents[0].source_path is not None
-    assert Path(documents[0].source_path).suffix == ".docx"
-    assert (source_dir / documents[0].source_path).read_bytes() == (
+    document = stage_original_document(bundle, source_dir)
+    assert Path(document.source_path).suffix == ".docx"
+    assert (source_dir / document.source_path).read_bytes() == (
         bundle.root / source.path
     ).read_bytes()
 
@@ -191,12 +188,12 @@ def test_native_projection_has_no_presegmented_shadow_materialization(
         },
     }
 
-    native = source_only_documents(bundle, tmp_path / "native")
-    assert len(native) == 1 and native[0].source_path.endswith(".docx")
+    native = stage_original_document(bundle, tmp_path / "native")
+    assert native.source_path.endswith(".docx")
     # The execution boundary no longer accepts any corpus selector. Canonical
     # Gold remains unchanged and adjacent to the one native DOCX input.
     with pytest.raises(TypeError, match="unexpected keyword argument"):
-        source_only_documents(
+        stage_original_document(
             bundle,
             tmp_path / "oracle",
             primary_corpus="canonical_segments",
@@ -283,13 +280,6 @@ def test_public_experiment_create_and_queue_reject_presegmented_routes(
     assert created.status_code == 400
     assert "reserved" in created.text
     assert service.experiments.list() == []
-
-    # Persisted legacy Experiments stay readable, but the normal queue API may
-    # not turn one into a new formal/pre-segmented Run after cutover.
-    service.experiments.create(presegmented)
-    queued = client.post(f"/api/v1/experiments/{presegmented.experiment_id}/runs")
-    assert queued.status_code == 400
-    assert "reserved" in queued.text
     assert service.jobs.list() == []
 
 
@@ -297,20 +287,21 @@ def test_public_experiment_create_rejects_the_benchmark_segment_contract(
     tmp_path: Path,
 ) -> None:
     service, client, bundle_id = _registered_legacy_api(tmp_path)
-    presegmented = _experiment(bundle_id, experiment_id="benchmark-contract").model_copy(
-        update={
+    presegmented = _experiment(
+        bundle_id, experiment_id="benchmark-contract"
+    ).model_dump(mode="json")
+    presegmented.update(
+        {
             "dataset_release_id": "release-1",
             "benchmark_contract_version": "rag-benchmark-contract/1",
             "benchmark_contract_digest": "a" * 64,
         }
     )
 
-    response = client.post(
-        "/api/v1/experiments", json=presegmented.model_dump(mode="json")
-    )
+    response = client.post("/api/v1/experiments", json=presegmented)
 
-    assert response.status_code == 400
-    assert "pre-segmented" in response.text
+    assert response.status_code == 422
+    assert "Extra inputs are not permitted" in response.text
     assert service.experiments.list() == []
 
 

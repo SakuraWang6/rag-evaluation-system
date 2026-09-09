@@ -15,7 +15,7 @@ from rag_eval.contracts.native import (
     PreparedSystemV2,
     ResolvedAdapterConfigV2,
 )
-from rag_eval.contracts.observation import CompatibilityNormalization, ObservationStatus
+from rag_eval.contracts.observation import ObservationStatus
 from rag_eval.runs.plans import digest_json
 from rag_eval.worker.app import WorkerDefinition, create_worker_app
 from rag_eval.worker.client import WorkerClient, WorkerProtocolError
@@ -198,40 +198,6 @@ def test_tampered_canonical_catalog_fails_closed(tmp_path: Path) -> None:
     assert response.json()["error"]["code"] == "source_identity_mismatch"
 
 
-def test_worker_rejects_legacy_normalization_from_adapter(tmp_path: Path) -> None:
-    class NormalizingAdapter(FakeAdapter):
-        async def query(
-            self,
-            prepared_system: PreparedSystemV2,
-            request: NativeQueryV2,
-        ):
-            result = await super().query(prepared_system, request)
-            return result.model_copy(
-                update={
-                    "normalization": CompatibilityNormalization(
-                        source_result_sha256="a" * 64,
-                        limitations=("retired",),
-                    )
-                }
-            )
-
-    identity = create_worker_definition().identity
-    definition = WorkerDefinition(adapter=NormalizingAdapter(), identity=identity)
-    client = TestClient(create_worker_app(definition, token=TOKEN, run_id=RUN_ID))
-    prepared = prepare_worker(client, tmp_path)
-    response = client.post(
-        "/query",
-        headers=HEADERS,
-        json=envelope(
-            {
-                "prepared_system": prepared.model_dump(mode="json"),
-                "query": native_query().model_dump(mode="json"),
-            }
-        ),
-    )
-    assert response.json()["error"]["code"] == "legacy_normalization_forbidden"
-
-
 @pytest.mark.asyncio
 async def test_timeout_adapter_is_cancellable(tmp_path: Path) -> None:
     adapter = FakeAdapter()
@@ -307,7 +273,6 @@ async def test_fake_adapter_observes_native_result_without_legacy_wrapper(
     result = await adapter.query(prepared, native_query())
 
     assert result.protocol_version == "2.0"
-    assert result.normalization is None
     assert result.trace.raw_retrieval.observation_status == (
         ObservationStatus.OBSERVED
     )

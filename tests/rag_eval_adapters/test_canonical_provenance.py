@@ -4,8 +4,6 @@ import hashlib
 import json
 from pathlib import Path
 
-from rag_eval.contracts.adapter import RAGEvidenceItem
-from rag_eval_lightrag_adapter.adapter import LightRAGAdapter
 from rag_eval_lightrag_adapter.canonical_provenance import (
     build_provenance_manifest,
     load_canonical_document_map,
@@ -137,70 +135,6 @@ def test_missing_and_partial_provenance_fail_closed(tmp_path: Path) -> None:
     assert mismatch["reason"] == "runtime_content_source_witness_mismatch"
     assert partial["provenance_status"] == "partial"
     assert partial["canonical_objects"][0]["coverage"] == "partial"
-
-
-def test_gold_matches_projected_full_object_without_gold_aware_mapping(
-    tmp_path: Path,
-) -> None:
-    document = _document_map(tmp_path)
-    manifest = build_provenance_manifest(
-        documents={"doc-1": document},
-        sources={"doc-1": SOURCE},
-        document_by_file={"source.txt": "doc-1"},
-        stored_chunks={
-            "runtime-all": {
-                "file_path": "source.txt",
-                "content": SOURCE,
-                "source_span": {"start": 0, "end": len(SOURCE)},
-            }
-        },
-    )
-    adapter = LightRAGAdapter()
-    adapter._source_by_file = {"source.txt": "doc-1"}
-    adapter._runtime_provenance_by_chunk = manifest["runtime_chunks"]
-    adapter._provenance_map_digest = "a" * 64
-    assert manifest["object_catalog"]["doc-1:block:00002"]["mapping_status"] == "mapped"
-    assert manifest["object_catalog"]["doc-1:block:00002"]["expected_extent"] == {
-        "start": SOURCE.index("Beta"),
-        "end": SOURCE.index("Beta") + len("Beta statement is deliberately long."),
-    }
-
-    items = adapter._evidence_items(
-        [
-            {
-                "item_id": "runtime-all",
-                "native_id": "runtime-all",
-                "rank": 1,
-                "content": SOURCE,
-                "file_path": "source.txt",
-                "source_span": {"start": 0, "end": len(SOURCE)},
-                "score": 0.9,
-            }
-        ],
-        "raw",
-    )
-
-    assert len(items) == 1
-    item = items[0]
-    assert item.rank == 1
-    assert item.native_id == "runtime-all"
-    assert item.locator is None
-    assert item.metadata["canonical_object_ids"] == [
-        "doc-1:block:00001",
-        "doc-1:block:00002",
-    ]
-    reverse = manifest["object_to_runtime_chunks"]["doc-1:block:00002"]
-    assert reverse == [
-        {
-            "runtime_chunk_id": "runtime-all",
-            "coverage": "full",
-            "overlap_span": {
-                "start": SOURCE.index("Beta"),
-                "end": SOURCE.index("Beta")
-                + len("Beta statement is deliberately long."),
-            },
-        }
-    ]
 
 
 def test_structure_bridge_preserves_hierarchy_table_topology_and_round_trips(
@@ -372,31 +306,11 @@ def test_structure_bridge_preserves_hierarchy_table_topology_and_round_trips(
         for item in manifest["object_to_runtime_chunks"][table_id]
     } == {"runtime-overlap", "runtime-table"}
 
-    adapter = LightRAGAdapter()
-    adapter._source_by_file = {"source.md": "doc-1"}
-    adapter._runtime_provenance_by_chunk = manifest["runtime_chunks"]
-    adapter._provenance_map_digest = "structure-map-digest"
-    items = adapter._evidence_items(
-        [
-            {
-                "item_id": "runtime-table",
-                "native_id": "runtime-table",
-                "rank": 1,
-                "content": source[table_start:],
-                "file_path": "source.md",
-                "source_span": {"start": table_start, "end": len(source)},
-                "score": 0.9,
-            }
-        ],
-        "raw",
-    )
-    assert len(items) == 1
-    item = items[0]
+    item = manifest["runtime_chunks"]["runtime-table"]
     cell_edge = next(
         edge
-        for edge in item.metadata["canonical_edges"]
+        for edge in item["canonical_objects"]
         if edge["object_id"] == "doc-1:cell:0000200001"
     )
-    assert item.metadata["runtime_structure"]["heading_path"] == "Alpha"
+    assert item["structure"]["heading_path"] == "Alpha"
     assert cell_edge["structure"]["row_id"] == row_2
-    assert RAGEvidenceItem.model_validate(item.model_dump()).metadata == item.metadata

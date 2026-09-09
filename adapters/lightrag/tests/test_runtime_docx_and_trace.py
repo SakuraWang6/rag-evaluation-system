@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-from rag_eval.contracts.adapter import DocumentInput, PrepareContext, PreparedSystem
 from rag_eval.contracts.native import (
     IngestionReceiptV2,
     NativeQueryV2,
@@ -27,7 +26,6 @@ from rag_eval.contracts.observation import (
 from rag_eval.runs.plans import digest_json
 import rag_eval_lightrag_adapter.adapter as adapter_module
 from rag_eval_lightrag_adapter.adapter import (
-    CAPABILITIES,
     LightRAGAdapter,
     is_loopback_endpoint,
     ollama_model_artifacts,
@@ -116,17 +114,16 @@ def test_source_only_docx_is_uploaded_from_prepared_runtime_sandbox(
 
     adapter = LightRAGAdapter()
 
-    async def prepare_runtime(context, config):
+    async def prepare_runtime(resolved_config, config):
         adapter._config = resolve_config(config)
-        adapter._context = context
+        adapter._resolved_config = resolved_config
         adapter._server = _AliveServer()  # type: ignore[assignment]
-        adapter._work_dir = Path(context.work_dir)
+        adapter._work_dir = Path(resolved_config.work_dir)
         adapter._work_dir.mkdir()
         (adapter._work_dir / "inputs").mkdir()
         (adapter._work_dir / "storage").mkdir()
-        return PreparedSystem(
+        return adapter_module._RuntimePreparation(
             effective_config=adapter._config.model_dump(mode="json"),
-            capabilities=CAPABILITIES,
             system_version="fixture-system",
         )
 
@@ -188,24 +185,27 @@ def test_source_only_document_digest_mismatch_fails_closed(tmp_path: Path) -> No
     docx.write_bytes(b"PK\x03\x04runtime-docx-fixture")
 
     adapter = LightRAGAdapter()
-    adapter._context = PrepareContext(
+    adapter._resolved_config = ResolvedAdapterConfigV2(
         run_id="runtime-docx-digest-regression",
         work_dir=str(tmp_path / "work"),
         source_dir=str(source_dir),
         platform_version="test",
+        seed=0,
+        repetition=1,
+        adapter_config={},
+        adapter_config_digest=digest_json({}),
     )
 
     with pytest.raises(ValueError, match="checksum"):
         adapter._materialize_document(
             0,
-            DocumentInput(
+            OriginalDocumentV2(
                 document_id="doc-runtime-fixture",
                 source_path="source/fixture.docx",
-                sha256="0" * 64,
-                mime_type=(
-                    "application/vnd.openxmlformats-officedocument."
-                    "wordprocessingml.document"
-                ),
+                source_sha256="0" * 64,
+                original_name="fixture.docx",
+                canonical_catalog_path="canonical.jsonl",
+                canonical_catalog_sha256="1" * 64,
             ),
         )
 
@@ -255,7 +255,7 @@ def test_query_retains_native_trace_and_exposes_rendered_prompt() -> None:
         mapping_diagnostics=(),
         validation_receipts=(),
         runtime_chunks={chunk.native_chunk_id: chunk},
-        legacy_mappings={
+        runtime_mappings={
             chunk.native_chunk_id: {
                 "document_id": original.document_id,
                 "native_document_id": chunk.native_document_id,
@@ -323,76 +323,7 @@ def test_query_retains_native_trace_and_exposes_rendered_prompt() -> None:
     assert result.trace.answer.content == "answer"
     assert result.trace.final_context.items[0].content == content
     assert result.telemetry["native_query_executions"] == 1
-    assert CAPABILITIES.prompt_trace is True
-
-
-def test_native_docx_table_is_mapped_only_by_an_exact_unique_grid(
-    tmp_path: Path,
-) -> None:
-    sidecar = tmp_path / "canonical.jsonl"
-    records = [
-        {
-            "document_id": "doc-native-table",
-            "object_id": f"doc-native-table:cell:1{row}{column}",
-            "object_type": "cell",
-            "table_id": "doc-native-table:table:00001",
-            "row": row,
-            "column": column,
-            "canonical_value": value,
-            "representation_status": "complete",
-            "provenance": {
-                "canonicalizer_identity": "rag-eval-authoring-canonicalizer/2"
-            },
-        }
-        for row, values in enumerate((("型号", "用途"), ("S2910", "接入交换机")), start=1)
-        for column, value in enumerate(values, start=1)
-    ]
-    sidecar.write_text(
-        "\n".join(json.dumps(record, ensure_ascii=False) for record in records),
-        encoding="utf-8",
-    )
-    document = load_native_docx_document_map(
-        document_id="doc-native-table",
-        sidecar_path=sidecar,
-        expected_sidecar_sha256=hashlib.sha256(sidecar.read_bytes()).hexdigest(),
-    )
-    chunks = {
-        "native-table": {
-            "file_path": "source-00000.docx",
-            "source_span": {"start": 40, "end": 130},
-            "content": (
-                '<table id="runtime-1" format="json">'
-                '[["型号", "用途"], ["S2910", "接入交换机"]]</table>'
-            ),
-            "tokens": 12,
-        },
-        "different-table": {
-            "file_path": "source-00000.docx",
-            "source_span": {"start": 131, "end": 200},
-            "content": '<table id="runtime-2" format="json">[["型号"]]</table>',
-            "tokens": 4,
-        },
-    }
-    manifest = build_native_docx_provenance_manifest(
-        documents={"doc-native-table": document},
-        document_by_file={"source-00000.docx": "doc-native-table"},
-        stored_chunks=chunks,
-        allow_historical_fallback=True,
-    )
-
-    matched = manifest["runtime_chunks"]["native-table"]
-    assert matched["provenance_status"] == "full"
-    assert {item["locator"]["column"] for item in matched["canonical_objects"]} == {
-        1,
-        2,
-    }
-    assert matched["canonical_objects"][-1]["locator"] == {
-        "type": "table_cell",
-        "table_id": "doc-native-table:table:00001",
-        "row": 2,
-        "column": 2,
-    }
-    assert manifest["runtime_chunks"]["different-table"]["provenance_status"] == "missing"
+    assert observation.capabilities.prompt_trace is True
 
 
 def _formal_native_fixture(tmp_path: Path) -> tuple[object, str, str, dict[str, object]]:
@@ -733,7 +664,7 @@ def test_formal_native_lineage_rejects_witness_mismatch_and_duplicate_locator(
     assert len(ambiguous["canonical_edges"]) == 4
 
 
-def test_native_grid_is_explicitly_historical_only(tmp_path: Path) -> None:
+def test_native_mapping_requires_verified_lineage(tmp_path: Path) -> None:
     document, _source_sha, table, _lineage = _formal_native_fixture(tmp_path)
     default_mapping = native_docx_runtime_chunk_mapping(
         chunk_id="no-fallback",
@@ -742,53 +673,6 @@ def test_native_grid_is_explicitly_historical_only(tmp_path: Path) -> None:
         source_span={"start": 0, "end": len(table)},
     )
     assert default_mapping["reason"] == "native_lineage_missing"
-
-
-def test_adapter_keeps_one_item_for_many_native_edges(tmp_path: Path) -> None:
-    document, source_sha, table, lineage = _formal_native_fixture(tmp_path)
-    mapping = native_docx_runtime_chunk_mapping(
-        chunk_id="chunk-table-row-piece",
-        document=document,
-        content=table,
-        source_span={"start": 100, "end": 100 + len(table)},
-        lineage=lineage,
-        source_sha256=source_sha,
-    )
-    adapter = LightRAGAdapter()
-    # LightRAG's runtime/full-doc id is deliberately distinct from the
-    # canonical document id.  The manifest pins the association explicitly;
-    # the adapter must not rewrite or accept an unrelated filename match.
-    mapping["native_document_id"] = "doc-native-runtime"
-    adapter._runtime_provenance_by_chunk = {"chunk-table-row-piece": mapping}
-    adapter._source_by_file = {"source-00000.docx": "doc-formal-native"}
-    adapter._provenance_map_digest = "m" * 64
-    result = adapter._evidence_items(
-        [
-            {
-                "item_id": "ranked-item",
-                "content": table,
-                "native_id": "chunk-table-row-piece",
-                "file_path": "source-00000.docx",
-                "document_id": "doc-native-runtime",
-                "source_span": {"start": 100, "end": 100 + len(table)},
-                "score": 0.9,
-                "lineage_sha256": mapping["lineage_sha256"],
-                "source_sha256": source_sha,
-            }
-        ],
-        "ranked",
-    )
-
-    assert len(result) == 1
-    assert result[0].item_id == "ranked:ranked-item"
-    assert result[0].locator is None
-    assert result[0].metadata["canonical_edge_count"] == 4
-    assert len(result[0].metadata["canonical_edges"]) == 4
-    assert result[0].metadata["runtime_document_id"] == "doc-native-runtime"
-    assert result[0].metadata["runtime_source_span"] == {
-        "start": 100,
-        "end": 100 + len(table),
-    }
 
 
 def test_native_edge_never_clamps_an_out_of_bounds_span_to_full(

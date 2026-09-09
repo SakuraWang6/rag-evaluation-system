@@ -139,36 +139,6 @@
       "title": "CanonicalMappingRecord",
       "type": "object"
     },
-    "CompatibilityNormalization": {
-      "additionalProperties": false,
-      "properties": {
-        "source_protocol_version": {
-          "const": "1.0",
-          "default": "1.0",
-          "title": "Source Protocol Version",
-          "type": "string"
-        },
-        "source_result_sha256": {
-          "pattern": "^[0-9a-f]{64}$",
-          "title": "Source Result Sha256",
-          "type": "string"
-        },
-        "limitations": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "title": "Limitations",
-          "type": "array"
-        }
-      },
-      "required": [
-        "source_result_sha256",
-        "limitations"
-      ],
-      "title": "CompatibilityNormalization",
-      "type": "object"
-    },
     "ContentObservation": {
       "additionalProperties": false,
       "properties": {
@@ -1415,17 +1385,6 @@
       "additionalProperties": true,
       "title": "Telemetry",
       "type": "object"
-    },
-    "normalization": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/CompatibilityNormalization"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
     }
   },
   "required": [

@@ -115,10 +115,6 @@ class WorkerClient:
             AdapterRunResultV2,
         )
         assert result is not None
-        if result.normalization is not None:
-            raise WorkerProtocolError(
-                "Direct Wire 2.0 result contains legacy normalization"
-            )
         return result
 
     def close_adapter(self) -> None:

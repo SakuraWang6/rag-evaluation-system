@@ -15,7 +15,6 @@ import httpx
 
 from rag_eval import __version__
 from rag_eval.artifact_contract import artifact_digest as contract_digest
-from rag_eval.contracts.adapter import DocumentInput
 from rag_eval.contracts.dataset import Question
 from rag_eval.contracts.native import (
     NativeQueryV2,
@@ -124,8 +123,8 @@ class RunExecutor:
         try:
             run_dir = self.run_records.prepare_execution_layout(run_id)
             source_dir = run_dir / "source"
-            documents = source_only_documents(bundle, source_dir)
-            original_docx = direct_native_document(documents, resolved_plan)
+            original_docx = stage_original_document(bundle, source_dir)
+            validate_original_document(original_docx, resolved_plan)
 
             for repetition in range(1, experiment.repetitions + 1):
                 if cancelled():
@@ -668,101 +667,68 @@ def ingestion_rpc_timeout(
     return max(candidates)
 
 
-def source_only_documents(
+def stage_original_document(
     bundle: DatasetBundle,
     source_dir: Path,
-) -> list[DocumentInput]:
-    """Stage the Benchmark's original sources for Direct Wire 2.0."""
+) -> OriginalDocumentV2:
+    """Stage the Benchmark's one original DOCX and Canonical Catalog."""
 
     source_dir.mkdir(parents=True, exist_ok=True)
-    inputs: list[DocumentInput] = []
-    for document in bundle.manifest.documents:
-        original = bundle.root / document.path
-        suffix = original.suffix.lower()
-        safe_digest = hashlib.sha256(document.document_id.encode()).hexdigest()[:12]
-        sandbox_path = source_dir / f"source-{len(inputs):05d}-{safe_digest}{suffix}"
-        shutil.copyfile(original, sandbox_path)
-        content = None
-        if document.mime_type.startswith("text/"):
-            content = original.read_text(encoding="utf-8")
-        metadata: dict[str, object] = {"original_name": original.name}
-        if document.canonical_path is not None:
-            canonical = bundle.root / document.canonical_path
-            canonical_suffix = "".join(canonical.suffixes).lower() or ".data"
-            canonical_sandbox_path = (
-                source_dir
-                / f"canonical-{len(inputs):05d}-{safe_digest}{canonical_suffix}"
-            )
-            shutil.copyfile(canonical, canonical_sandbox_path)
-            metadata.update(
-                {
-                    "canonical_provenance_path": canonical_sandbox_path.name,
-                    "canonical_provenance_sha256": hashlib.sha256(
-                        canonical.read_bytes()
-                    ).hexdigest(),
-                }
-            )
-        inputs.append(
-            DocumentInput(
-                document_id=document.document_id,
-                content=content,
-                source_path=sandbox_path.name,
-                sha256=document.sha256,
-                mime_type=document.mime_type,
-                metadata=metadata,
-            )
-        )
-    return inputs
-
-
-def direct_native_document(
-    documents: list[DocumentInput],
-    plan: ResolvedRunPlanV2,
-) -> OriginalDocumentV2:
-    """Bind the staged source sandbox to the admitted single-DOCX plan."""
-
-    if len(documents) != 1:
+    if len(bundle.manifest.documents) != 1:
         raise ValueError("Direct Wire 2.0 requires exactly one original DOCX")
-    document = documents[0]
-    if document.content is not None or document.source_path is None:
-        raise ValueError("Direct Wire 2.0 cannot ingest inline or missing content")
-    if (
-        document.document_id != plan.original_document.document_id
-        or document.sha256 != plan.original_document.source_sha256
-        or document.mime_type != plan.original_document.mime_type
-    ):
-        raise ValueError("staged DOCX identity differs from the resolved plan")
-    canonical_path = document.metadata.get("canonical_provenance_path")
-    canonical_digest = document.metadata.get("canonical_provenance_sha256")
-    original_name = document.metadata.get("original_name")
-    if not all(
-        isinstance(value, str) and value
-        for value in (canonical_path, canonical_digest, original_name)
-    ):
+    document = bundle.manifest.documents[0]
+    original = bundle.root / document.path
+    if original.suffix.lower() != ".docx":
+        raise ValueError("Direct Wire 2.0 accepts only an original DOCX")
+    if document.canonical_path is None:
         raise ValueError("Direct Wire 2.0 requires a pinned Canonical Catalog sidecar")
+
+    safe_digest = hashlib.sha256(document.document_id.encode()).hexdigest()[:12]
+    sandbox_path = source_dir / f"source-00000-{safe_digest}.docx"
+    shutil.copyfile(original, sandbox_path)
+    canonical = bundle.root / document.canonical_path
+    canonical_suffix = "".join(canonical.suffixes).lower() or ".data"
+    canonical_sandbox_path = (
+        source_dir / f"canonical-00000-{safe_digest}{canonical_suffix}"
+    )
+    shutil.copyfile(canonical, canonical_sandbox_path)
     return OriginalDocumentV2(
         document_id=document.document_id,
-        source_path=document.source_path,
-        source_sha256=document.sha256 or "",
+        source_path=sandbox_path.name,
+        source_sha256=document.sha256,
         media_type=document.mime_type,
-        original_name=original_name,
-        canonical_catalog_path=canonical_path,
-        canonical_catalog_sha256=canonical_digest,
+        original_name=original.name,
+        canonical_catalog_path=canonical_sandbox_path.name,
+        canonical_catalog_sha256=hashlib.sha256(canonical.read_bytes()).hexdigest(),
     )
+
+
+def validate_original_document(
+    document: OriginalDocumentV2,
+    plan: ResolvedRunPlanV2,
+) -> None:
+    """Verify that staged input is exactly the document admitted by the Plan."""
+
+    if (
+        document.document_id != plan.original_document.document_id
+        or document.source_sha256 != plan.original_document.source_sha256
+        or document.media_type != plan.original_document.mime_type
+    ):
+        raise ValueError("staged DOCX identity differs from the resolved plan")
 
 
 __all__ = [
     "RunExecutor",
     "command_for_seed",
-    "direct_native_document",
     "execution_view_identity",
     "ingestion_rpc_timeout",
     "order_questions",
     "prepared_model_artifacts",
     "run_latency_warmup",
     "select_questions",
-    "source_only_documents",
+    "stage_original_document",
     "validate_latency_runtime",
+    "validate_original_document",
     "validate_prepared_v2",
     "validate_worker_identity",
 ]

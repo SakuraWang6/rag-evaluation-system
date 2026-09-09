@@ -15,7 +15,6 @@ from rag_eval.contracts.native import (
 )
 from rag_eval.contracts.observation import (
     AdapterRunResultV2,
-    CompatibilityNormalization,
     ObservationStatus,
     UnifiedTrace,
 )
@@ -343,7 +342,7 @@ def test_leaderboard_eligibility_uses_persisted_metric_availability_and_descript
     assert resolved_b.case_id == "case-2"
 
 
-def test_trace_validator_fails_closed_on_direct_v2_identity_or_compatibility() -> None:
+def test_trace_validator_fails_closed_on_direct_v2_identity_mismatch() -> None:
     _, _, _, result = _observed_fixture()
     original = result.model_dump(mode="json")
     validator = TraceValidator()
@@ -357,17 +356,6 @@ def test_trace_validator_fails_closed_on_direct_v2_identity_or_compatibility() -
         mismatched,
         expected_case_id="case-1",
         expected_adapter_id="adapter-under-test",
-    ).status == ObservationStatus.CORRUPTED
-    normalized = result.model_copy(
-        update={
-            "normalization": CompatibilityNormalization(
-                source_result_sha256="a" * 64,
-                limitations=("legacy wrapper",),
-            )
-        }
-    )
-    assert validator.validate(
-        normalized, expected_case_id="case-1"
     ).status == ObservationStatus.CORRUPTED
     assert validator.validate(
         result, expected_case_id="different"
@@ -419,50 +407,6 @@ def test_named_v2_orchestration_flow_queries_once_and_never_sends_gold() -> None
     }
     assert outcome.artifact_case.observation_status == ObservationStatus.OBSERVED
     assert outcome.artifact_case.evaluation.core_metrics_available
-
-
-def test_direct_orchestrator_rejects_legacy_normalization_after_one_query() -> None:
-    _, _, _, observed = _observed_fixture()
-    result = observed.model_copy(
-        update={
-            "normalization": CompatibilityNormalization(
-                source_result_sha256="a" * 64,
-                limitations=("legacy wrapper",),
-            )
-        }
-    )
-
-    class Client:
-        def __init__(self) -> None:
-            self.calls = 0
-
-        def query(
-            self,
-            prepared_system: PreparedSystemV2,
-            query: NativeQueryV2,
-        ) -> AdapterRunResultV2:
-            assert prepared_system == _prepared_fixture(observed)
-            assert query.case_id == "case-1"
-            self.calls += 1
-            return result
-
-    client = Client()
-    outcome = NativeCaseOrchestrator(
-        benchmark_resolver=_resolver(),
-        adapter_session=AdapterSession(client),
-        trace_validator=TraceValidator(),
-        evaluation_engine=EvaluationEngine(_profile(1)),
-    ).execute(
-        case_id="case-1",
-        prepared_system=_prepared_fixture(observed),
-        query=_native_query(),
-        repetition=1,
-        seed=7,
-    )
-
-    assert client.calls == 1
-    assert outcome.validation.status == ObservationStatus.CORRUPTED
-    assert not outcome.artifact_case.evaluation.core_metrics_available
 
 
 @pytest.mark.native_v2_characterization

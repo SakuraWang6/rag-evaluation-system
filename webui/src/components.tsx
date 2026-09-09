@@ -1,14 +1,10 @@
 import { AlertTriangle } from 'lucide-react'
 import type {
   AggregateMetricV2,
-  EvidenceItem,
   EvaluationMetricV2,
   MetricDescriptorV2,
-  MetricResult,
   StageObservationV2,
-  SummaryMetric,
 } from './types'
-import { evidenceState, metricLabel, presentMetric, stageOfMetric } from './semantics'
 import { metricDescriptorSummary, observationPresentation } from './artifactPresentation'
 import { useLocale } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n'
@@ -16,54 +12,6 @@ import { StatusBadge } from './components/primitives'
 
 export function StateMark({ state }: { state: string }) {
   return <StatusBadge state={state} />
-}
-
-export function MetricCell({ id, metric }: { id: string; metric: MetricResult | SummaryMetric }) {
-  const { t, formatPercent } = useLocale()
-  const presentation = presentMetric(metric)
-  const descriptor = metricLabel(id)
-  const text = presentation.value ?? t(({
-    unavailable: 'metric.valueUnavailable',
-    'not-applicable': 'metric.valueNotApplicable',
-    error: 'metric.valueError',
-    'needs-review': 'metric.valueNeedsReview',
-  } as const)[presentation.state === 'value' ? 'unavailable' : presentation.state])
-  const reason = 'reason' in metric && metric.reason
-    ? ({
-        'runtime provenance mapping is unavailable for locator-only Gold Evidence': t('metric.reason.provenanceUnavailable'),
-        'current deterministic rule or append-only adjudication': t('metric.reason.answerJudgment'),
-        'answer needs semantic or human adjudication': '该答案等待 LLM 语义复核或人工确认。',
-        'text semantic equivalence requires LLM or human adjudication': '文字答案可能是同义表达，等待 LLM 或人工确认。',
-      }[metric.reason] || metric.reason)
-    : null
-  const isSummary = 'coverage' in metric || 'status_counts' in metric
-  const denominator = metric.denominator ?? 0
-  const numerator = metric.numerator
-  const statusCounts = 'status_counts' in metric ? metric.status_counts : undefined
-  const statusSummary = statusCounts
-    ? [
-        ['observed', '已统计'],
-        ['needs_review', '待确认'],
-        ['unavailable', '不可用'],
-        ['error', '错误'],
-      ].filter(([key]) => (statusCounts[key] || 0) > 0).map(([key, label]) => `${label} ${statusCounts[key]}`).join(' · ')
-    : ''
-  return (
-    <div className={`metric metric--${presentation.state}`}>
-      <div className="metric__head">
-        <span className={`stage stage--${stageOfMetric(id)}`}>{t(`metric.stage.${stageOfMetric(id)}` as MessageKey)}</span>
-        <span>{descriptor.translationKey ? `${t(descriptor.translationKey as MessageKey)}${descriptor.suffix}` : descriptor.suffix}</span>
-      </div>
-      <strong>{text}</strong>
-      {isSummary && <small>统计样本 {denominator} · 覆盖率 {'coverage' in metric && metric.coverage !== undefined ? formatPercent(metric.coverage) : '—'}</small>}
-      {!isSummary && denominator !== null && <small>本题 {numerator ?? '—'} / {denominator}</small>}
-      {'standard_deviation' in metric && metric.standard_deviation !== undefined && metric.standard_deviation > 0 && (
-        <small>{t('metric.sampleSummary', { deviation: metric.standard_deviation.toFixed(3), count: metric.denominator, coverage: metric.coverage !== undefined ? formatPercent(metric.coverage) : '—' })}</small>
-      )}
-      {statusSummary && <small>{statusSummary}</small>}
-      {reason && <small>{reason}</small>}
-    </div>
-  )
 }
 
 export function ArtifactMetricCell({
@@ -128,34 +76,6 @@ export function StageObservationPanel({
               <span>{item.provenance_edge_ids.length} provenance edge(s)</span>
             </div>
             <p>{item.content ?? 'Content was not persisted for this item.'}</p>
-          </div>
-        </article>
-      ))}
-    </section>
-  )
-}
-
-export function EvidenceList({ titleKey, items }: { titleKey: MessageKey; items: EvidenceItem[] | null }) {
-  const { t } = useLocale()
-  const state = evidenceState(items)
-  return (
-    <section className={`evidence evidence--${state}`}>
-      <header>
-        <h4>{t(titleKey)}</h4>
-        <span>{state === 'empty' ? t('evidence.observedEmpty') : state === 'unavailable' ? t('evidence.notObservable') : t('common.items', { count: items!.length })}</span>
-      </header>
-      {state === 'unavailable' && <p className="semantic-note">{t('evidence.unavailableNote')}</p>}
-      {state === 'empty' && <p className="semantic-note">{t('evidence.emptyNote')}</p>}
-      {items?.map((item) => (
-        <article className="evidence__item" key={item.item_id}>
-          <div className="evidence__rank">#{item.rank}</div>
-          <div>
-            <div className="evidence__meta">
-              <span>{item.document_id || t('evidence.unknownDocument')}</span>
-              <span>{item.score === null ? t('evidence.score', { value: '—' }) : t('evidence.score', { value: item.score.toFixed(4) })}</span>
-              <span>{item.locator ? JSON.stringify(item.locator) : t('evidence.noLocator')}</span>
-            </div>
-            <p>{item.content || t('evidence.emptyContent')}</p>
           </div>
         </article>
       ))}

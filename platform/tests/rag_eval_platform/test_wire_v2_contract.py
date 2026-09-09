@@ -8,11 +8,6 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from rag_eval.contracts.adapter import (
-    AdapterCapabilities,
-    RAGEvidenceItem,
-    RAGResult,
-)
 from rag_eval.contracts.canonical import SourceSpan
 from rag_eval.contracts.native import (
     NativeQueryV2,
@@ -47,7 +42,6 @@ from rag_eval.contracts.observation import (
     TransformationRecord,
     UnifiedTrace,
 )
-from rag_eval.contracts.observation_compat import normalize_rag_result_v1
 from rag_eval.contracts.schema import PUBLIC_MODELS
 from rag_eval.contracts.wire import WireRequestV2, WireResponseV2, WorkerHealthV2
 
@@ -631,149 +625,9 @@ def test_corrupted_observation_is_persistable_but_never_proves_a_prefix() -> Non
     assert not corrupted.proves_prefix(1)
 
 
-def test_wire_v1_normalizer_preserves_unknown_and_empty_without_inventing_proof() -> (
-    None
-):
-    legacy = RAGResult(
-        answer="answer",
-        raw_retrieval=None,
-        ranked_retrieval=[],
-        final_context=None,
-    )
-    before = legacy.model_dump_json()
-
-    normalized = normalize_rag_result_v1(
-        legacy,
-        case_id="case-legacy",
-        source_identity=_source(),
-        runtime_profile=_runtime_profile(),
-        legacy_capabilities=AdapterCapabilities(
-            answer=True,
-            raw_retrieval=True,
-            ranked_retrieval=True,
-            final_context=False,
-        ),
-        adapter_id="legacy-adapter",
-        adapter_version="1.0",
-    )
-
-    assert legacy.model_dump_json() == before
-    assert normalized.normalization is not None
-    assert normalized.normalization.source_protocol_version == "1.0"
-    assert normalized.trace.raw_retrieval.observation_status == "unobserved"
-    assert normalized.trace.ranked_retrieval.observation_status == "observed"
-    assert normalized.trace.ranked_retrieval.items == ()
-    assert normalized.trace.ranked_retrieval.completeness == "unknown"
-    assert normalized.trace.final_context.observation_status == "unsupported"
-    assert normalized.trace.answer.content == "answer"
-    assert normalized.trace.provenance_edges == ()
-
-
-def test_wire_v1_items_are_content_pinned_but_mapping_remains_unsupported() -> None:
-    legacy = RAGResult(
-        ranked_retrieval=[
-            RAGEvidenceItem(
-                item_id="legacy-1",
-                native_id="native-1",
-                rank=1,
-                content="legacy content",
-            )
-        ]
-    )
-    normalized = normalize_rag_result_v1(
-        legacy,
-        case_id="case-legacy",
-        source_identity=_source(),
-        runtime_profile=_runtime_profile(),
-        legacy_capabilities=AdapterCapabilities(ranked_retrieval=True),
-        adapter_id="legacy-adapter",
-        adapter_version="1.0",
-    )
-
-    item = normalized.trace.ranked_retrieval.items[0]
-    assert item.native_chunk_id == "native-1"
-    assert item.content_sha256 == hashlib.sha256(b"legacy content").hexdigest()
-    assert item.provenance_edge_ids == ()
-    assert normalized.trace.mapping_diagnostics
-    assert all(
-        diagnostic.status == "unsupported"
-        for diagnostic in normalized.trace.mapping_diagnostics
-    )
-
-
-def test_wire_v1_shadow_normalization_preserves_observed_native_values() -> None:
-    def legacy_item(stage: str, rank: int) -> RAGEvidenceItem:
-        return RAGEvidenceItem(
-            item_id=f"{stage}-item-{rank}",
-            native_id=f"{stage}-native-{rank}",
-            rank=rank,
-            score=1.0 / rank,
-            content=f"{stage}-content-{rank}",
-        )
-
-    legacy = RAGResult(
-        answer="shadow answer",
-        raw_retrieval=[legacy_item("candidate", 1), legacy_item("candidate", 2)],
-        ranked_retrieval=[legacy_item("ranked", 1)],
-        final_context=[legacy_item("context", 1)],
-    )
-    normalized = normalize_rag_result_v1(
-        legacy,
-        case_id="case-shadow",
-        source_identity=_source(),
-        runtime_profile=_runtime_profile(),
-        legacy_capabilities=AdapterCapabilities(
-            answer=True,
-            raw_retrieval=True,
-            ranked_retrieval=True,
-            final_context=True,
-        ),
-        adapter_id="legacy-adapter",
-        adapter_version="1.0",
-    )
-
-    for legacy_items, observed in (
-        (legacy.raw_retrieval, normalized.trace.raw_retrieval),
-        (legacy.ranked_retrieval, normalized.trace.ranked_retrieval),
-        (legacy.final_context, normalized.trace.final_context),
-    ):
-        assert legacy_items is not None
-        assert [item.native_chunk_id for item in observed.items] == [
-            item.native_id for item in legacy_items
-        ]
-        assert [item.native_rank for item in observed.items] == [
-            item.rank for item in legacy_items
-        ]
-        assert [item.runtime_score for item in observed.items] == [
-            item.score for item in legacy_items
-        ]
-        assert [item.content for item in observed.items] == [
-            item.content for item in legacy_items
-        ]
-    assert normalized.trace.answer.content == legacy.answer
-    assert not normalized.trace.raw_retrieval.proves_prefix(1)
-
-
-def test_wire_v1_capability_contradiction_is_preserved_as_corruption() -> None:
-    normalized = normalize_rag_result_v1(
-        RAGResult(answer="unexpected", ranked_retrieval=[]),
-        case_id="case-legacy",
-        source_identity=_source(),
-        runtime_profile=_runtime_profile(),
-        legacy_capabilities=AdapterCapabilities(),
-        adapter_id="legacy-adapter",
-        adapter_version="1.0",
-    )
-
-    assert normalized.trace.answer.observation_status == "corrupted"
-    assert normalized.trace.answer.content == "unexpected"
-    assert normalized.trace.ranked_retrieval.observation_status == "corrupted"
-    assert normalized.trace.ranked_retrieval.diagnostics["returned_item_count"] == 0
-
-
 def test_v2_observation_contract_is_gold_and_rag_implementation_neutral() -> None:
     contracts_root = Path(__file__).resolve().parents[2] / "src/rag_eval/contracts"
-    for filename in ("observation.py", "observation_compat.py"):
+    for filename in ("observation.py",):
         path = contracts_root / filename
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         imported = []
@@ -806,7 +660,7 @@ def test_direct_wire_v2_public_schemas_are_exported() -> None:
     assert PUBLIC_MODELS["wire-request-v2"] is WireRequestV2
     assert PUBLIC_MODELS["wire-response-v2"] is WireResponseV2
 
-    schema_root = Path(__file__).resolve().parents[2] / "schemas" / "1.2"
+    schema_root = Path(__file__).resolve().parents[2] / "schemas" / "2.0"
     for name in (
         "adapter-capabilities-v2",
         "unified-trace-v2",

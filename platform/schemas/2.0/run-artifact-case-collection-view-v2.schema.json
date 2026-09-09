@@ -107,17 +107,6 @@
           "additionalProperties": true,
           "title": "Telemetry",
           "type": "object"
-        },
-        "normalization": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CompatibilityNormalization"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
         }
       },
       "required": [
@@ -376,36 +365,6 @@
         "receipt_sha256"
       ],
       "title": "CanonicalMappingRecord",
-      "type": "object"
-    },
-    "CompatibilityNormalization": {
-      "additionalProperties": false,
-      "properties": {
-        "source_protocol_version": {
-          "const": "1.0",
-          "default": "1.0",
-          "title": "Source Protocol Version",
-          "type": "string"
-        },
-        "source_result_sha256": {
-          "pattern": "^[0-9a-f]{64}$",
-          "title": "Source Result Sha256",
-          "type": "string"
-        },
-        "limitations": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "title": "Limitations",
-          "type": "array"
-        }
-      },
-      "required": [
-        "source_result_sha256",
-        "limitations"
-      ],
-      "title": "CompatibilityNormalization",
       "type": "object"
     },
     "ContentObservation": {
@@ -1975,6 +1934,64 @@
       "title": "RunArtifactCaseV2",
       "type": "object"
     },
+    "RunArtifactCaseView": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "artifact_contract_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Artifact Contract Version",
+          "type": "string"
+        },
+        "availability": {
+          "$ref": "#/$defs/ArtifactViewAvailability"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "verification": {
+          "$ref": "#/$defs/ArtifactVerificationView"
+        },
+        "artifact_case": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunArtifactCaseV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "run_id",
+        "availability",
+        "verification"
+      ],
+      "title": "RunArtifactCaseView",
+      "type": "object"
+    },
     "RuntimeChunkRecord": {
       "additionalProperties": false,
       "properties": {
@@ -2785,16 +2802,13 @@
     "verification": {
       "$ref": "#/$defs/ArtifactVerificationView"
     },
-    "artifact_case": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/RunArtifactCaseV2"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
+    "cases": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RunArtifactCaseView"
+      },
+      "title": "Cases",
+      "type": "array"
     }
   },
   "required": [
@@ -2802,6 +2816,6 @@
     "availability",
     "verification"
   ],
-  "title": "RunArtifactCaseView",
+  "title": "RunArtifactCaseCollectionView",
   "type": "object"
 }

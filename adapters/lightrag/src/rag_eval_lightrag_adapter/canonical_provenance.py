@@ -889,7 +889,6 @@ def build_native_docx_provenance_manifest(
     documents: dict[str, NativeDocxDocumentMap],
     document_by_file: dict[str, str],
     stored_chunks: dict[str, dict[str, Any]],
-    allow_historical_fallback: bool = False,
 ) -> dict[str, Any]:
     runtime_chunks: dict[str, dict[str, Any]] = {}
     object_to_runtime_chunks: dict[str, list[dict[str, Any]]] = {}
@@ -906,7 +905,6 @@ def build_native_docx_provenance_manifest(
             source_span=record.get("source_span"),
             lineage=record.get("lineage"),
             source_sha256=documents[document_id].source_sha256,
-            allow_historical_fallback=allow_historical_fallback,
         )
         runtime_document_id = record.get("full_doc_id")
         if isinstance(runtime_document_id, str) and runtime_document_id:
@@ -1571,7 +1569,6 @@ def native_docx_runtime_chunk_mapping(
     source_span: Any,
     lineage: Any = None,
     source_sha256: str | None = None,
-    allow_historical_fallback: bool = False,
 ) -> dict[str, Any]:
     """Attribute one native-parser runtime chunk without using execution text.
 
@@ -1605,57 +1602,8 @@ def native_docx_runtime_chunk_mapping(
             source_sha256=trusted_source_sha,
             source_span=source_span,
         )
-    if not allow_historical_fallback:
-        base["mapping_mode"] = "native_docx_lineage"
-        base["reason"] = "native_lineage_missing"
-        return base
-    base["mapping_mode"] = "native_docx_grid_historical_fallback"
-    span = normalize_source_span(source_span)
-    if span is None:
-        base["reason"] = "missing_or_malformed_source_span"
-        return base
-    base["source_span"] = {"start": span[0], "end": span[1]}
-    runtime_tables = _runtime_json_tables(content)
-    if not runtime_tables:
-        base["reason"] = "native_docx_runtime_table_not_found"
-        return base
-    canonical_objects: list[dict[str, Any]] = []
-    ambiguous = False
-    for runtime_grid in runtime_tables:
-        candidates = [table for table in document.tables if table.grid == runtime_grid]
-        if len(candidates) != 1:
-            ambiguous = ambiguous or len(candidates) > 1
-            continue
-        for item in candidates[0].cells:
-            canonical_objects.append(
-                {
-                    **item,
-                    "source_span": {"start": span[0], "end": span[1]},
-                    "overlap_span": {"start": span[0], "end": span[1]},
-                    "coverage": "full",
-                    "witness_sha256": sha256_text(content),
-                }
-            )
-    if not canonical_objects:
-        base["reason"] = (
-            "ambiguous_native_docx_table_grid"
-            if ambiguous
-            else "native_docx_table_grid_not_in_canonical_sidecar"
-        )
-        return base
-    base["canonical_objects"] = canonical_objects
-    base["provenance_status"] = "full"
-    base["reason"] = None
-    base["structure"] = {
-        "metadata_status": "partial",
-        "missing_fields": ["section_mapping", "execution_text_span"],
-        "section_ids": [],
-        "canonical_object_count": len(canonical_objects),
-        "canonical_object_types": ["cell"],
-        "table_ids": sorted(
-            {str(item["locator"]["table_id"]) for item in canonical_objects}
-        ),
-    }
+    base["mapping_mode"] = "native_docx_lineage"
+    base["reason"] = "native_lineage_missing"
     return base
 
 
@@ -1900,37 +1848,6 @@ def _native_typed_locator(record: dict[str, Any], locator: dict[str, Any]) -> di
 
 def _normalize_table_cell(value: Any) -> str:
     return " ".join(unicodedata.normalize("NFKC", str(value or "")).split())
-
-
-_RUNTIME_JSON_TABLE = re.compile(
-    r"<table\b(?P<attributes>[^>]*)>(?P<body>\s*\[\[.*?\]\]\s*)</table>",
-    flags=re.IGNORECASE | re.DOTALL,
-)
-
-
-def _runtime_json_tables(content: str) -> list[tuple[tuple[str, ...], ...]]:
-    tables: list[tuple[tuple[str, ...], ...]] = []
-    for match in _RUNTIME_JSON_TABLE.finditer(content):
-        attributes = match.group("attributes")
-        if not re.search(r"\bformat\s*=\s*['\"]json['\"]", attributes, re.I):
-            continue
-        try:
-            raw_grid = json.loads(match.group("body"))
-        except json.JSONDecodeError:
-            continue
-        if (
-            not isinstance(raw_grid, list)
-            or not raw_grid
-            or any(not isinstance(row, list) or not row for row in raw_grid)
-        ):
-            continue
-        width = len(raw_grid[0])
-        if width < 1 or any(len(row) != width for row in raw_grid):
-            continue
-        tables.append(
-            tuple(tuple(_normalize_table_cell(value) for value in row) for row in raw_grid)
-        )
-    return tables
 
 
 def write_provenance_manifest(path: Path, manifest: dict[str, Any]) -> str:
