@@ -2315,11 +2315,6 @@
           ],
           "default": null,
           "title": "Adapter Result Digest"
-        },
-        "wire_shadow_verified": {
-          "default": false,
-          "title": "Wire Shadow Verified",
-          "type": "boolean"
         }
       },
       "required": [

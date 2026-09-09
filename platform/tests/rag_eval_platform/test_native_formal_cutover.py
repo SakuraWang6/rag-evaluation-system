@@ -117,7 +117,6 @@ def _native_draft(release_id: str) -> dict[str, object]:
     }
 
 
-@pytest.mark.native_v2_characterization
 def test_formal_release_preview_materializes_only_the_original_docx_for_ingestion(
     tmp_path: Path,
 ) -> None:
@@ -165,7 +164,7 @@ def test_formal_release_preview_materializes_only_the_original_docx_for_ingestio
     ).read_bytes()
 
 
-def test_native_projection_has_no_presegmented_shadow_materialization(
+def test_native_projection_has_no_presegmented_materialization(
     tmp_path: Path,
 ) -> None:
     service, client, release_id = _native_product_service(tmp_path)
@@ -211,7 +210,6 @@ def test_native_projection_has_no_presegmented_shadow_materialization(
     }
 
 
-@pytest.mark.native_v2_characterization
 def test_product_evaluation_write_contract_accepts_only_a_benchmark_release(
     tmp_path: Path,
 ) -> None:
@@ -265,7 +263,6 @@ def test_product_system_configuration_rejects_a_corpus_selector(
     assert service.products.connections.list() == []
 
 
-@pytest.mark.native_v2_characterization
 def test_public_experiment_create_and_queue_reject_presegmented_routes(
     tmp_path: Path,
 ) -> None:
@@ -363,7 +360,6 @@ def test_release_bound_public_experiment_rejects_a_modified_projection(
     assert service.experiments.list() == []
 
 
-@pytest.mark.native_v2_characterization
 def test_release_bound_public_experiment_rejects_modified_benchmark_content(
     tmp_path: Path,
 ) -> None:
@@ -468,7 +464,6 @@ def test_leaderboard_eligibility_has_no_adapter_or_route_policy() -> None:
         assert forbidden not in source
 
 
-@pytest.mark.native_v2_characterization
 def test_new_run_admission_does_not_depend_on_adapter_or_gold_policy() -> None:
     source = (
         Path(__file__).resolve().parents[2]

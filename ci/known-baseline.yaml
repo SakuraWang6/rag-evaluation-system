@@ -1,5 +1,5 @@
-schema_version: 1
-captured_at: "2026-09-08T00:00:00+08:00"
+schema_version: 2
+captured_at: "2026-09-10T00:00:00+08:00"
 
 adapter_pytest:
   python: "3.12.12"
@@ -9,25 +9,22 @@ adapter_pytest:
     pytest -q --tb=short
     tests/rag_eval_adapters/test_canonical_provenance.py
     tests/rag_eval_adapters/test_lightrag_adapter.py
-    tests/rag_eval_adapters/test_native_evaluation_v2_baseline.py
   test_paths:
     - tests/rag_eval_adapters/test_canonical_provenance.py
     - tests/rag_eval_adapters/test_lightrag_adapter.py
-    - tests/rag_eval_adapters/test_native_evaluation_v2_baseline.py
-  expected_passed: 23
+  expected_passed: 20
   exact_failed_node_ids: []
   required_passed_node_ids:
-    - tests/rag_eval_adapters/test_native_evaluation_v2_baseline.py::test_v2_baseline_pins_native_contract
     - tests/rag_eval_adapters/test_canonical_provenance.py::test_structure_bridge_preserves_hierarchy_table_topology_and_round_trips
     - tests/rag_eval_adapters/test_lightrag_adapter.py::test_capabilities_claim_object_provenance_and_prompt_trace
-    - tests/rag_eval_adapters/test_native_evaluation_v2_baseline.py::test_v2_baseline_pins_runtime_profiles_without_legacy_capability_dtos
   policy:
     xfail: forbidden
     skip: forbidden
     missing_node: forbidden
     additional_failure: forbidden
 
-adapter_dirty_tests:
+lightrag_native_pytest:
+  gate_kind: adapter_pytest
   python: "3.12.12"
   pytest: "9.1.1"
   pytest_asyncio: "1.4.0"
@@ -41,6 +38,7 @@ adapter_dirty_tests:
     - adapters/lightrag/tests/test_native_unified_trace.py
     - adapters/lightrag/tests/test_runtime_docx_and_trace.py
   expected_passed: 18
+  exact_failed_node_ids: []
   required_passed_node_ids:
     - adapters/lightrag/tests/test_native_unified_trace.py::test_native_snapshot_projects_one_chunk_to_paragraph_and_text_span
     - adapters/lightrag/tests/test_native_unified_trace.py::test_split_merged_table_chunks_union_to_complete_logical_evidence
@@ -48,19 +46,24 @@ adapter_dirty_tests:
     - adapters/lightrag/tests/test_runtime_docx_and_trace.py::test_query_retains_native_trace_and_exposes_rendered_prompt
     - adapters/lightrag/tests/test_native_input_contract.py::test_lightrag_native_input_contract_rejects_non_docx_source
 
-rag_anything_observation_pytest:
+rag_anything_pytest:
   gate_kind: adapter_pytest
   python: "3.12.12"
   pytest: "9.1.1"
   pytest_asyncio: "1.4.0"
   command: >-
     pytest -q --tb=short
+    tests/rag_eval_adapters/test_rag_anything_adapter.py
     tests/rag_eval_adapters/test_rag_anything_native_observation.py
   test_paths:
+    - tests/rag_eval_adapters/test_rag_anything_adapter.py
     - tests/rag_eval_adapters/test_rag_anything_native_observation.py
-  expected_passed: 7
+  expected_passed: 17
   exact_failed_node_ids: []
   required_passed_node_ids:
+    - tests/rag_eval_adapters/test_rag_anything_adapter.py::test_config_is_strict_and_model_identity_is_explicit
+    - tests/rag_eval_adapters/test_rag_anything_adapter.py::test_native_docx_prepare_ingests_one_source_and_records_liveness
+    - tests/rag_eval_adapters/test_rag_anything_adapter.py::test_direct_query_preserves_unobservable_stage_semantics
     - tests/rag_eval_adapters/test_rag_anything_native_observation.py::test_native_query_hook_captures_one_execution_without_changing_answer
     - tests/rag_eval_adapters/test_rag_anything_native_observation.py::test_native_query_observation_failure_does_not_change_answer
     - tests/rag_eval_adapters/test_rag_anything_native_observation.py::test_adapter_emits_typed_native_trace_and_unions_split_evidence
@@ -76,9 +79,15 @@ platform_pytest:
   pytest: "9.1.1"
   test_paths:
     - platform/tests
-  minimum_passed_local: 264
-  minimum_passed_ci: 267
+  expected_collected: 316
   required_passed_node_ids:
+    - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_verified_derivation_and_truncated_prefix
+    - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_observed_partial_stages_with_rank_gaps
+    - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_unobserved_stages_and_unobservable_transitions
+    - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_derived_output_without_claiming_coverage
+    - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_rejects_missing_transformation_receipt
+    - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_rejects_false_output_coverage_proof
+    - platform/tests/rag_eval_platform/test_contracts.py::test_checked_in_research_examples_match_current_contracts
     - platform/tests/rag_eval_platform/test_wire_v2_contract.py::test_runtime_catalog_provenance_and_reverse_map_round_trip
     - platform/tests/rag_eval_platform/test_unified_evaluation_v2.py::test_logical_table_cell_is_one_atom_proved_by_multiple_physical_cells
     - platform/tests/rag_eval_platform/test_unified_evaluation_v2.py::test_failure_attribution_is_proof_gated_through_generation
@@ -107,44 +116,8 @@ platform_ruff:
   tool: "ruff 0.16.1"
   command_before: "ruff check . --output-format=json"
   command_after: "cd platform && ruff check . --output-format=json"
-  expected_before_diagnostics: 291
-  expected_before_fixable: 182
+  expected_before_diagnostics: 167
+  expected_before_fixable: 103
   raw_baseline: ci/baselines/platform-ruff-before.json
-  raw_baseline_sha256: 5c572ab9e0bc8414fcbbf993b739e505a4556a9c8de6d2dd5a2933ec098ec4c0
+  raw_baseline_sha256: d95c940abbd6598509aba7a65990d2716499dfa1c2995ef1e53046f35479b2a7
   policy: no_new_normalized_diagnostics
-
-lightrag_collection:
-  python: "3.11.15"
-  command: "python -m pytest --collect-only -q -p no:cacheprovider"
-  collected_before: 5508
-  expected_environment_blocked_files:
-    - tests/kg/memgraph_impl/test_memgraph_graph_read_contract.py
-    - tests/kg/memgraph_impl/test_memgraph_kg_tie_break.py
-    - tests/kg/memgraph_impl/test_memgraph_storage.py
-    - tests/kg/milvus_impl/test_milvus_deferred_embedding.py
-    - tests/kg/milvus_impl/test_milvus_escape_filter.py
-    - tests/kg/milvus_impl/test_milvus_index_config.py
-    - tests/kg/milvus_impl/test_milvus_index_creation.py
-    - tests/kg/milvus_impl/test_milvus_kwargs_bridge.py
-    - tests/kg/milvus_impl/test_milvus_migration_memory.py
-    - tests/kg/milvus_impl/test_milvus_migration_retry.py
-    - tests/kg/neo4j_impl/test_neo4j_graph_read_contract.py
-    - tests/kg/neo4j_impl/test_neo4j_kg_tie_break.py
-    - tests/kg/neo4j_impl/test_neo4j_robust_fallback_truncation.py
-    - tests/kg/neo4j_impl/test_search_labels_sanitize.py
-    - tests/kg/neo4j_impl/test_workspace_label_injection.py
-    - tests/kg/opensearch_impl/test_opensearch_strict_reads.py
-    - tests/kg/opensearch_impl/test_os_scheduling_pages.py
-    - tests/kg/redis_impl/test_redis_doc_status_lookup.py
-    - tests/kg/redis_impl/test_redis_eviction_guard.py
-    - tests/kg/redis_impl/test_redis_finalize.py
-    - tests/kg/redis_impl/test_redis_scheduling_pages.py
-    - tests/kg/test_doc_status_strict_parse_branches.py
-    - tests/llm/anthropic_impl/test_anthropic_client_cleanup.py
-    - tests/llm/bedrock_impl/test_bedrock_llm.py
-    - tests/llm/test_dimension_mismatch.py
-    - tests/llm/test_no_model_suffix_safety.py
-  raw_baseline: ci/baselines/lightrag-collection-before.xml
-  raw_baseline_sha256: 18670799edc18a995ee389a197d1ec6b57fe424283aeae072a05870796e51c24
-  classification: ENV_BLOCKED
-  policy: no_new_collection_error_file

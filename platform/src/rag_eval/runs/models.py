@@ -170,7 +170,6 @@ class TraceValidationRecordV2(ArtifactV2Model):
     adapter_result_digest: str | None = Field(
         default=None, pattern=r"^sha256:[0-9a-f]{64}$"
     )
-    wire_shadow_verified: bool = False
 
     @model_validator(mode="after")
     def validate_observed(self) -> TraceValidationRecordV2:

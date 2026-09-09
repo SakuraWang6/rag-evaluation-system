@@ -4,7 +4,11 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import yaml
+
 SCRIPT = Path(__file__).resolve().parents[1] / "pytest_signal_gate.py"
+BASELINE = SCRIPT.with_name("known-baseline.yaml")
+WORKFLOW = SCRIPT.parents[1] / ".github" / "workflows" / "required.yml"
 SPEC = importlib.util.spec_from_file_location("pytest_signal_gate", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -115,8 +119,7 @@ def test_named_adapter_section_can_reuse_exact_adapter_policy() -> None:
 
 def test_platform_gate_requires_named_nodes_and_rejects_ci_skips() -> None:
     config = {
-        "minimum_passed_ci": 2,
-        "minimum_passed_local": 1,
+        "expected_collected": 3,
         "required_passed_node_ids": ["test_gate.py::test_required"],
         "required_passed_node_ids_ci": ["test_gate.py::test_sandbox"],
         "allowed_local_skipped_node_ids": ["test_gate.py::test_sandbox"],
@@ -139,13 +142,55 @@ def test_platform_gate_requires_named_nodes_and_rejects_ci_skips() -> None:
     )
 
 
+def test_platform_gate_rejects_unlisted_test_removal() -> None:
+    config = {
+        "expected_collected": 2,
+        "required_passed_node_ids": [],
+        "required_passed_node_ids_ci": [],
+        "allowed_local_skipped_node_ids": [],
+    }
+
+    errors = validate_outcomes(
+        "platform_pytest",
+        config,
+        recorder({"test_gate.py::test_survivor": "passed"}),
+        profile="ci",
+    )
+
+    assert errors == ["collected count 1 != 2"]
+
+
 def test_gate_rejects_collected_node_without_outcome() -> None:
     value = recorder({"test_gate.py::test_one": "passed"})
     value.collected.add("test_gate.py::test_missing")
     errors = validate_outcomes(
-        "adapter_dirty_tests",
-        {"expected_passed": 1},
+        "adapter_pytest",
+        {"expected_passed": 1, "exact_failed_node_ids": []},
         value,
         profile="ci",
     )
     assert any("without outcomes" in error for error in errors)
+
+
+def test_known_baseline_contains_only_active_required_gates() -> None:
+    baseline = yaml.safe_load(BASELINE.read_text(encoding="utf-8"))
+    assert set(baseline) == {
+        "schema_version",
+        "captured_at",
+        "adapter_pytest",
+        "lightrag_native_pytest",
+        "rag_anything_pytest",
+        "platform_pytest",
+        "platform_ruff",
+    }
+
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    for section in (
+        "adapter_pytest",
+        "lightrag_native_pytest",
+        "rag_anything_pytest",
+        "platform_pytest",
+    ):
+        assert f"--section {section}" in workflow
+    assert "ci/check_ruff_differential.py" in workflow
+    assert "lightrag_collection" not in workflow

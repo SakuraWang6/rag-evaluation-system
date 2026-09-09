@@ -34,6 +34,8 @@ from tests.rag_eval_platform.test_run_artifact_v2 import (
     _prepared_fixture,
 )
 
+EXAMPLES_ROOT = Path(__file__).resolve().parents[2] / "examples"
+
 
 def test_evidence_groups_are_non_empty_and_reference_known_ids() -> None:
     evidence = GoldEvidence(
@@ -153,7 +155,7 @@ def test_formal_experiment_requires_verified_immutable_model_identity() -> None:
         experiment_ids=["formal", "other"],
         tier="strict_controlled",
         controlled_factors=["adapter.profile"],
-        primary_metrics=["context_recall@5"],
+        primary_metrics=["ranked_complete_evidence_recall@5"],
         model_lock_digest=artifact_digest(ModelLock(models={"llm": artifact})),
         latency_protocol_digest=artifact_digest(latency_protocol),
         analysis_contract_digest=artifact_digest(analysis_contract),
@@ -189,7 +191,7 @@ def test_formal_prepare_fails_before_ingestion_when_model_identity_is_missing() 
         experiment_ids=["formal", "other"],
         tier="strict_controlled",
         controlled_factors=["adapter.profile"],
-        primary_metrics=["context_recall@5"],
+        primary_metrics=["ranked_complete_evidence_recall@5"],
         model_lock_digest=artifact_digest(ModelLock(models={"llm": artifact})),
         latency_protocol_digest=artifact_digest(latency_protocol),
         analysis_contract_digest=artifact_digest(analysis_contract),
@@ -263,3 +265,16 @@ def test_latency_protocol_requires_observed_cache_policy_and_warms_once() -> Non
     )
     assert len(client.requests) == 1
     assert client.requests[0].generate_answer is False
+
+
+def test_checked_in_research_examples_match_current_contracts() -> None:
+    examples = {
+        "comparison-spec.strict.example.json": ComparisonSpec,
+        "latency-protocol.v1.json": LatencyProtocol,
+        "model-lock.example.json": ModelLock,
+    }
+    for filename, model in examples.items():
+        model.model_validate_json((EXAMPLES_ROOT / filename).read_text(encoding="utf-8"))
+
+    assert not (EXAMPLES_ROOT / "query-request.json").exists()
+    assert not (EXAMPLES_ROOT / "worker-handshake.json").exists()

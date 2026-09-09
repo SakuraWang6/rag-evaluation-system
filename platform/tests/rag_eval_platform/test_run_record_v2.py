@@ -264,7 +264,6 @@ def _pending_payload() -> dict[str, object]:
     }
 
 
-@pytest.mark.native_v2_characterization
 def test_run_record_v2_is_only_orchestration_metadata() -> None:
     record = RunRecordV2.model_validate(_pending_payload())
 
@@ -296,7 +295,6 @@ def test_run_record_v2_is_only_orchestration_metadata() -> None:
             RunRecordV2.model_validate({**_pending_payload(), forbidden: {}})
 
 
-@pytest.mark.native_v2_characterization
 def test_run_record_state_cannot_claim_an_artifact_outside_completed() -> None:
     now = datetime(2026, 9, 9, tzinfo=UTC)
     artifact_fields = {
@@ -326,7 +324,6 @@ def test_run_record_state_cannot_claim_an_artifact_outside_completed() -> None:
         )
 
 
-@pytest.mark.native_v2_characterization
 def test_run_record_completes_only_after_verified_artifact_publication(
     tmp_path: Path,
 ) -> None:
@@ -372,7 +369,6 @@ def test_run_record_completes_only_after_verified_artifact_publication(
     assert records.get(second.run_id).state == RunRecordStateV2.RUNNING
 
 
-@pytest.mark.native_v2_characterization
 def test_tampered_artifact_cannot_complete_a_run_record(tmp_path: Path) -> None:
     plans, reference = _record_plan_store(tmp_path)
     records = RunRecordStoreV2(tmp_path / "runs", plans)
@@ -410,7 +406,6 @@ def test_tampered_artifact_cannot_complete_a_run_record(tmp_path: Path) -> None:
     assert records.get("run-1").state == RunRecordStateV2.RUNNING
 
 
-@pytest.mark.native_v2_characterization
 def test_self_valid_artifact_for_another_plan_cannot_complete_the_run(
     tmp_path: Path,
 ) -> None:
@@ -468,7 +463,6 @@ def test_run_record_refuses_to_overlay_a_legacy_run_directory(tmp_path: Path) ->
     assert not (run_directory / RUN_RECORD_V2_FILENAME).exists()
 
 
-@pytest.mark.native_v2_characterization
 def test_native_executor_completes_only_after_publishing_verified_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -501,7 +495,6 @@ def test_native_executor_completes_only_after_publishing_verified_artifact(
     assert client.query_count == 1
 
 
-@pytest.mark.native_v2_characterization
 def test_native_executor_persists_no_legacy_evaluation_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -558,7 +551,6 @@ def test_legacy_evaluation_persistence_readers_are_absent() -> None:
     assert not hasattr(FormalDatasetReleaseService, "resolve_historical_run")
 
 
-@pytest.mark.native_v2_characterization
 def test_artifact_publication_failure_marks_native_run_failed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

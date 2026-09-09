@@ -1,6 +1,6 @@
 {
-  "comparison_id": "lightrag-legacy-vs-enhanced-example",
-  "experiment_ids": ["legacy-example", "enhanced-example"],
+  "comparison_id": "lightrag-default-vs-structured-example",
+  "experiment_ids": ["default-example", "structured-example"],
   "tier": "strict_controlled",
   "controlled_factors": [
     "query.query_mode",
@@ -18,8 +18,11 @@
     "adapter.ranking_strategy",
     "adapter.table_preceding_context"
   ],
-  "primary_metrics": ["context_recall@5"],
-  "secondary_metrics": ["answer_accuracy", "answer_groundedness"],
+  "primary_metrics": [
+    "ranked_complete_evidence_recall@5",
+    "ranked_complete_evidence_mrr@5"
+  ],
+  "secondary_metrics": ["ranked_evidence_coverage@5"],
   "minimum_metric_coverage": 1.0,
   "model_lock_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "latency_protocol_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

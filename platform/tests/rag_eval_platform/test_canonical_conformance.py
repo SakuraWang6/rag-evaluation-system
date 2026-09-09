@@ -186,26 +186,6 @@ def test_first_wave_gold_eligibility_is_explicit_and_fail_closed(
     )
 
 
-def test_shadow_comparison_classifies_only_expected_gold_boundary_changes(
-    tmp_path: Path,
-) -> None:
-    service = AuthoringService(tmp_path)
-    dataset = service.analyze(
-        service.upload_docx(filename="shadow.docx", payload=mini_docx()).authoring_dataset_id
-    )
-    shadow = dataset.analysis["canonical_conformance"]["legacy_shadow"]
-    changed = shadow["changed_by_object_type"]
-
-    assert shadow["changed_object_count"] == sum(changed.values())
-    assert changed["cell"] == 4
-    assert changed["paragraph"] == 3  # empty structural placeholders fail closed
-    assert {
-        "text_span",
-        "table",
-        "logical_cell",
-    }.isdisjoint(changed)
-
-
 def test_table_and_cell_subtype_matrix_is_explicit(tmp_path: Path) -> None:
     decisions = {
         item.subtype: item.gold_evidence_eligible

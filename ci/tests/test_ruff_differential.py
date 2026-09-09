@@ -65,3 +65,15 @@ def test_differential_reports_new_normalized_diagnostic(tmp_path: Path) -> None:
     platform = tmp_path / "platform"
     new = additions([], [diagnostic(str(platform / "new.py"))], platform)
     assert new[("new.py", "F401", "unused")] == 1
+
+
+def test_removed_baseline_identity_is_rejected_if_reintroduced(
+    tmp_path: Path,
+) -> None:
+    platform = tmp_path / "platform"
+    fixed = diagnostic(str(platform / "fixed.py"), "I001", "Import block is un-sorted")
+
+    assert additions([fixed], [], platform) == {}
+    assert additions([], [fixed], platform) == {
+        ("fixed.py", "I001", "Import block is un-sorted"): 1
+    }

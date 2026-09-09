@@ -4,6 +4,7 @@ from pathlib import Path
 
 from rag_eval import contracts
 from rag_eval.contracts.schema import PUBLIC_MODELS
+from rag_eval.runs.models import TraceValidationRecordV2
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
@@ -34,6 +35,7 @@ def test_retired_runtime_contracts_are_not_public() -> None:
     exported = set(contracts.__all__)
     assert retired.isdisjoint(exported)
     assert all(not hasattr(contracts, name) for name in retired)
+    assert "wire_shadow_verified" not in TraceValidationRecordV2.model_fields
 
 
 def test_retired_contract_owners_are_removed() -> None:

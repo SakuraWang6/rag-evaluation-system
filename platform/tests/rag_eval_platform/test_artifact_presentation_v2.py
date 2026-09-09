@@ -125,7 +125,6 @@ def _forbid_runtime_projection(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("rag_eval.runs.orchestration.score_answer", forbidden)
 
 
-@pytest.mark.native_v2_characterization
 def test_artifact_v2_api_reads_only_persisted_views(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -196,7 +195,6 @@ def test_artifact_v2_api_reads_only_persisted_views(
     assert persisted.manifest().artifact_digest in report.text
 
 
-@pytest.mark.native_v2_characterization
 def test_comparison_marks_descriptor_drifted_metrics_noncomparable(
     tmp_path: Path,
 ) -> None:
@@ -253,7 +251,6 @@ def test_legacy_artifact_api_is_not_a_supported_read_route(
     )
 
 
-@pytest.mark.native_v2_characterization
 def test_corrupted_artifact_v2_is_diagnostic_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -281,7 +278,6 @@ def test_corrupted_artifact_v2_is_diagnostic_only(
     assert "legacy_case" not in detail
 
 
-@pytest.mark.native_v2_characterization
 def test_missing_artifact_v2_is_reported_as_corruption_not_legacy_or_zero(
     tmp_path: Path,
 ) -> None:
@@ -329,7 +325,6 @@ def test_artifact_presentation_schemas_are_exported() -> None:
         assert observed == PUBLIC_MODELS[name].model_json_schema()
 
 
-@pytest.mark.native_v2_characterization
 def test_webui_has_no_rag_name_corpus_mode_or_segment_metric_branch() -> None:
     source_root = Path(__file__).resolve().parents[3] / "webui" / "src"
     source = "\n".join(

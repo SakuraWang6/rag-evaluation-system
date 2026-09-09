@@ -377,7 +377,7 @@ export interface RunArtifactCaseV2 {
       locator?: Record<string, unknown>
     }>
   }
-  trace_validation: { status: ObservationStatus; reason: string | null; wire_shadow_verified: boolean }
+  trace_validation: { status: ObservationStatus; reason: string | null }
   adapter_result: {
     protocol_version: '2.0'
     adapter_id: string

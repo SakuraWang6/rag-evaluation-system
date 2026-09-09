@@ -117,24 +117,12 @@ def validate_outcomes(
                     f"forbidden {forbidden} outcomes: {sorted(by_outcome[forbidden])}"
                 )
         errors.extend(_require_named_passes(config, recorder, profile=profile))
-    elif gate_kind == "adapter_dirty_tests":
-        passed = len(by_outcome.get("passed", set()))
-        if passed != int(config["expected_passed"]):
-            errors.append(f"passed count {passed} != {config['expected_passed']}")
-        non_passed = {
-            node_id: outcome
-            for node_id, outcome in recorder.outcomes.items()
-            if outcome != "passed"
-        }
-        if non_passed:
-            errors.append(f"non-passing outcomes: {non_passed}")
-        errors.extend(_require_named_passes(config, recorder, profile=profile))
     elif gate_kind == "platform_pytest":
-        minimum_key = "minimum_passed_ci" if profile == "ci" else "minimum_passed_local"
-        minimum_passed = int(config[minimum_key])
-        passed = len(by_outcome.get("passed", set()))
-        if passed < minimum_passed:
-            errors.append(f"passed count {passed} < {minimum_passed}")
+        expected_collected = int(config["expected_collected"])
+        if len(recorder.collected) != expected_collected:
+            errors.append(
+                f"collected count {len(recorder.collected)} != {expected_collected}"
+            )
         errors.extend(_require_named_passes(config, recorder, profile=profile))
         allowed_skips = (
             set()

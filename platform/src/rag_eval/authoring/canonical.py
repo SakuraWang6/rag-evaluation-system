@@ -150,10 +150,6 @@ class DocxCanonicalizer:
             canonicalizer_identity=CANONICALIZER_VERSION,
             configuration_digest=configuration_digest,
         )
-        legacy_gold_eligibility = {
-            item.object_id: item.gold_evidence_eligible
-            for item in provisional_contract.objects
-        }
         suite = CanonicalConformanceSuite()
         provisional_conformance = suite.evaluate(provisional_contract)
         eligibility = suite.eligibility_attributes(provisional_conformance)
@@ -242,29 +238,6 @@ class DocxCanonicalizer:
                     item.status == status for item in conformance.object_results
                 )
                 for status in ("conformant", "nonconformant", "not_evaluated")
-            },
-            "legacy_shadow": {
-                "changed_object_count": sum(
-                    legacy_gold_eligibility[item.object_id]
-                    != item.gold_evidence_eligible
-                    for item in conformance.object_results
-                ),
-                "changed_by_object_type": {
-                    object_type: sum(
-                        result.object_type.value == object_type
-                        and legacy_gold_eligibility[result.object_id]
-                        != result.gold_evidence_eligible
-                        for result in conformance.object_results
-                    )
-                    for object_type in sorted(
-                        {
-                            result.object_type.value
-                            for result in conformance.object_results
-                            if legacy_gold_eligibility[result.object_id]
-                            != result.gold_evidence_eligible
-                        }
-                    )
-                },
             },
         }
         atomic_write_json(diagnostics_path, diagnostics)

@@ -22,8 +22,6 @@ from tests.rag_eval_platform.test_native_formal_cutover import (
     _native_product_service,
 )
 
-pytestmark = pytest.mark.native_v2_characterization
-
 
 def _native_experiment(
     tmp_path: Path,

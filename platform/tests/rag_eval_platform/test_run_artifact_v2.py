@@ -180,7 +180,6 @@ def _benchmark_identity(*resolved) -> BenchmarkIdentityV2:
     )
 
 
-@pytest.mark.native_v2_characterization
 def test_artifact_v2_is_immutable_self_verifying_and_read_without_scorer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -250,7 +249,6 @@ def test_artifact_v2_is_immutable_self_verifying_and_read_without_scorer(
         )
 
 
-@pytest.mark.native_v2_characterization
 def test_artifact_v2_persists_an_unobservable_direct_v2_result(
     tmp_path: Path,
 ) -> None:
@@ -302,7 +300,6 @@ def test_artifact_v2_persists_an_unobservable_direct_v2_result(
     )
 
 
-@pytest.mark.native_v2_characterization
 def test_leaderboard_eligibility_uses_persisted_metric_availability_and_descriptors() -> None:
     resolved_a, case_a = _evaluated_case("case-1", context_budget=4096)
     resolved_b, case_b = _evaluated_case("case-2", context_budget=8192)
@@ -363,7 +360,6 @@ def test_trace_validator_fails_closed_on_direct_v2_identity_mismatch() -> None:
     assert result.model_dump(mode="json") == original
 
 
-@pytest.mark.native_v2_characterization
 def test_named_v2_orchestration_flow_queries_once_and_never_sends_gold() -> None:
     _, _, _, result = _observed_fixture()
 
@@ -409,7 +405,6 @@ def test_named_v2_orchestration_flow_queries_once_and_never_sends_gold() -> None
     assert outcome.artifact_case.evaluation.core_metrics_available
 
 
-@pytest.mark.native_v2_characterization
 def test_run_v2_core_has_no_rag_or_corpus_mode_branches() -> None:
     root = Path(__file__).resolve().parents[2] / "src" / "rag_eval" / "runs"
     source = "\n".join(

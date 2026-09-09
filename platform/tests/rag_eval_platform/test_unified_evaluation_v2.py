@@ -337,7 +337,6 @@ def _metric(result: object, metric_id: str):
     return result.metric(metric_id)  # type: ignore[attr-defined]
 
 
-@pytest.mark.native_v2_characterization
 def test_gold_carries_a_stable_canonical_identity_without_adapter_input() -> None:
     cell = GoldEvidence(
         evidence_id="cell",
@@ -419,7 +418,6 @@ def test_legacy_gold_without_snapshot_pin_remains_readable_but_not_v2_scorable()
     )
 
 
-@pytest.mark.native_v2_characterization
 def test_verified_top_five_computes_all_core_metrics_without_full_ranking() -> None:
     chunks = tuple(_chunk(f"chunk-{rank}") for rank in range(1, 6))
     extent_a = _text_extent("gold-a")
@@ -488,7 +486,6 @@ def test_verified_top_five_computes_all_core_metrics_without_full_ranking() -> N
     assert type(result).model_validate_json(result.model_dump_json()) == result
 
 
-@pytest.mark.native_v2_characterization
 def test_truncated_top_three_does_not_claim_top_five_or_mrr_at_five() -> None:
     chunks = tuple(_chunk(f"chunk-{rank}") for rank in range(1, 4))
     extent = _text_extent("gold-a")
@@ -615,7 +612,6 @@ def test_logical_table_cell_is_one_atom_proved_by_multiple_physical_cells() -> N
     assert _metric(result, "ranked_complete_evidence_mrr@5").value == 0.5
 
 
-@pytest.mark.native_v2_characterization
 def test_unknown_mapping_is_unavailable_unless_the_metric_is_already_one() -> None:
     chunks = (_chunk("unknown"), _chunk("known"))
     expected = _text_extent("gold-a")
@@ -798,7 +794,6 @@ def test_verified_stage_gain_is_recorded_separately_from_loss() -> None:
     assert _metric(result, "candidate_to_ranked_stage_gain").value == 1
 
 
-@pytest.mark.native_v2_characterization
 def test_derived_context_without_output_coverage_proof_is_unavailable() -> None:
     source_chunk = _chunk("source")
     derived_chunk = _chunk("compressed-context")
@@ -847,7 +842,6 @@ def test_derived_context_without_output_coverage_proof_is_unavailable() -> None:
     assert result.failure.kind == FailureKind.UNOBSERVABLE
 
 
-@pytest.mark.native_v2_characterization
 def test_failure_attribution_is_proof_gated_through_generation() -> None:
     chunks = (_chunk("gold"), _chunk("noise"))
     extent = _text_extent("gold-a")
@@ -955,7 +949,6 @@ def test_parser_ranking_and_context_failures_require_complete_prior_proof() -> N
     assert context_loss.failure.kind == FailureKind.CONTEXT_LOSS
 
 
-@pytest.mark.native_v2_characterization
 def test_unknown_earlier_rank_makes_mrr_unavailable_but_not_complete_coverage() -> None:
     chunks = (_chunk("unknown"), _chunk("complete"))
     expected = _text_extent("gold-a")
@@ -1018,7 +1011,6 @@ def test_or_alternative_and_path_aggregation_use_best_verified_choice() -> None:
     assert _metric(result, "ranked_complete_evidence_recall@1").value == 1
 
 
-@pytest.mark.native_v2_characterization
 def test_unified_scorer_has_no_rag_or_corpus_mode_branches() -> None:
     root = Path(__file__).resolve().parents[2] / "src/rag_eval/evaluation/unified"
     forbidden = {"lightrag", "rag_anything", "rag-anything", "evaluation_corpus"}

@@ -112,18 +112,18 @@ jobs:
           --python "${PYTHON_BASELINE}"
           --with pytest==9.1.1 --with pytest-asyncio==1.4.0 --with pyyaml==6.0.3
           python ci/pytest_signal_gate.py --section adapter_pytest
-      - name: Validate retained Adapter regression tests
+      - name: Validate LightRAG native conformance
         run: >-
           uv run --project adapters/lightrag --frozen
           --python "${PYTHON_BASELINE}"
           --with pytest==9.1.1 --with pytest-asyncio==1.4.0 --with pyyaml==6.0.3
-          python ci/pytest_signal_gate.py --section adapter_dirty_tests
-      - name: Validate RAG-Anything native observation contract
+          python ci/pytest_signal_gate.py --section lightrag_native_pytest
+      - name: Validate RAG-Anything native conformance
         run: >-
           uv run --project adapters/rag-anything --frozen
           --python "${PYTHON_BASELINE}"
           --with pytest==9.1.1 --with pytest-asyncio==1.4.0 --with pyyaml==6.0.3
-          python ci/pytest_signal_gate.py --section rag_anything_observation_pytest
+          python ci/pytest_signal_gate.py --section rag_anything_pytest
 
   ruff-differential:
     name: platform / Ruff differential
