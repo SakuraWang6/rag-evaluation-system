@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from rag_eval import contracts
@@ -80,3 +81,49 @@ def test_checked_in_public_schemas_are_v2_only() -> None:
         path.name for path in (schema_root / "2.0").glob("*.schema.json")
     }
     assert actual_files == expected_files
+
+
+def test_local_launcher_does_not_enable_retired_run_or_host_profiles() -> None:
+    launcher = (
+        REPOSITORY_ROOT / "platform" / "scripts" / "start-local.sh"
+    ).read_text(encoding="utf-8")
+
+    retired_fragments = {
+        ".rag-eval-e2e-rehearsal",
+        "/Users/",
+        "Historical runs:",
+        "RAG_EVAL_BOOTSTRAP_LOCAL_SYSTEM",
+        "RAG_EVAL_RUN_ARCHIVES",
+    }
+    assert not any(fragment in launcher for fragment in retired_fragments)
+
+
+def test_one_off_audit_recipes_are_not_supported_operator_scripts() -> None:
+    scripts_root = REPOSITORY_ROOT / "platform" / "scripts"
+    retired_scripts = {
+        "audit_docx_rich_content.py",
+        "run_complex_table_canonical_audit.py",
+        "run_development_benchmark_48_authoring.py",
+        "run_real_benchmark_authoring_pilot.py",
+    }
+
+    assert not any((scripts_root / name).exists() for name in retired_scripts)
+
+
+def test_webui_authoring_catalog_has_no_retired_presegmented_actions() -> None:
+    locale_root = REPOSITORY_ROOT / "webui" / "src" / "i18n"
+    retired_keys = {
+        "product.authoring.canonicalRegistered",
+        "product.authoring.compatibilityExport",
+        "product.authoring.exported",
+        "product.authoring.exportHint",
+        "product.authoring.exportRegister",
+        "product.authoring.exportViews",
+        "product.authoring.nativeRegistered",
+        "product.authoring.registerCanonical",
+        "product.authoring.registerNative",
+    }
+
+    for locale_name in ("en-US.json", "zh-CN.json"):
+        messages = json.loads((locale_root / locale_name).read_text(encoding="utf-8"))
+        assert retired_keys.isdisjoint(messages)

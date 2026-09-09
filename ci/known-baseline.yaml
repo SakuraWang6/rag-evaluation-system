@@ -79,7 +79,7 @@ platform_pytest:
   pytest: "9.1.1"
   test_paths:
     - platform/tests
-  expected_collected: 318
+  expected_collected: 321
   required_passed_node_ids:
     - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_verified_derivation_and_truncated_prefix
     - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_observed_partial_stages_with_rank_gaps
@@ -105,6 +105,9 @@ platform_pytest:
     - platform/tests/rag_eval_platform/test_comparison.py::test_artifact_v2_runs_compare_without_any_legacy_route_projection
     - platform/tests/rag_eval_platform/test_documentation_authority.py::test_long_term_documentation_has_one_native_v2_authority
     - platform/tests/rag_eval_platform/test_documentation_authority.py::test_maintained_documentation_links_are_portable_and_resolve
+    - platform/tests/rag_eval_platform/test_native_v2_contract_cutover.py::test_local_launcher_does_not_enable_retired_run_or_host_profiles
+    - platform/tests/rag_eval_platform/test_native_v2_contract_cutover.py::test_one_off_audit_recipes_are_not_supported_operator_scripts
+    - platform/tests/rag_eval_platform/test_native_v2_contract_cutover.py::test_webui_authoring_catalog_has_no_retired_presegmented_actions
   required_passed_node_ids_ci:
     - platform/tests/rag_eval_platform/test_worker_process.py::test_fake_adapter_runs_over_real_loopback_process
     - platform/tests/rag_eval_platform/test_worker_process.py::test_process_group_cancellation_ends_parser_descendants
@@ -118,8 +121,8 @@ platform_ruff:
   tool: "ruff 0.16.1"
   command_before: "ruff check . --output-format=json"
   command_after: "cd platform && ruff check . --output-format=json"
-  expected_before_diagnostics: 167
-  expected_before_fixable: 103
+  expected_before_diagnostics: 156
+  expected_before_fixable: 97
   raw_baseline: ci/baselines/platform-ruff-before.json
-  raw_baseline_sha256: d95c940abbd6598509aba7a65990d2716499dfa1c2995ef1e53046f35479b2a7
+  raw_baseline_sha256: f15de985bddfd5e85c1ab72a929d92d9f6991b416abfb94f694d9cced834a297
   policy: no_new_normalized_diagnostics

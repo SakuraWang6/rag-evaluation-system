@@ -18,32 +18,6 @@ API_PORT="${RAG_EVAL_API_PORT:-8765}"
 WEBUI_PORT="${RAG_EVAL_WEBUI_PORT:-4178}"
 API_URL="http://127.0.0.1:${API_PORT}/api/v1"
 
-# Completed E2E runs live in their immutable rehearsal homes.  The Platform
-# starts normally from the real benchmark home, while the standard Runs API
-# reads these existing schema-v2 manifests through a read-only compatibility
-# layer. Nothing is copied or mutated.
-if [[ -z "${RAG_EVAL_RUN_ARCHIVES:-}" ]]; then
-  shopt -s nullglob
-  RUN_ARCHIVES=()
-  for archive in "$WORKSPACE_ROOT"/.rag-eval-e2e-rehearsal-v*; do
-    [[ -d "$archive/runs" ]] && RUN_ARCHIVES+=("$archive")
-  done
-  shopt -u nullglob
-  if (( ${#RUN_ARCHIVES[@]} )); then
-    RAG_EVAL_RUN_ARCHIVES="$(IFS=:; echo "${RUN_ARCHIVES[*]}")"
-    export RAG_EVAL_RUN_ARCHIVES
-  fi
-fi
-
-# The bundled local launcher has one concrete LightRAG runtime on this
-# workstation.  Record it as a normal product connection so the Systems and
-# New Evaluation pages are immediately usable; startup still does not launch
-# a Worker or a LightRAG server.
-if [[ -z "${RAG_EVAL_LIGHTRAG_WORKER_PYTHON:-}" && -x "/Users/sakura/miniconda3/envs/lightrag-memory-eval/bin/python" ]]; then
-  export RAG_EVAL_LIGHTRAG_WORKER_PYTHON="/Users/sakura/miniconda3/envs/lightrag-memory-eval/bin/python"
-fi
-export RAG_EVAL_BOOTSTRAP_LOCAL_SYSTEM="${RAG_EVAL_BOOTSTRAP_LOCAL_SYSTEM:-1}"
-
 api_ready() {
   curl --noproxy '*' --fail --silent --max-time 1 "$API_URL/health" >/dev/null
 }
@@ -140,9 +114,6 @@ echo "Starting RAG Evaluation Platform"
 echo "  API:    $API_URL"
 echo "  WebUI:  http://127.0.0.1:${WEBUI_PORT}"
 echo "  Home:   $PLATFORM_HOME"
-if [[ -n "${RAG_EVAL_RUN_ARCHIVES:-}" ]]; then
-  echo "  Historical runs: enabled (read-only compatibility)"
-fi
 
 "${RAG_EVAL_COMMAND[@]}" --home "$PLATFORM_HOME" serve --host 127.0.0.1 --port "$API_PORT" &
 API_PID=$!
