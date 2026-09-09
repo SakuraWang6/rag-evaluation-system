@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from rag_eval.execution_provider import runtime_endpoint
+from rag_eval.products import ProductResources, SystemConnection
+from rag_eval.runs.plans import ResolvedSystemIdentityV2, digest_json
+from rag_eval.secrets import SecretStore
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.runs import safe_id
 from rag_eval.worker.process import WorkerCommand
-from rag_eval.execution_provider import runtime_endpoint
-from rag_eval.products import ProductResources, SystemConnection
-from rag_eval.secrets import SecretStore
 
 
 class SystemRegistration(BaseModel):
@@ -117,6 +118,114 @@ class SystemResolver:
         except FileNotFoundError:
             return False
 
+    def plan_identity(
+        self,
+        system_id: str,
+        *,
+        expected_adapter_id: str,
+        provider: str | None = None,
+    ) -> ResolvedSystemIdentityV2:
+        """Resolve a secret-free, reproducible identity before queue admission."""
+
+        if self.products is not None:
+            try:
+                connection = self.products.get_connection(system_id)
+            except FileNotFoundError:
+                connection = None
+            if connection is not None:
+                profile = self.products.profiles.get(
+                    connection.profile_id, connection.profile_version
+                )
+                if connection.system_id != profile.system_id:
+                    raise ValueError(
+                        "system connection does not match its worker profile"
+                    )
+                selected_provider = provider or connection.execution_provider
+                if selected_provider != connection.execution_provider:
+                    raise ValueError(
+                        "execution provider must match the selected system connection"
+                    )
+                if profile.adapter_id != expected_adapter_id:
+                    raise ValueError(
+                        "Experiment adapter_id does not match the selected worker profile"
+                    )
+                secret_digests: dict[str, str] = {}
+                if connection.secret_bindings:
+                    if self.secrets is None:
+                        raise ValueError("secret storage is unavailable")
+                    for environment_key, reference in sorted(
+                        connection.secret_bindings.items()
+                    ):
+                        secret = self.secrets.get(reference)
+                        secret_digests[environment_key] = _private_value_digest(
+                            reference, secret
+                        )
+                config_identity = {
+                    "system_id": connection.system_id,
+                    "profile_id": connection.profile_id,
+                    "profile_version": connection.profile_version,
+                    "execution_provider": selected_provider,
+                    "logical_endpoint_ref": connection.logical_endpoint_ref,
+                    "python_executable": connection.python_executable,
+                    "non_secret_environment": connection.non_secret_environment,
+                    "secret_binding_digests": secret_digests,
+                    "adapter_overrides": connection.adapter_overrides,
+                    "query_overrides": connection.query_overrides,
+                    "metric_overrides": connection.metric_overrides,
+                    "request_timeout_seconds": connection.request_timeout_seconds,
+                }
+                return ResolvedSystemIdentityV2(
+                    system_id=connection.system_id,
+                    adapter_id=profile.adapter_id,
+                    adapter_factory=profile.adapter_factory,
+                    worker_profile_kind="product_profile",
+                    worker_profile_id=profile.profile_id,
+                    worker_profile_version=profile.profile_version,
+                    worker_profile_digest=digest_json(
+                        profile.model_dump(mode="json")
+                    ),
+                    system_config_digest=digest_json(config_identity),
+                    execution_provider=selected_provider,
+                    worker_request_timeout_seconds=connection.request_timeout_seconds,
+                )
+
+        registration = self.legacy.get(system_id)
+        selected_provider = provider or "local"
+        if selected_provider != "local":
+            raise ValueError("registered systems support only the local provider")
+        if registration.adapter_id != expected_adapter_id:
+            raise ValueError(
+                "Experiment adapter_id does not match the registered worker profile"
+            )
+        environment_digests = {
+            key: _private_value_digest(key, value)
+            for key, value in sorted(registration.environment.items())
+        }
+        profile_identity = {
+            "system_id": registration.system_id,
+            "adapter_id": registration.adapter_id,
+            "adapter_factory": registration.adapter_factory,
+        }
+        config_identity = {
+            **profile_identity,
+            "python_executable": registration.python_executable,
+            "environment_digests": environment_digests,
+            "request_timeout_seconds": registration.request_timeout_seconds,
+            "execution_provider": selected_provider,
+        }
+        return ResolvedSystemIdentityV2(
+            system_id=registration.system_id,
+            adapter_id=registration.adapter_id,
+            adapter_factory=registration.adapter_factory,
+            worker_profile_kind="registered_system",
+            worker_profile_id=f"registered-{registration.system_id}",
+            worker_profile_version="unversioned",
+            worker_profile_digest=digest_json(profile_identity),
+            system_config_digest=digest_json(config_identity),
+            execution_provider=selected_provider,
+            worker_request_timeout_seconds=registration.request_timeout_seconds,
+        )
+
     def _resolve_connection(
         self, connection: SystemConnection, *, provider: str | None
     ) -> ResolvedSystem:
@@ -188,3 +297,9 @@ def _local_standard_runtime_sources(profile_id: str) -> tuple[str, ...]:
     if adapter_source.is_dir() and platform_source.is_dir():
         return (str(platform_source), str(adapter_source))
     return ()
+
+
+def _private_value_digest(label: str, value: str) -> str:
+    """Bind mutable secret/environment values without persisting their content."""
+
+    return "sha256:" + hashlib.sha256(f"{label}\0{value}".encode()).hexdigest()

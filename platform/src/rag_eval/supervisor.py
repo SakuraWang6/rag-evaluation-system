@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Callable, Self
+from collections.abc import Callable
+from typing import Self
 
 from rag_eval.contracts.run import RunStatus
 from rag_eval.execution import RunExecutor
-from rag_eval.jobs import JobStatus, JobStore
-from rag_eval.systems import SystemResolver
 from rag_eval.execution_provider import ExecutionProviderRegistry
+from rag_eval.jobs import JobStatus, JobStore
+from rag_eval.runs.plans import (
+    ResolvedRunPlanReferenceV2,
+    ResolvedRunPlanStore,
+)
+from rag_eval.systems import SystemResolver
 
 logger = logging.getLogger(__name__)
 _STOP_TIMEOUT_SECONDS = 5.0
@@ -20,12 +25,14 @@ class JobSupervisor:
     def __init__(
         self,
         jobs: JobStore,
+        resolved_run_plans: ResolvedRunPlanStore,
         systems: SystemResolver,
         executor: RunExecutor,
         providers: ExecutionProviderRegistry,
         on_run_completed: Callable[[str], object] | None = None,
     ) -> None:
         self.jobs = jobs
+        self.resolved_run_plans = resolved_run_plans
         self.systems = systems
         self.executor = executor
         self.providers = providers
@@ -72,10 +79,33 @@ class JobSupervisor:
         if job is None:
             return False
         try:
+            plan = self.resolved_run_plans.get(
+                ResolvedRunPlanReferenceV2(
+                    path=job.resolved_plan_path,
+                    digest=job.resolved_plan_digest,
+                )
+            )
+            if not plan.matches_experiment(job.experiment):
+                raise ValueError(
+                    "queued Experiment does not match its immutable resolved plan"
+                )
+            if job.execution_provider != plan.system.execution_provider:
+                raise ValueError(
+                    "queued execution provider does not match the resolved plan"
+                )
             resolved = self.systems.resolve(
                 job.experiment.system_id,
                 provider=job.execution_provider,
             )
+            current_system_identity = self.systems.plan_identity(
+                job.experiment.system_id,
+                expected_adapter_id=job.experiment.adapter_id,
+                provider=job.execution_provider,
+            )
+            if current_system_identity != plan.system:
+                raise ValueError(
+                    "queued system/worker profile drifted from the resolved plan"
+                )
 
             def cancelled() -> bool:
                 return self.jobs.get(job.job_id).status == JobStatus.CANCELLING
@@ -98,6 +128,7 @@ class JobSupervisor:
                 cancelled=cancelled,
                 worker_started=worker_started,
                 execution_metadata=resolved.execution_metadata,
+                resolved_plan=plan,
             )
             current = self.jobs.get(job.job_id)
             if manifest.status == RunStatus.CANCELLED or current.status == JobStatus.CANCELLING:

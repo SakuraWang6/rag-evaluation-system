@@ -10,6 +10,7 @@ from rag_eval.api import create_app
 from rag_eval.contracts.run import ExperimentSpec
 from rag_eval.datasets.bundle import case_selection_id
 from rag_eval.jobs import JobStatus, JobStore
+from rag_eval.runs.plans import ResolvedRunPlanReferenceV2
 from rag_eval.service import PlatformService
 from rag_eval.storage.layout import PlatformPaths
 from rag_eval.systems import SystemRegistration
@@ -28,11 +29,23 @@ def experiment(bundle_id: str) -> ExperimentSpec:
 
 def test_job_state_machine_cancel_and_restart_recovery(tmp_path: Path) -> None:
     store = JobStore(tmp_path / "jobs")
-    queued = store.create(experiment("bundle"))
+    reference = ResolvedRunPlanReferenceV2(
+        path="resolved-run-plans/experiment-1.json",
+        digest="sha256:" + "a" * 64,
+    )
+    queued = store.create(
+        experiment("bundle"),
+        resolved_plan=reference,
+        execution_provider="local",
+    )
     assert store.request_cancel(queued.job_id).status == JobStatus.CANCELLED
 
     active = store.create(
-        experiment("bundle").model_copy(update={"experiment_id": "experiment-2"})
+        experiment("bundle").model_copy(update={"experiment_id": "experiment-2"}),
+        resolved_plan=reference.model_copy(
+            update={"path": "resolved-run-plans/experiment-2.json"}
+        ),
+        execution_provider="local",
     )
     claimed = store.claim_next()
     assert claimed is not None and claimed.job_id == active.job_id
@@ -79,12 +92,10 @@ def test_api_keeps_system_registration_local_and_legacy_out(tmp_path: Path) -> N
     created = client.post(
         "/api/v1/experiments", json=spec.model_dump(mode="json")
     )
-    assert created.status_code == 200
-    queued = client.post("/api/v1/experiments/experiment-1/runs")
-    assert queued.status_code == 200
-    job_id = queued.json()["job_id"]
-    cancelled = client.post(f"/api/v1/jobs/{job_id}/cancel")
-    assert cancelled.json()["status"] == "cancelled"
+    assert created.status_code == 400
+    assert "Benchmark Release" in created.text
+    assert service.experiments.list() == []
+    assert service.jobs.list() == []
 
     liveness_dir = service.paths.runs / "native-active" / "work" / "rep-0001"
     liveness_dir.mkdir(parents=True)

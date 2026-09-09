@@ -941,6 +941,8 @@ export interface ExperimentSpec {
 export interface JobRecord {
   job_id: string
   status: string
+  resolved_plan_path: string
+  resolved_plan_digest: string
   run_id: string | null
   error: string | null
   updated_at: string

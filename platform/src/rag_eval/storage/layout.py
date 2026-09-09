@@ -38,6 +38,10 @@ class PlatformPaths:
         return self.home / "experiments"
 
     @property
+    def resolved_run_plans(self) -> Path:
+        return self.home / "resolved-run-plans"
+
+    @property
     def systems(self) -> Path:
         return self.home / "systems"
 
@@ -132,6 +136,7 @@ class PlatformPaths:
             self.runs,
             self.jobs,
             self.experiments,
+            self.resolved_run_plans,
             self.systems,
         ]
         if product_enabled:

@@ -4,29 +4,20 @@ from __future__ import annotations
 
 import os
 
+from rag_eval.authoring import AuthoringService
 from rag_eval.contracts.run import ExperimentSpec
+from rag_eval.datasets.admission import BenchmarkAdmissionService
 from rag_eval.datasets.bundle import DatasetBundle, DatasetBundleStore
 from rag_eval.datasets.bundle_v3 import BundleV3Store
-from rag_eval.datasets.registry import DatasetRegistry
-from rag_eval.execution import RunExecutor
-from rag_eval.jobs import JobStore
-from rag_eval.storage.experiments import ExperimentStore
-from rag_eval.storage.layout import PlatformPaths
-from rag_eval.storage.runs import RunStore
-from rag_eval.supervisor import JobSupervisor
-from rag_eval.systems import SystemRegistry
-from rag_eval.systems import SystemResolver
-from rag_eval.products import ProductResources, SystemConnection
 from rag_eval.datasets.drafts import DatasetDraftStore
-from rag_eval.secrets import DeferredSecretStore, create_secret_store
-from rag_eval.execution_provider import ExecutionProviderRegistry
-from rag_eval.authoring import AuthoringService
 from rag_eval.datasets.formal import FormalDatasetReleaseService
 from rag_eval.datasets.portfolio import BenchmarkPortfolioService
-from rag_eval.datasets.admission import BenchmarkAdmissionService
-from rag_eval.run_history import RunHistory
-from rag_eval.run_presentations import RunPresentationStore
+from rag_eval.datasets.registry import DatasetRegistry
+from rag_eval.execution import RunExecutor
+from rag_eval.execution_provider import ExecutionProviderRegistry
+from rag_eval.jobs import JobRecord, JobStore
 from rag_eval.llm import LLMConfigurationService
+from rag_eval.products import ProductResources, SystemConnection
 from rag_eval.reviews import (
     AnswerSupportReviewStore,
     CaseReviewStore,
@@ -34,10 +25,23 @@ from rag_eval.reviews import (
     SemanticAnswerSupportReviewer,
     SemanticReviewCoordinator,
 )
+from rag_eval.run_history import RunHistory
+from rag_eval.run_presentations import RunPresentationStore
+from rag_eval.runs.plans import (
+    ResolvedRunPlanReferenceV2,
+    ResolvedRunPlanStore,
+    ResolvedRunPlanV2,
+)
 from rag_eval.runtime_admission import (
     NewRunAdmissionError,
     admit_new_public_experiment,
 )
+from rag_eval.secrets import DeferredSecretStore, create_secret_store
+from rag_eval.storage.experiments import ExperimentStore
+from rag_eval.storage.layout import PlatformPaths
+from rag_eval.storage.runs import RunStore
+from rag_eval.supervisor import JobSupervisor
+from rag_eval.systems import SystemRegistry, SystemResolver
 
 
 class PlatformService:
@@ -66,6 +70,7 @@ class PlatformService:
         )
         self.jobs = JobStore(paths.jobs)
         self.experiments = ExperimentStore(paths.experiments)
+        self.resolved_run_plans = ResolvedRunPlanStore(paths.resolved_run_plans)
         self.systems = SystemRegistry(paths.systems)
         self.providers = ExecutionProviderRegistry()
         self.llm = LLMConfigurationService(paths.llm_configuration) if self.product_enabled else None
@@ -179,6 +184,7 @@ class PlatformService:
         self.system_resolver = SystemResolver(self.systems, self.products, self.secrets)
         self.supervisor = JobSupervisor(
             self.jobs,
+            self.resolved_run_plans,
             self.system_resolver,
             self.executor,
             self.providers,
@@ -194,8 +200,19 @@ class PlatformService:
         self,
         experiment: ExperimentSpec,
         bundle: DatasetBundle,
-    ) -> None:
-        """Resolve immutable Release authority, then apply public admission."""
+    ) -> ResolvedRunPlanReferenceV2:
+        """Validate and freeze the one immutable plan bound to an Experiment."""
+
+        return self.resolved_run_plans.create(
+            self.resolve_new_public_experiment(experiment, bundle)
+        )
+
+    def resolve_new_public_experiment(
+        self,
+        experiment: ExperimentSpec,
+        bundle: DatasetBundle,
+    ) -> ResolvedRunPlanV2:
+        """Resolve Native v2 authority without persisting a preview plan."""
 
         release_store = None
         expected_runtime_bundle_id = None
@@ -216,11 +233,36 @@ class PlatformService:
                     "selected Benchmark Release cannot produce its verified "
                     "native runtime projection"
                 ) from exc
-        admit_new_public_experiment(
+        try:
+            system_identity = self.system_resolver.plan_identity(
+                experiment.system_id,
+                expected_adapter_id=experiment.adapter_id,
+            )
+        except (KeyError, OSError, RuntimeError, ValueError) as exc:
+            raise NewRunAdmissionError(
+                "selected System/Adapter worker profile is unavailable or invalid"
+            ) from exc
+        return admit_new_public_experiment(
             experiment,
             bundle,
+            system_identity=system_identity,
             release_store=release_store,
             expected_runtime_bundle_id=expected_runtime_bundle_id,
+        )
+
+    def queue_new_public_experiment(
+        self,
+        experiment: ExperimentSpec,
+        bundle: DatasetBundle,
+    ) -> JobRecord:
+        """Freeze and attach the exact plan before a Job becomes queued."""
+
+        reference = self.admit_new_public_experiment(experiment, bundle)
+        plan = self.resolved_run_plans.get(reference)
+        return self.jobs.create(
+            experiment,
+            resolved_plan=reference,
+            execution_provider=plan.system.execution_provider,
         )
 
     def _schedule_post_run_reviews(self, run_id: str) -> None:

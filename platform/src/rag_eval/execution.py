@@ -125,8 +125,9 @@ from rag_eval.runs import (
     TraceValidationResult,
     TraceValidator,
     benchmark_identity_from_release_metadata,
-    evaluation_profile_from_configs,
+    evaluation_profile_from_query_config,
 )
+from rag_eval.runs.plans import ResolvedRunPlanV2, formal_metric_descriptors
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.runs import RunStore
 from rag_eval.worker.client import WorkerRemoteError
@@ -156,10 +157,45 @@ class RunExecutor:
         worker_started: Callable[[str, int], None] | None = None,
         replay_of_run_id: str | None = None,
         execution_metadata: dict[str, object] | None = None,
+        resolved_plan: ResolvedRunPlanV2 | None = None,
     ) -> RunManifest:
         run_id = run_id or uuid.uuid4().hex
         cancelled = cancelled or (lambda: False)
         bundle = self.dataset_store.get(experiment.bundle_id)
+        if resolved_plan is not None:
+            if not resolved_plan.matches_experiment(experiment):
+                raise ValueError("Experiment does not match its immutable resolved plan")
+            if (
+                command.adapter_id != resolved_plan.system.adapter_id
+                or command.adapter_factory != resolved_plan.system.adapter_factory
+                or command.request_timeout_seconds
+                != resolved_plan.system.worker_request_timeout_seconds
+            ):
+                raise ValueError(
+                    "Worker command does not match the immutable resolved plan"
+                )
+            if resolved_plan.metric_descriptors != formal_metric_descriptors(
+                resolved_plan.evaluation_profile
+            ):
+                raise ValueError(
+                    "resolved plan scorer descriptors do not match the running Platform"
+                )
+            documents_by_id = {
+                document.document_id: document for document in bundle.manifest.documents
+            }
+            planned_document = documents_by_id.get(
+                resolved_plan.original_document.document_id
+            )
+            if (
+                planned_document is None
+                or planned_document.sha256
+                != resolved_plan.original_document.source_sha256
+                or planned_document.path
+                != resolved_plan.original_document.runtime_path
+            ):
+                raise ValueError(
+                    "runtime Bundle does not match the resolved original DOCX identity"
+                )
         self._validate_dataset_release_reference(experiment, bundle)
         benchmark_dataset = self._load_benchmark_contract(experiment)
         questions = (
@@ -191,8 +227,10 @@ class RunExecutor:
         corpus: CorpusEvidenceIndex | None = None
         results: list[CaseResult] = []
         artifact_v2_cases: list[RunArtifactCaseV2] = []
-        artifact_v2_profile: EvaluationProfile | None = None
-        artifact_v2_profile_resolved = False
+        artifact_v2_profile = (
+            resolved_plan.evaluation_profile if resolved_plan is not None else None
+        )
+        artifact_v2_profile_resolved = resolved_plan is not None
         index_fingerprints: list[str] = []
         index_artifact_digests: list[str] = []
         first_handshake = None
@@ -328,9 +366,12 @@ class RunExecutor:
                     validate_prepared(
                         prepared, experiment, validation_effective_config
                     )
-                    current_artifact_v2_profile = evaluation_profile_from_configs(
-                        experiment.query_config,
-                        prepared.effective_config,
+                    current_artifact_v2_profile = (
+                        resolved_plan.evaluation_profile
+                        if resolved_plan is not None
+                        else evaluation_profile_from_query_config(
+                            experiment.query_config
+                        )
                     )
                     if not artifact_v2_profile_resolved:
                         artifact_v2_profile = current_artifact_v2_profile

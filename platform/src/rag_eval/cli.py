@@ -139,10 +139,10 @@ def main(argv: list[str] | None = None) -> int:
         print(service.experiments.create(experiment))
     elif args.command == "run":
         experiment = service.experiments.get(args.experiment_id)
-        service.admit_new_public_experiment(
-            experiment, service.datasets.get(experiment.bundle_id)
+        job = service.queue_new_public_experiment(
+            experiment,
+            service.datasets.get(experiment.bundle_id),
         )
-        job = service.jobs.create(experiment)
         service.supervisor.run_once()
         print(service.jobs.get(job.job_id).model_dump_json(indent=2))
     elif args.command == "compare":
@@ -179,13 +179,31 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         original = service.runs.get(args.run_id)
         experiment = service.runs.experiment(args.run_id)
-        resolved = service.system_resolver.resolve(experiment.system_id)
+        bundle = service.datasets.get(experiment.bundle_id)
+        plan_reference = service.admit_new_public_experiment(experiment, bundle)
+        resolved_plan = service.resolved_run_plans.get(plan_reference)
+        resolved = service.system_resolver.resolve(
+            experiment.system_id,
+            provider=resolved_plan.system.execution_provider,
+        )
+        if (
+            service.system_resolver.plan_identity(
+                experiment.system_id,
+                expected_adapter_id=experiment.adapter_id,
+                provider=resolved_plan.system.execution_provider,
+            )
+            != resolved_plan.system
+        ):
+            raise ValueError(
+                "replay system/worker profile drifted from the resolved plan"
+            )
         replayed = service.executor.execute(
             experiment,
             resolved.command,
             run_id=args.new_run_id,
             replay_of_run_id=original.run_id,
             execution_metadata=resolved.execution_metadata,
+            resolved_plan=resolved_plan,
         )
         mismatches = replay_mismatches(original, replayed)
         report = {

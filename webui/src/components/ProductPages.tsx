@@ -1417,7 +1417,6 @@ export function NewEvaluationPage({ formalDatasets, onQueued }: { formalDatasets
   const [contextK, setContextK] = useState('')
   const [tokenBudget, setTokenBudget] = useState('')
   const [queryTimeoutSeconds, setQueryTimeoutSeconds] = useState('300')
-  const [metricPreset, setMetricPreset] = useState('balanced')
   const [generateAnswer, setGenerateAnswer] = useState('default')
   const [seed, setSeed] = useState('0')
   const [repetitions, setRepetitions] = useState('1')
@@ -1473,7 +1472,6 @@ export function NewEvaluationPage({ formalDatasets, onQueued }: { formalDatasets
       ...(context === undefined ? {} : { final_context_k: context }),
       ...(tokens === undefined ? {} : { max_context_tokens: tokens }),
     }
-    const metricValues = metricPreset === 'recall' ? [1, 5, 10] : metricPreset === 'quick' ? [1, 3] : [1, 3, 5]
     const queryOverrides: Record<string, unknown> = {
       ...retrieval,
       ...(mode === 'advanced' && generateAnswer !== 'default' ? { generate_answer: generateAnswer === 'on' } : {}),
@@ -1495,7 +1493,7 @@ export function NewEvaluationPage({ formalDatasets, onQueued }: { formalDatasets
         ...(queryTimeout === undefined ? {} : { query_timeout_seconds: queryTimeout }),
       },
       query_overrides: queryOverrides,
-      metric_overrides: mode === 'advanced' ? { k_values: metricValues } : {},
+      metric_overrides: {},
       case_ids: null,
       seed: selectedSeed,
       repetitions: selectedRepetitions,
@@ -1544,9 +1542,9 @@ export function NewEvaluationPage({ formalDatasets, onQueued }: { formalDatasets
         <label><span>{t('product.wizard.candidateK')}</span><select value={candidateK} onChange={(event) => { setCandidateK(event.target.value); clearPreview() }}><option value="">{t('product.wizard.useSystemDefault')}</option>{[10, 20, 40, 80].map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
         <label><span>{t('product.wizard.contextK')}</span><select value={contextK} onChange={(event) => { setContextK(event.target.value); clearPreview() }}><option value="">{t('product.wizard.useSystemDefault')}</option>{[1, 3, 5, 8, 10].map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
         <label><span>{t('product.wizard.tokenBudget')}</span><select value={tokenBudget} onChange={(event) => { setTokenBudget(event.target.value); clearPreview() }}><option value="">{t('product.wizard.useSystemDefault')}</option>{[2048, 4096, 8192, 12000, 16384].map((value) => <option value={value} key={value}>{value.toLocaleString()}</option>)}</select></label>
+        <label><span>{t('product.wizard.metricRange')}</span><select value="native-v2" disabled><option value="native-v2">{t('product.wizard.metricBalanced')}</option></select></label>
         {queryTimeoutMinimum !== null && <label><span>{t('product.wizard.queryTimeout')}</span><input type="number" min={queryTimeoutMinimum} step={queryTimeoutMinimum} inputMode="numeric" value={queryTimeoutSeconds} onChange={(event) => { setQueryTimeoutSeconds(event.target.value); clearPreview() }} /><small className="field-note">{t('product.wizard.queryTimeoutHelp')}</small></label>}
         <label><span>{t('product.wizard.answerGeneration')}</span><select value={generateAnswer} onChange={(event) => { setGenerateAnswer(event.target.value); clearPreview() }}><option value="default">{t('product.wizard.useSystemDefault')}</option><option value="on">{t('product.wizard.answerGenerationOn')}</option><option value="off">{t('product.wizard.answerGenerationOff')}</option></select></label>
-        <label><span>{t('product.wizard.metricRange')}</span><select value={metricPreset} onChange={(event) => { setMetricPreset(event.target.value); clearPreview() }}><option value="balanced">{t('product.wizard.metricBalanced')}</option><option value="quick">{t('product.wizard.metricQuick')}</option><option value="recall">{t('product.wizard.metricRecall')}</option></select></label>
         <label><span>{t('product.wizard.repetitions')}</span><select value={repetitions} onChange={(event) => { setRepetitions(event.target.value); clearPreview() }}>{[1, 3, 5, 10].map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
         <label><span>{t('product.wizard.seed')}</span><input inputMode="numeric" value={seed} onChange={(event) => { setSeed(event.target.value); clearPreview() }} /><small className="field-note">{t('product.wizard.seedHelp')}</small></label>
       </div></DisclosureSection>}

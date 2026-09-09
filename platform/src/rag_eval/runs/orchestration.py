@@ -510,18 +510,20 @@ class NativeCaseOrchestrator:
         )
 
 
-def evaluation_profile_from_configs(
-    query_config: Mapping[str, Any], adapter_config: Mapping[str, Any]
+def evaluation_profile_from_query_config(
+    query_config: Mapping[str, Any],
 ) -> EvaluationProfile | None:
+    """Resolve only Platform query fields; Adapter defaults are never cutoffs."""
+
     candidate = query_config.get("retrieval_candidate_k")
-    if candidate is None:
-        candidate = adapter_config.get("retrieval_candidate_k")
     context_budget = query_config.get("max_context_tokens")
-    if context_budget is None:
-        context_budget = adapter_config.get("max_context_tokens")
-    if not isinstance(candidate, int) or candidate < 1:
+    if isinstance(candidate, bool) or not isinstance(candidate, int) or candidate < 1:
         return None
-    if not isinstance(context_budget, int) or context_budget < 1:
+    if (
+        isinstance(context_budget, bool)
+        or not isinstance(context_budget, int)
+        or context_budget < 1
+    ):
         return None
     return EvaluationProfile(
         candidate_cutoff=candidate,
@@ -584,5 +586,5 @@ __all__ = [
     "TraceValidationResult",
     "TraceValidator",
     "benchmark_identity_from_release_metadata",
-    "evaluation_profile_from_configs",
+    "evaluation_profile_from_query_config",
 ]

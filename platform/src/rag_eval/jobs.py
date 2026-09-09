@@ -12,6 +12,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from rag_eval.contracts.run import ExperimentSpec
+from rag_eval.runs.plans import ResolvedRunPlanReferenceV2
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.runs import safe_id
 from rag_eval.worker.process import terminate_process_group
@@ -41,11 +42,13 @@ class JobRecord(BaseModel):
     job_id: str
     status: JobStatus
     experiment: ExperimentSpec
+    resolved_plan_path: str = Field(min_length=1)
+    resolved_plan_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     created_at: datetime
     updated_at: datetime
     run_id: str | None = None
     worker_pid: int | None = Field(default=None, ge=1)
-    execution_provider: str = "local"
+    execution_provider: str = Field(min_length=1)
     error: str | None = None
 
 
@@ -75,12 +78,20 @@ class JobStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
 
-    def create(self, experiment: ExperimentSpec, *, execution_provider: str = "local") -> JobRecord:
+    def create(
+        self,
+        experiment: ExperimentSpec,
+        *,
+        resolved_plan: ResolvedRunPlanReferenceV2,
+        execution_provider: str,
+    ) -> JobRecord:
         now = datetime.now(UTC)
         record = JobRecord(
             job_id=uuid.uuid4().hex,
             status=JobStatus.QUEUED,
             experiment=experiment,
+            resolved_plan_path=resolved_plan.path,
+            resolved_plan_digest=resolved_plan.digest,
             created_at=now,
             updated_at=now,
             execution_provider=execution_provider,

@@ -109,7 +109,9 @@ def test_standalone_fake_adapter_run_is_reproducible_and_source_only(
             environment={"PYTHONPATH": pythonpath},
         )
     )
-    assert (
+    with pytest.raises(
+        ValueError, match="new public Runs require an immutable Benchmark Release"
+    ):
         cli_main(
             [
                 "--home",
@@ -120,11 +122,7 @@ def test_standalone_fake_adapter_run_is_reproducible_and_source_only(
                 "fake-replay",
             ]
         )
-        == 0
-    )
-    replayed = run_store.get("fake-replay")
-    assert replayed.replay_of_run_id == "fake-run"
-    assert run_store.verify_artifacts("fake-replay").valid
+    assert not (run_store.root / "fake-replay").exists()
 
     summary_path.write_text("{}", encoding="utf-8")
     verification = run_store.verify_artifacts("fake-run")

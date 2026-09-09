@@ -1241,8 +1241,7 @@ def create_app(
         try:
             experiment = service.experiments.get(experiment_id)
             bundle = service.datasets.get(experiment.bundle_id)
-            service.admit_new_public_experiment(experiment, bundle)
-            job = service.jobs.create(experiment)
+            job = service.queue_new_public_experiment(experiment, bundle)
         except NewRunAdmissionError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except (OSError, ValueError) as exc:
@@ -1965,12 +1964,12 @@ def create_app(
         require_product()
         try:
             spec = _canonical_draft(service, draft_id)
+            bundle = service.datasets.get(spec.bundle_id)
+            service.admit_new_public_experiment(spec, bundle)
             service.experiments.create(spec)
             response: dict[str, Any] = {"experiment": spec.model_dump(mode="json")}
             if request.queue:
-                assert service.products is not None
-                connection = service.products.get_connection(spec.system_id)
-                job = service.jobs.create(spec, execution_provider=connection.execution_provider)
+                job = service.queue_new_public_experiment(spec, bundle)
                 service.supervisor.notify()
                 response["job"] = job.model_dump(mode="json")
             return response
@@ -2015,7 +2014,7 @@ def _canonical_draft(service: PlatformService, draft_id: str) -> ExperimentSpec:
         case_ids=[item.case_id for item in bundle.questions],
         bundle_id=bundle.bundle_id,
     )
-    service.admit_new_public_experiment(experiment, bundle)
+    service.resolve_new_public_experiment(experiment, bundle)
     return experiment
 
 

@@ -4,16 +4,30 @@ import threading
 from types import SimpleNamespace
 
 import pytest
-
+from rag_eval.artifact_contract import artifact_digest
 from rag_eval.contracts.run import ExperimentSpec, RunStatus
+from rag_eval.evaluation.unified.models import EvaluationProfile
 from rag_eval.execution import RunExecutor
-from rag_eval.jobs import JobStore, JobStatus
+from rag_eval.jobs import JobStatus, JobStore
+from rag_eval.runs.plans import (
+    BenchmarkReleaseIdentityV2,
+    NativeMetricConfigV2,
+    NativeQueryConfigV2,
+    OriginalDocumentIdentityV2,
+    ResolvedResourceLimitsV2,
+    ResolvedRunPlanStore,
+    ResolvedRunPlanV2,
+    ResolvedSystemIdentityV2,
+    digest_json,
+    formal_metric_descriptors,
+)
 from rag_eval.supervisor import JobSupervisor
 
 
 def _idle_supervisor(tmp_path) -> JobSupervisor:
     return JobSupervisor(
         JobStore(tmp_path / "idle-jobs"),
+        ResolvedRunPlanStore(tmp_path / "idle-resolved-run-plans"),
         SimpleNamespace(),
         RunExecutor(SimpleNamespace(), SimpleNamespace()),  # type: ignore[arg-type]
         SimpleNamespace(),
@@ -84,20 +98,78 @@ def test_supervisor_keeps_the_formal_release_store_for_queued_runs(tmp_path, mon
 
     formal_store = object()
     jobs = JobStore(tmp_path / "jobs")
-    job = jobs.create(
-        ExperimentSpec(
-            experiment_id="formal-supervisor-test",
-            bundle_id="bundle-runtime-test",
-            dataset_release_id="dataset-release-formal-test",
-            system_id="fixture-system",
-            adapter_id="fixture-adapter",
-            adapter_config={},
-            query_config={},
-            metric_config={},
-            case_selection_id="selection-test",
-            seed=0,
-            repetitions=1,
+    plans = ResolvedRunPlanStore(tmp_path / "resolved-run-plans")
+    experiment = ExperimentSpec(
+        experiment_id="formal-supervisor-test",
+        bundle_id="a" * 64,
+        dataset_release_id="dataset-release-formal-test",
+        system_id="fixture-system",
+        adapter_id="fixture-adapter",
+        adapter_config={},
+        query_config={
+            "generate_answer": True,
+            "retrieval_candidate_k": 3,
+            "final_context_k": 1,
+            "max_context_tokens": 2000,
+            "generation_options": {},
+        },
+        metric_config={"k_values": [1, 3, 5]},
+        case_selection_id="selection-test",
+        seed=0,
+        repetitions=1,
+    )
+    system_identity = ResolvedSystemIdentityV2(
+        system_id="fixture-system",
+        adapter_id="fixture-adapter",
+        adapter_factory="fixture.worker:create",
+        worker_profile_kind="registered_system",
+        worker_profile_id="fixture-profile",
+        worker_profile_version="1",
+        worker_profile_digest="sha256:" + "b" * 64,
+        system_config_digest="sha256:" + "c" * 64,
+        execution_provider="fixture",
+        worker_request_timeout_seconds=10,
+    )
+    query_config = NativeQueryConfigV2.model_validate(experiment.query_config)
+    profile = EvaluationProfile(
+        candidate_cutoff=3,
+        ranked_cutoffs=(1, 3, 5),
+        ranked_mrr_cutoff=5,
+        context_budget=2000,
+    )
+    plan = ResolvedRunPlanV2(
+        experiment_id=experiment.experiment_id,
+        experiment_digest=artifact_digest(experiment),
+        benchmark_release=BenchmarkReleaseIdentityV2(
+            release_id="dataset-release-formal-test",
+            release_digest="d" * 64,
+            validation_report_digest="e" * 64,
+            runtime_bundle_id="a" * 64,
         ),
+        original_document=OriginalDocumentIdentityV2(
+            document_id="fixture-document",
+            source_sha256="f" * 64,
+            runtime_path="documents/fixture.docx",
+            mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+        system=system_identity,
+        adapter_config_digest=digest_json(experiment.adapter_config),
+        query_config=query_config,
+        metric_config=NativeMetricConfigV2.model_validate(experiment.metric_config),
+        evaluation_profile=profile,
+        metric_descriptors=formal_metric_descriptors(profile),
+        case_ids=("case-1",),
+        case_selection_id=experiment.case_selection_id,
+        seed=0,
+        repetitions=1,
+        resource_limits=ResolvedResourceLimitsV2(
+            worker_request_timeout_seconds=10,
+            max_context_tokens=2000,
+        ),
+    )
+    job = jobs.create(
+        experiment,
+        resolved_plan=plans.create(plan),
         execution_provider="fixture",
     )
     outer_executor = RunExecutor(
@@ -105,16 +177,20 @@ def test_supervisor_keeps_the_formal_release_store_for_queued_runs(tmp_path, mon
         SimpleNamespace(),  # type: ignore[arg-type]
         dataset_release_store=formal_store,  # type: ignore[arg-type]
     )
-    observed: list[object] = []
+    observed: list[tuple[object, object]] = []
 
     def execute(self, *_args, **_kwargs):
-        observed.append(self.dataset_release_store)
+        observed.append(
+            (self.dataset_release_store, _kwargs.get("resolved_plan"))
+        )
         return SimpleNamespace(status=RunStatus.COMPLETED, run_id="formal-run")
 
     monkeypatch.setattr(RunExecutor, "execute", execute)
     supervisor = JobSupervisor(
         jobs,
+        plans,
         SimpleNamespace(
+            plan_identity=lambda *_args, **_kwargs: system_identity,
             resolve=lambda *_args, **_kwargs: SimpleNamespace(
                 command=SimpleNamespace(), provider="fixture", execution_metadata={}
             )
@@ -124,5 +200,5 @@ def test_supervisor_keeps_the_formal_release_store_for_queued_runs(tmp_path, mon
     )
 
     assert supervisor.run_once() is True
-    assert observed == [formal_store]
+    assert observed == [(formal_store, plan)]
     assert jobs.get(job.job_id).status == JobStatus.COMPLETED
