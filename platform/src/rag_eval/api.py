@@ -49,7 +49,7 @@ from rag_eval.runtime_admission import (
     require_no_public_corpus_selector,
 )
 from rag_eval.service import PlatformService
-from rag_eval.storage.runs import safe_id
+from rag_eval.storage.ids import safe_id
 from rag_eval.llm import (
     LLMProviderConfig,
     LLMProviderKind,
@@ -1051,9 +1051,9 @@ def create_app(
     async def remove_formal_dataset_from_catalog(release_id: str) -> dict[str, Any]:
         """Remove one frozen version from the current product dataset list.
 
-        Immutable release artifacts remain available to historical runs; this
-        operation does not mutate a release, Gold, Canonical snapshot, or
-        Bundle.
+        Immutable release artifacts remain addressable by existing Native v2
+        Run plans; this operation does not mutate a release, Gold, Canonical
+        snapshot, or Bundle.
         """
 
         if service.formal_datasets is None:

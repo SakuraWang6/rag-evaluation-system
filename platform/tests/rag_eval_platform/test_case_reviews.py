@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 import pytest
 
 from rag_eval.artifact_contract import artifact_digest
@@ -26,7 +24,6 @@ from rag_eval.runs.models import (
     ArtifactAnswerStatus,
     RunArtifactCaseV2,
 )
-from rag_eval.storage.runs import case_judgments
 from tests.rag_eval_platform.test_run_artifact_v2 import _evaluated_case
 
 CASE_DIGEST = "sha256:" + "d" * 64
@@ -130,14 +127,10 @@ def test_human_review_ledger_is_append_only_and_changes_product_verdict(
     assert first.latest.verdict == CaseReviewVerdict.NEEDS_REVIEW
     assert second.latest is not None
     assert second.latest.source == CaseReviewSource.HUMAN
-    assert case_judgments(
-        status="completed",
-        metrics=[],
-        failure_assessment=None,
-        review=store.get(
-            "run-1", "case-1", 1, artifact_case_digest=CASE_DIGEST
-        ).api_view(),
-    )["answer_judgment"] == "correct"
+    projected = store.get(
+        "run-1", "case-1", 1, artifact_case_digest=CASE_DIGEST
+    ).api_view()
+    assert projected["latest"]["verdict"] == "correct"
 
 
 def test_semantic_review_records_an_auditable_llm_verdict(
@@ -195,7 +188,7 @@ def test_automatic_semantic_review_is_durable_and_leaves_run_artifacts_alone(
     assert store.review_run_status("run-auto-semantic").state == SemanticReviewRunState.COMPLETED
 
 
-def test_human_review_stays_final_even_if_a_legacy_llm_entry_is_later(tmp_path) -> None:
+def test_human_review_stays_final_against_later_llm_attempt(tmp_path) -> None:
     store = CaseReviewStore(tmp_path / "case-reviews")
     human = store.append(
         run_id="run-human-final",
@@ -220,26 +213,9 @@ def test_human_review_stays_final_even_if_a_legacy_llm_entry_is_later(tmp_path) 
             model="qwen",
             prompt_digest="b" * 64,
         )
-    legacy_view = human.api_view()
-    legacy_view["history"].append(
-        {
-            "revision": 2,
-            "verdict": "incorrect",
-            "source": "llm",
-            "reviewer": "legacy-model",
-            "note": "old retry",
-            "created_at": datetime.now(UTC).isoformat(),
-            "model": "legacy",
-            "prompt_digest": "c" * 64,
-        }
-    )
-    legacy_view["latest"] = legacy_view["history"][-1]
-    assert case_judgments(
-        status="completed",
-        metrics=[],
-        failure_assessment=None,
-        review=legacy_view,
-    )["answer_judgment"] == "correct"
+    assert human.latest is not None
+    assert human.latest.source == CaseReviewSource.HUMAN
+    assert human.latest.verdict == CaseReviewVerdict.CORRECT
 
 
 def test_review_overlay_rejects_another_artifact_case_digest(tmp_path) -> None:

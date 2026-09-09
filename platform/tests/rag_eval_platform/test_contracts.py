@@ -9,9 +9,7 @@ from pydantic import ValidationError
 
 from rag_eval.artifact_contract import artifact_digest
 from rag_eval.contracts.adapter import (
-    AdapterCapabilities,
     DocumentInput,
-    PreparedSystem,
     RAGEvidenceItem,
     RAGResult,
 )
@@ -34,7 +32,7 @@ from rag_eval.contracts.schema import PUBLIC_MODELS
 from rag_eval.execution import (
     run_latency_warmup,
     validate_latency_runtime,
-    validate_prepared,
+    validate_prepared_v2,
 )
 from tests.rag_eval_platform.test_run_artifact_v2 import (
     _observed_fixture,
@@ -260,11 +258,11 @@ def test_formal_prepare_fails_before_ingestion_when_model_identity_is_missing() 
         latency_protocol=latency_protocol,
         latency_protocol_digest=artifact_digest(latency_protocol),
     )
-    prepared = PreparedSystem(
-        effective_config={}, capabilities=AdapterCapabilities(answer=True), system_version="1"
+    prepared = _prepared_fixture(_observed_fixture()[3]).model_copy(
+        update={"effective_config": {}}
     )
     with pytest.raises(ValueError, match="lacks model artifact"):
-        validate_prepared(prepared, experiment, None)
+        validate_prepared_v2(prepared, experiment, None)
 
 
 def test_latency_protocol_requires_observed_cache_policy_and_warms_once() -> None:

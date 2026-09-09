@@ -26,7 +26,6 @@ from tests.rag_eval_platform.test_run_artifact_v2 import (
     _benchmark_identity,
     _evaluated_case,
 )
-from tests.rag_eval_platform.test_run_history import _write_archive
 from tests.rag_eval_platform.test_unified_evaluation_v2 import SHA_A, SHA_C, _profile
 
 
@@ -110,17 +109,20 @@ def _write_v2_run(
     return run_dir
 
 
+def _write_retired_run(root: Path) -> None:
+    run_dir = root / "runs" / "archive-run-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "run.json").write_text("{}\n", encoding="utf-8")
+
+
 def _forbid_runtime_projection(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(*_args, **_kwargs):
         raise AssertionError("Artifact presentation must not score or map provenance")
 
-    monkeypatch.setattr("rag_eval.run_history.aggregate_metrics", forbidden)
-    monkeypatch.setattr("rag_eval.run_history.evidence_observability", forbidden)
-    monkeypatch.setattr("rag_eval.storage.runs.case_judgments", forbidden)
-    monkeypatch.setattr("rag_eval.storage.runs.score_answer", forbidden)
     monkeypatch.setattr(
         "rag_eval.runs.orchestration.evaluate_unified_trace", forbidden
     )
+    monkeypatch.setattr("rag_eval.runs.orchestration.score_answer", forbidden)
 
 
 @pytest.mark.native_v2_characterization
@@ -224,7 +226,7 @@ def test_legacy_artifact_api_is_not_a_supported_read_route(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     archive = tmp_path / "archive"
-    _write_archive(archive)
+    _write_retired_run(archive)
     monkeypatch.setenv("RAG_EVAL_RUN_ARCHIVES", str(archive))
     service = PlatformService(PlatformPaths(tmp_path / "platform"))
     _forbid_runtime_projection(monkeypatch)

@@ -1,336 +1,156 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
-from rag_eval.artifact_contract import artifact_digest
-from rag_eval.comparison import validate_comparison
-from rag_eval.contracts.adapter import AdapterCapabilities
-from rag_eval.contracts.research import (
-    AnalysisContract,
-    ComparisonSpec,
-    LatencyProtocol,
-    ModelArtifactIdentity,
-    ModelLock,
+from rag_eval.comparison import (
+    ArtifactComparisonRunV2,
+    validate_artifact_comparison_v2,
 )
-from rag_eval.contracts.run import (
-    ComparisonTier,
-    ReproducibilityRecord,
-    RunManifest,
-    RunStatus,
-)
-
-MODEL_ARTIFACT = ModelArtifactIdentity(
-    display_name="controlled",
-    requested_ref="controlled:latest",
-    resolved_digest="sha256:" + "a" * 64,
-    resolver="test",
-    resolved_at=datetime(2026, 8, 24, tzinfo=UTC),
-    verified=True,
-)
-MODEL_LOCK_DIGEST = artifact_digest(ModelLock(models={"llm": MODEL_ARTIFACT}))
-ANALYSIS_CONTRACT_DIGEST = artifact_digest(AnalysisContract(analysis_seed=7))
-LATENCY_PROTOCOL_DIGEST = artifact_digest(LatencyProtocol())
+from rag_eval.contracts.research import ComparisonSpec
+from rag_eval.contracts.run import ComparisonTier
+from rag_eval.runs.plans import ResolvedRunPlanV2
+from rag_eval.runs.records import RunRecordStateV2, RunRecordV2
+from tests.rag_eval_platform.test_run_record_v2 import _record_plan_store
 
 
-def manifest(run_id: str, **updates) -> RunManifest:
-    value = RunManifest(
-        run_id=run_id,
-        experiment_id="experiment",
-        status=RunStatus.COMPLETED,
-        bundle_id="bundle",
-        case_selection_id="selection",
-        platform_version="0.1.0",
-        adapter_id="fake",
-        adapter_version="0.1.0",
-        system_id="system",
-        system_version="1",
-        declared_config={
-            "model_lock_digest": MODEL_LOCK_DIGEST,
-            "comparison_spec_digest": artifact_digest(spec()),
-            "analysis_contract_digest": ANALYSIS_CONTRACT_DIGEST,
-            "latency_protocol_digest": LATENCY_PROTOCOL_DIGEST,
-        },
-        effective_config={
-            "query": {"final_context_k": 5},
-            "adapter": {"llm_model": "controlled"},
-        },
-        scorer_id="scorer",
-        scorer_version="1.0",
-        scorer_digest="sha256:one",
-        model_artifacts={
-            "llm": MODEL_ARTIFACT
-        },
-        latency_protocol_digest=LATENCY_PROTOCOL_DIGEST,
-        declared_capabilities=AdapterCapabilities(),
-        observed_capabilities=AdapterCapabilities(),
-        seed=0,
-        repetitions=1,
-        started_at=datetime.now(UTC),
-        completed_at=datetime.now(UTC),
-        reproducibility=ReproducibilityRecord(
-            platform_git_commit="abc",
-            platform_dirty=False,
-            dependency_lock_digest="1" * 64,
-            environment_digest="2" * 64,
-            model_digests={"llm": "sha256:model"},
-            prompt_digests={"system": "sha256:prompt"},
-            dependency_lock_artifact="reproducibility/dependency-lock.txt",
-            environment_artifact="reproducibility/environment.json",
+def _run(
+    plan: ResolvedRunPlanV2,
+    run_id: str,
+    experiment_id: str,
+) -> ArtifactComparisonRunV2:
+    now = datetime(2026, 9, 9, tzinfo=UTC)
+    return ArtifactComparisonRunV2(
+        record=RunRecordV2(
+            run_id=run_id,
+            experiment_id=experiment_id,
+            resolved_plan_path=f"resolved-run-plans/{experiment_id}.json",
+            resolved_plan_digest="sha256:" + "a" * 64,
+            state=RunRecordStateV2.COMPLETED,
+            created_at=now,
+            started_at=now,
+            completed_at=now,
+            artifact_path="artifact-v2/artifact.json",
+            artifact_digest="sha256:" + ("b" if run_id == "run-1" else "c") * 64,
         ),
-    )
-    return value.model_copy(update=updates)
-
-
-def spec() -> ComparisonSpec:
-    return ComparisonSpec(
-        comparison_id="comparison",
-        experiment_ids=["experiment", "experiment-enhanced"],
-        tier="strict_controlled",
-        controlled_factors=["query.final_context_k", "adapter.llm_model"],
-        primary_metrics=["answer_accuracy"],
-        model_lock_digest=MODEL_LOCK_DIGEST,
-        latency_protocol_digest=LATENCY_PROTOCOL_DIGEST,
-        analysis_contract_digest=ANALYSIS_CONTRACT_DIGEST,
+        plan=plan.model_copy(update={"experiment_id": experiment_id}),
     )
 
 
-def summaries() -> dict[str, dict]:
+def _runs(tmp_path: Path) -> list[ArtifactComparisonRunV2]:
+    store, reference = _record_plan_store(tmp_path)
+    plan = store.get(reference)
+    return [
+        _run(plan, "run-1", "experiment-1"),
+        _run(plan, "run-2", "experiment-2"),
+    ]
+
+
+def _summary(
+    *,
+    status: str = "observed",
+    value: float | None = 1.0,
+    descriptor: str = "sha256:shared",
+) -> dict[str, object]:
     return {
-        "run-1": {"metrics": {"answer_accuracy": {"status": "observed", "value": 1.0, "coverage": 1.0}}},
-        "run-2": {"metrics": {"answer_accuracy": {"status": "observed", "value": 1.0, "coverage": 1.0}}},
-    }
-
-
-def test_task_and_strict_comparison_contracts() -> None:
-    first = manifest("run-1")
-    second = manifest("run-2", experiment_id="experiment-enhanced")
-    assert validate_comparison(
-        [first, second], ComparisonTier.STRICT_CONTROLLED, spec=spec(), summaries=summaries()
-    ).may_declare_winner
-
-    different_model = second.model_copy(
-        update={
-            "effective_config": {
-                "query": {"final_context_k": 5},
-                "adapter": {"llm_model": "different"},
+        "artifact_contract_version": "2.0",
+        "availability": "available",
+        "metrics": {
+            "ranked_evidence_coverage@5": {
+                "status": status,
+                "value": value,
+                "coverage": 1.0 if status == "observed" else 0.0,
+                "descriptor_digests": [descriptor],
             }
-        }
-    )
-    decision = validate_comparison(
-        [first, different_model], ComparisonTier.STRICT_CONTROLLED, spec=spec()
-    )
-    assert decision.compatible is False
-    assert decision.may_declare_winner is False
-
-
-def test_exploratory_never_declares_a_winner() -> None:
-    first = manifest("run-1")
-    second = manifest("run-2", bundle_id="other", experiment_id="experiment-enhanced")
-    decision = validate_comparison(
-        [first, second], ComparisonTier.EXPLORATORY
-    )
-    assert decision.compatible is True
-    assert decision.reasons
-    assert decision.may_declare_winner is False
-
-
-def test_artifact_v2_native_runs_are_not_disqualified_by_legacy_route_labels() -> None:
-    first = manifest(
-        "run-1", execution_view="native-docx", diagnostic_only=True
-    )
-    second = manifest(
-        "run-2",
-        experiment_id="experiment-enhanced",
-        execution_view="native-docx",
-        diagnostic_only=True,
-    )
-    persisted = {
-        run.run_id: {
-            "artifact_contract_version": "2.0",
-            "availability": "available",
-            "metrics": {},
-            "leaderboard_eligibility": {
-                "eligible": True,
-                "reasons": [],
-            },
-        }
-        for run in (first, second)
+        },
     }
 
-    decision = validate_comparison(
-        [first, second], ComparisonTier.TASK_COMPARABLE, summaries=persisted
+
+def test_artifact_v2_runs_compare_without_any_legacy_route_projection(
+    tmp_path: Path,
+) -> None:
+    runs = _runs(tmp_path)
+    decision = validate_artifact_comparison_v2(
+        runs,
+        ComparisonTier.TASK_COMPARABLE,
+        summaries={run.run_id: _summary() for run in runs},
     )
 
     assert decision.compatible is True
-    assert not any("native DOCX diagnostic" in reason for reason in decision.reasons)
+    assert decision.reasons == ()
+    assert decision.metric_decisions[0].comparable is True
 
 
-def test_corrupted_artifact_v2_cannot_bypass_legacy_route_restriction() -> None:
-    first = manifest("run-1", execution_view="native-docx", diagnostic_only=True)
-    second = manifest(
-        "run-2",
-        experiment_id="experiment-enhanced",
-        execution_view="native-docx",
-        diagnostic_only=True,
-    )
-    persisted = {
-        run.run_id: {
-            "artifact_contract_version": "2.0",
-            "availability": "corrupted",
-            "metrics": {},
-        }
-        for run in (first, second)
-    }
-
-    decision = validate_comparison(
-        [first, second], ComparisonTier.TASK_COMPARABLE, summaries=persisted
-    )
-
-    assert decision.compatible is False
-    assert any("Artifact 2.0 is not verified" in reason for reason in decision.reasons)
-    assert any("native DOCX diagnostic" in reason for reason in decision.reasons)
-
-
-def test_native_docx_diagnostic_is_never_winner_eligible() -> None:
-    first = manifest("run-1")
-    native = manifest(
-        "run-2",
-        experiment_id="experiment-enhanced",
-        execution_view="native-docx",
-        diagnostic_only=True,
-    )
-
-    task = validate_comparison([first, native], ComparisonTier.TASK_COMPARABLE)
-    exploratory = validate_comparison([first, native], ComparisonTier.EXPLORATORY)
-
-    assert task.compatible is False
-    assert any("native DOCX diagnostic" in reason for reason in task.reasons)
-    assert exploratory.compatible is True
-    assert exploratory.may_declare_winner is False
-
-
-def test_strict_same_system_rejects_dependency_or_model_drift() -> None:
-    first = manifest("run-1")
-    second = manifest("run-2", experiment_id="experiment-enhanced")
-    assert second.reproducibility is not None
-    drifted = second.model_copy(
-        update={
-            "reproducibility": second.reproducibility.model_copy(
-                update={
-                    "dependency_lock_digest": "3" * 64,
-                    "model_digests": {"llm": "sha256:different"},
-                }
-            )
-        }
-    )
-
-    decision = validate_comparison(
-        [first, drifted], ComparisonTier.STRICT_CONTROLLED, spec=spec()
-    )
-
-    assert not decision.compatible
-    assert "same-system dependency locks differ" in decision.reasons
-
-
-def test_per_metric_compatibility_does_not_turn_unavailable_into_zero() -> None:
-    first = manifest("run-1")
-    second = manifest("run-2", experiment_id="experiment-enhanced")
-    result = validate_comparison(
-        [first, second],
-        ComparisonTier.STRICT_CONTROLLED,
-        spec=spec(),
-        summaries={
-            "run-1": {
-                "metrics": {
-                    "answer_accuracy": {"status": "observed", "value": 1.0, "coverage": 1.0},
-                    "raw_recall@5": {"status": "observed", "value": 1.0, "coverage": 1.0},
-                }
-            },
-            "run-2": {
-                "metrics": {
-                    "answer_accuracy": {"status": "observed", "value": 1.0, "coverage": 1.0},
-                    "raw_recall@5": {"status": "unavailable", "value": None, "coverage": 0.0},
-                }
-            },
-        },
-    )
-    decisions = {decision.metric_id: decision for decision in result.metric_decisions}
-    assert decisions["answer_accuracy"].comparable
-    assert not decisions["raw_recall@5"].comparable
-    assert "metric status is unavailable" in decisions["raw_recall@5"].reasons[0]
-    assert decisions["answer_accuracy"].winner_eligible
-    assert not decisions["raw_recall@5"].winner_eligible
-
-
-def test_strict_comparison_rejects_unregistered_treatment_drift() -> None:
-    first = manifest("run-1")
-    second = manifest(
-        "run-2",
-        experiment_id="experiment-enhanced",
-        declared_config={
-            **first.declared_config,
-            "adapter": {"unregistered_parser_mode": "changed"},
-        },
-    )
-
-    decision = validate_comparison(
-        [first, second], ComparisonTier.STRICT_CONTROLLED, spec=spec()
-    )
-
-    assert not decision.compatible
-    assert "undeclared treatment/config drift: adapter.unregistered_parser_mode" in decision.reasons
-
-
-def test_comparison_rejects_metric_scorer_drift() -> None:
-    first = manifest("run-1", metric_scorers={"gold_evidence": {"scorer_digest": "one"}})
-    second = manifest(
-        "run-2",
-        experiment_id="experiment-enhanced",
-        metric_scorers={"gold_evidence": {"scorer_digest": "two"}},
-    )
-
-    decision = validate_comparison([first, second], ComparisonTier.TASK_COMPARABLE)
-
-    assert not decision.compatible
-    assert "task contract differs: metric_scorers" in decision.reasons
-
-
-def test_artifact_v2_comparison_requires_identical_metric_descriptors() -> None:
-    first = manifest("run-1")
-    second = manifest("run-2", experiment_id="experiment-enhanced")
-    shared = {
-        "status": "observed",
-        "value": 1.0,
-        "coverage": 1.0,
-    }
-
-    decision = validate_comparison(
-        [first, second],
+def test_artifact_v2_comparison_requires_identical_metric_descriptors(
+    tmp_path: Path,
+) -> None:
+    runs = _runs(tmp_path)
+    decision = validate_artifact_comparison_v2(
+        runs,
         ComparisonTier.TASK_COMPARABLE,
         summaries={
-            "run-1": {
-                "artifact_contract_version": "2.0",
-                "availability": "available",
-                "metrics": {
-                    "ranked_evidence_coverage@5": {
-                        **shared,
-                        "descriptor_digests": ["sha256:first"],
-                    }
-                },
-            },
-            "run-2": {
-                "artifact_contract_version": "2.0",
-                "availability": "available",
-                "metrics": {
-                    "ranked_evidence_coverage@5": {
-                        **shared,
-                        "descriptor_digests": ["sha256:second"],
-                    }
-                },
-            },
+            "run-1": _summary(descriptor="sha256:first"),
+            "run-2": _summary(descriptor="sha256:second"),
         },
     )
 
     metric = decision.metric_decisions[0]
     assert not metric.comparable
     assert "metric descriptor differs across Runs" in metric.reasons
+
+
+def test_artifact_v2_comparison_never_turns_unavailable_into_zero(
+    tmp_path: Path,
+) -> None:
+    runs = _runs(tmp_path)
+    decision = validate_artifact_comparison_v2(
+        runs,
+        ComparisonTier.TASK_COMPARABLE,
+        summaries={
+            "run-1": _summary(),
+            "run-2": _summary(status="unavailable", value=None),
+        },
+    )
+
+    metric = decision.metric_decisions[0]
+    assert not metric.comparable
+    assert any("status is unavailable" in reason for reason in metric.reasons)
+
+
+def test_strict_artifact_v2_comparison_uses_only_resolved_plan_controls(
+    tmp_path: Path,
+) -> None:
+    runs = _runs(tmp_path)
+    spec = ComparisonSpec(
+        comparison_id="comparison-v2",
+        experiment_ids=["experiment-1", "experiment-2"],
+        tier="strict_controlled",
+        controlled_factors=["query.final_context_k"],
+        primary_metrics=["ranked_evidence_coverage@5"],
+        model_lock_digest="sha256:" + "d" * 64,
+        latency_protocol_digest="sha256:" + "e" * 64,
+        analysis_contract_digest="sha256:" + "f" * 64,
+    )
+    decision = validate_artifact_comparison_v2(
+        runs,
+        ComparisonTier.STRICT_CONTROLLED,
+        summaries={run.run_id: _summary() for run in runs},
+        spec=spec,
+    )
+
+    assert decision.compatible is True
+    assert decision.may_declare_winner is True
+
+
+def test_corrupted_artifact_v2_is_not_comparable(tmp_path: Path) -> None:
+    runs = _runs(tmp_path)
+    corrupted = _summary()
+    corrupted["availability"] = "corrupted"
+    decision = validate_artifact_comparison_v2(
+        runs,
+        ComparisonTier.TASK_COMPARABLE,
+        summaries={"run-1": _summary(), "run-2": corrupted},
+    )
+
+    assert decision.compatible is False
+    assert any("not verified and available" in reason for reason in decision.reasons)

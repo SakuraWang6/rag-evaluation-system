@@ -16,7 +16,7 @@ from rag_eval.products import EvaluationDraft, SystemConnection, canonical_exper
 from rag_eval.service import PlatformService
 from rag_eval.storage.layout import PlatformPaths
 from rag_eval.systems import SystemRegistration
-from rag_eval.reproducibility import safe_environment
+from rag_eval.secrets import safe_environment
 from rag_eval.secrets import EncryptedDevFileSecretStore
 from tests.rag_eval_platform.test_bundle_store import write_bundle
 

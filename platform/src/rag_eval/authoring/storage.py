@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from rag_eval.authoring.canonical import CANONICALIZER_VERSION
 from rag_eval.authoring.models import AuthoringDataset, AuthoringState, SourceManifest
 from rag_eval.storage.atomic import atomic_write_bytes, atomic_write_json
-from rag_eval.storage.runs import safe_id
+from rag_eval.storage.ids import safe_id
 
 
 ModelT = TypeVar("ModelT", bound=BaseModel)

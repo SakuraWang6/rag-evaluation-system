@@ -117,15 +117,6 @@ class PlatformPaths:
         return self.product / "run-presentations"
 
     @property
-    def historical_rescores(self) -> Path:
-        """Read-only projections derived from immutable historical Runs.
-
-        These files live outside ``runs/`` so publishing a repaired
-        provenance/re-score can never overwrite the original research record.
-        """
-        return self.product / "historical-rescores"
-
-    @property
     def dev_secrets(self) -> Path:
         return self.product / "dev-secrets.enc"
 
@@ -156,7 +147,6 @@ class PlatformPaths:
                     self.case_reviews,
                     self.answer_support_reviews,
                     self.run_presentations,
-                    self.historical_rescores,
                 )
             )
         for path in paths:

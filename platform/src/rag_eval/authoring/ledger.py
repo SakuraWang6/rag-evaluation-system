@@ -28,7 +28,7 @@ from rag_eval.authoring.models import (
 )
 from rag_eval.authoring.storage import AuthoringWorkspaceStore
 from rag_eval.storage.atomic import atomic_write_json
-from rag_eval.storage.runs import safe_id
+from rag_eval.storage.ids import safe_id
 
 
 LEDGER_SCHEMA_VERSION = "authoring-ledger/1.0"

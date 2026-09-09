@@ -152,7 +152,7 @@ def test_formal_release_preview_materializes_only_the_original_docx_for_ingestio
     assert execution_view_identity(spec, bundle) == ("native-document/v2", False)
     executor = RunExecutor(
         service.datasets,
-        service.runs,
+        service.run_records,
         dataset_release_store=service.formal_datasets.releases,
     )
     executor._validate_dataset_release_reference(spec, bundle)

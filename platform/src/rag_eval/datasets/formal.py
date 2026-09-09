@@ -50,9 +50,8 @@ from rag_eval.contracts.canonical import (
     CanonicalRelation,
     RepresentationStatus,
 )
-from rag_eval.contracts.run import RunManifest
 from rag_eval.storage.atomic import atomic_write_bytes, atomic_write_json
-from rag_eval.storage.runs import safe_id
+from rag_eval.storage.ids import safe_id
 
 
 FORMAL_VALIDATOR_VERSION = "formal-dataset-validator/1.0"
@@ -86,13 +85,6 @@ class BundleProjectionStatus(StrEnum):
     NO_BUNDLE = "no_bundle"
     LOSSLESS_RUNNABLE = "lossless_runnable"
     LOSSY_NON_RUNNABLE = "lossy_non_runnable"
-
-
-class HistoricalRunReleaseStatus(StrEnum):
-    EXACT = "exact"
-    LEGACY_UNPINNED = "legacy_unpinned"
-    BUNDLE_MISMATCH = "bundle_mismatch"
-    UNKNOWN_RELEASE = "unknown_release"
 
 
 def _canonical_digest(value: object) -> str:
@@ -443,13 +435,6 @@ class RebuildVerification(FormalModel):
     validation_report_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     expected_validation_report_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     reason: str | None = None
-
-
-class HistoricalRunReleaseResolution(FormalModel):
-    run_id: str = Field(min_length=1)
-    bundle_id: str = Field(min_length=1)
-    status: HistoricalRunReleaseStatus
-    release_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class FormalValidationReportStore:
@@ -2546,18 +2531,6 @@ class FormalDatasetReleaseService:
             expected_validation_report_digest=release.validation_report_digest,
             reason=None if reproducible else "pinned input checksum, revision, or validation state changed",
         )
-
-    def resolve_historical_run(self, manifest: RunManifest) -> HistoricalRunReleaseResolution:
-        release_id = manifest.dataset_release_id
-        if not release_id:
-            return HistoricalRunReleaseResolution(run_id=manifest.run_id, bundle_id=manifest.bundle_id, status=HistoricalRunReleaseStatus.LEGACY_UNPINNED)
-        try:
-            release = self.releases.get(release_id)
-        except FileNotFoundError:
-            return HistoricalRunReleaseResolution(run_id=manifest.run_id, bundle_id=manifest.bundle_id, status=HistoricalRunReleaseStatus.UNKNOWN_RELEASE, release_id=release_id)
-        if release.bundle_projection.bundle_id != manifest.bundle_id:
-            return HistoricalRunReleaseResolution(run_id=manifest.run_id, bundle_id=manifest.bundle_id, status=HistoricalRunReleaseStatus.BUNDLE_MISMATCH, release_id=release_id)
-        return HistoricalRunReleaseResolution(run_id=manifest.run_id, bundle_id=manifest.bundle_id, status=HistoricalRunReleaseStatus.EXACT, release_id=release_id)
 
     def _build_release(self, dataset: AuthoringDataset, marker: AuthoringRelease, report: ValidationReport, *, display_name: str, release_version: str, actor: str, parent_release_id: str | None, projection: ReleaseBundleProjection) -> DatasetRelease:
         document = self.ledger.document_history(dataset.authoring_dataset_id)[-1]

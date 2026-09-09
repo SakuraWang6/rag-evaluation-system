@@ -80,13 +80,11 @@ platform_pytest:
   minimum_passed_local: 264
   minimum_passed_ci: 267
   required_passed_node_ids:
-    - platform/tests/rag_eval_platform/test_history_provenance.py::test_real_reconstruction_proves_stream_and_native_join
-    - platform/tests/rag_eval_platform/test_history_provenance.py::test_real_matrix_is_exact_gold_not_semantic_duplicate
-    - platform/tests/rag_eval_platform/test_history_provenance.py::test_split_table_has_partial_table_and_full_row_cells
-    - platform/tests/rag_eval_platform/test_history_provenance.py::test_shared_evidence_index_round_trips_map_and_digest
-    - platform/tests/rag_eval_platform/test_history_provenance.py::test_production_localizer_is_audited_without_catalog_bypass
-    - platform/tests/rag_eval_platform/test_history_provenance.py::test_baseline_and_destination_guards_are_read_only
-    - platform/tests/rag_eval_platform/test_history_provenance.py::test_real_versioned_rescore_uses_production_metrics_and_pins_inputs
+    - platform/tests/rag_eval_platform/test_wire_v2_contract.py::test_runtime_catalog_provenance_and_reverse_map_round_trip
+    - platform/tests/rag_eval_platform/test_unified_evaluation_v2.py::test_logical_table_cell_is_one_atom_proved_by_multiple_physical_cells
+    - platform/tests/rag_eval_platform/test_unified_evaluation_v2.py::test_failure_attribution_is_proof_gated_through_generation
+    - platform/tests/rag_eval_platform/test_artifact_presentation_v2.py::test_artifact_v2_api_reads_only_persisted_views
+    - platform/tests/rag_eval_platform/test_run_record_v2.py::test_native_executor_persists_no_legacy_evaluation_authority
     - platform/tests/rag_eval_platform/test_supervisor.py::test_supervisor_can_start_stop_and_start_again
     - platform/tests/rag_eval_platform/test_webui_api_contract.py::test_critical_webui_operations_match_platform_openapi
     - platform/tests/rag_eval_platform/test_jobs_and_api.py::test_api_keeps_system_registration_local_and_legacy_out
@@ -96,7 +94,7 @@ platform_pytest:
     - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_formal_release_preview_materializes_only_the_original_docx_for_ingestion
     - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_public_experiment_create_and_queue_reject_presegmented_routes
     - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_release_bound_public_experiment_rejects_modified_benchmark_content
-    - platform/tests/rag_eval_platform/test_comparison.py::test_artifact_v2_native_runs_are_not_disqualified_by_legacy_route_labels
+    - platform/tests/rag_eval_platform/test_comparison.py::test_artifact_v2_runs_compare_without_any_legacy_route_projection
   required_passed_node_ids_ci:
     - platform/tests/rag_eval_platform/test_worker_process.py::test_fake_adapter_runs_over_real_loopback_process
     - platform/tests/rag_eval_platform/test_worker_process.py::test_process_group_cancellation_ends_parser_descendants

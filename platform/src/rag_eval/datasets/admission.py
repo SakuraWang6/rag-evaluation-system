@@ -34,7 +34,7 @@ from rag_eval.datasets.portfolio import (
     PortfolioUsage,
 )
 from rag_eval.storage.atomic import atomic_write_json
-from rag_eval.storage.runs import safe_id
+from rag_eval.storage.ids import safe_id
 
 
 DATA_GENERATION_POLICY_VERSION = "benchmark-data-generation-policy/1.0"

@@ -2,20 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from rag_eval.contracts.adapter import AdapterCapabilities
-from rag_eval.contracts.run import ExperimentSpec, RunManifest, RunStatus
 from rag_eval.datasets.bundle import (
     BundleIntegrityError,
     DatasetBundleStore,
     case_selection_id,
 )
 from rag_eval.execution import order_questions
-from rag_eval.storage.runs import RunStore
 
 
 def write_bundle(root: Path) -> None:
@@ -232,46 +228,3 @@ def test_formal_table_cell_requires_one_complete_structured_witness(
     )
     with pytest.raises(BundleIntegrityError, match="complete locator"):
         DatasetBundleStore(tmp_path / "other-datasets").register(source)
-
-
-def test_run_store_ignores_legacy_directories(tmp_path: Path) -> None:
-    store = RunStore(tmp_path / "runs")
-    legacy = store.root / "legacy-run"
-    legacy.mkdir()
-    (legacy / "run.json").write_text(
-        json.dumps({"schema": "legacy", "status": "complete"}), encoding="utf-8"
-    )
-    now = datetime.now(UTC)
-    manifest = RunManifest(
-        run_id="run-1",
-        experiment_id="experiment-1",
-        status=RunStatus.COMPLETED,
-        bundle_id="bundle",
-        case_selection_id="selection",
-        platform_version="0.1.0",
-        adapter_id="fake",
-        adapter_version="0.1.0",
-        system_id="fake-rag",
-        system_version="1",
-        declared_config={},
-        effective_config={},
-        scorer_id="deterministic-v1",
-        scorer_version="1.0",
-        scorer_digest="sha256:test",
-        declared_capabilities=AdapterCapabilities(),
-        observed_capabilities=AdapterCapabilities(),
-        seed=0,
-        repetitions=1,
-        started_at=now,
-        completed_at=now,
-    )
-    experiment = ExperimentSpec(
-        experiment_id="experiment-1",
-        bundle_id="bundle",
-        system_id="fake-rag",
-        adapter_id="fake",
-        case_selection_id="selection",
-    )
-    store.create(manifest, experiment)
-
-    assert [item.run_id for item in store.list()] == ["run-1"]

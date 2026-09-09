@@ -40,7 +40,6 @@ from rag_eval.runtime_admission import (
 from rag_eval.secrets import DeferredSecretStore, create_secret_store
 from rag_eval.storage.experiments import ExperimentStore
 from rag_eval.storage.layout import PlatformPaths
-from rag_eval.storage.runs import RunStore
 from rag_eval.supervisor import JobSupervisor
 from rag_eval.systems import SystemRegistry, SystemResolver
 
@@ -57,7 +56,6 @@ class PlatformService:
         self.datasets = DatasetBundleStore(paths.datasets)
         self.dataset_registry = DatasetRegistry(paths.dataset_registry)
         self.dataset_registry.bootstrap_reference_datasets()
-        self.runs = RunStore(paths.runs)
         self.case_reviews = CaseReviewStore(paths.case_reviews) if self.product_enabled else None
         self.answer_support_reviews = (
             AnswerSupportReviewStore(paths.answer_support_reviews)
@@ -158,11 +156,10 @@ class PlatformService:
             self.benchmark_admission.bootstrap()
         self.executor = RunExecutor(
             self.datasets,
-            self.runs,
+            self.run_records,
             dataset_release_store=(
                 self.formal_datasets.releases if self.formal_datasets is not None else None
             ),
-            run_record_store=self.run_records,
         )
         self.semantic_review_coordinator = (
             SemanticReviewCoordinator(
@@ -283,7 +280,7 @@ class PlatformService:
 
         This is configuration only: no Worker is launched during Platform
         startup.  The regular supervisor owns each Worker for one queued run
-        and persists the resulting run through the normal RunStore.
+        and publishes the resulting RunRecordV2 and Artifact 2.0.
         """
         assert self.products is not None
         try:

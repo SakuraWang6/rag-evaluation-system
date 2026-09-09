@@ -23,6 +23,7 @@ from rag_eval.contracts.observation import (
     SourceIdentity,
 )
 from rag_eval.contracts.wire import WorkerHealthV2, WorkerIdentityV2
+from rag_eval.datasets.formal import FormalDatasetReleaseService
 from rag_eval.execution import RunExecutor
 from rag_eval.execution_provider import ExecutionRequest
 from rag_eval.runs import ArtifactV2Reader, ArtifactWriter
@@ -225,7 +226,7 @@ class _NativeProvider:
         return True
 
 
-def _native_executor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def _native_executor(tmp_path: Path, _monkeypatch: pytest.MonkeyPatch):
     service, experiment, bundle = _native_experiment(tmp_path)
     reference = service.admit_new_public_experiment(experiment, bundle)
     plan = service.resolved_run_plans.get(reference)
@@ -239,14 +240,9 @@ def _native_executor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
     executor = RunExecutor(
         service.datasets,
-        service.runs,
+        service.run_records,
         provider=_NativeProvider(client),
         dataset_release_store=service.formal_datasets.releases,
-        run_record_store=service.run_records,
-    )
-    monkeypatch.setattr(
-        "rag_eval.execution.validate_native_provenance_contract",
-        lambda *_args, **_kwargs: None,
     )
     return service, executor, experiment, plan, reference, resolved.command, client
 
@@ -503,6 +499,63 @@ def test_native_executor_completes_only_after_publishing_verified_artifact(
     assert reader.verify().valid
     assert record.artifact_digest == reader.manifest().artifact_digest
     assert client.query_count == 1
+
+
+@pytest.mark.native_v2_characterization
+def test_native_executor_persists_no_legacy_evaluation_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, executor, experiment, plan, reference, command, _client = (
+        _native_executor(tmp_path, monkeypatch)
+    )
+
+    returned = executor.execute(
+        experiment,
+        command,
+        run_id="native-v2-only",
+        resolved_plan=plan,
+        resolved_plan_reference=reference,
+    )
+
+    run_dir = service.paths.runs / "native-v2-only"
+    assert returned == service.run_records.get("native-v2-only")
+    assert returned.state == RunRecordStateV2.COMPLETED
+    assert (run_dir / RUN_RECORD_V2_FILENAME).is_file()
+    assert (run_dir / "artifact-v2" / "artifact.json").is_file()
+    for retired_path in (
+        "run.json",
+        "experiment.json",
+        "summary.json",
+        "report.md",
+        "cases",
+        "reproducibility",
+    ):
+        assert not (run_dir / retired_path).exists()
+
+
+def test_legacy_evaluation_persistence_readers_are_absent() -> None:
+    source_root = Path(__file__).resolve().parents[2] / "src" / "rag_eval"
+    for retired_module in (
+        "run_history.py",
+        "storage/runs.py",
+        "replay.py",
+        "reproducibility.py",
+        "e2e_rehearsal.py",
+        "history_provenance/__init__.py",
+        "history_provenance/acceptance.py",
+        "history_provenance/baseline.py",
+        "history_provenance/reconstruction.py",
+        "history_provenance/rescore.py",
+        "evaluation/engine.py",
+        "evaluation/evidence.py",
+        "evaluation/failures.py",
+        "evaluation/metrics.py",
+        "evaluation/segment_answers.py",
+        "evaluation/segment_metrics.py",
+    ):
+        assert not (source_root / retired_module).exists()
+    assert not hasattr(FormalDatasetReleaseService, "resolve_historical_run")
 
 
 @pytest.mark.native_v2_characterization

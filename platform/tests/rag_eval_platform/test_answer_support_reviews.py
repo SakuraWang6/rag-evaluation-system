@@ -13,7 +13,6 @@ from rag_eval.reviews import (
     SemanticAnswerSupportReviewer,
     SemanticReviewCoordinator,
 )
-from rag_eval.run_history import RunHistory
 from rag_eval.runs.models import RunArtifactCaseV2
 from tests.rag_eval_platform.test_run_artifact_v2 import _evaluated_case
 
@@ -81,28 +80,6 @@ def test_support_review_is_idempotent_and_human_is_terminal(tmp_path, monkeypatc
             model="qwen",
             prompt_digest="a" * 64,
         )
-
-
-def test_support_projection_counts_hallucination_without_changing_answer_accuracy(tmp_path) -> None:
-    from rag_eval.contracts.run import MetricResult, MetricStatus
-
-    metric = MetricResult(
-        metric_id="answer_hallucination",
-        status=MetricStatus.NEEDS_REVIEW,
-        scorer_id="segment-native-answer-evidence",
-        scorer_version="1.0",
-        scorer_digest="sha256:test",
-    )
-    projected = RunHistory._project_answer_support_metric(
-        metric,
-        {
-            "latest": {"verdict": "unsupported", "source": "llm"},
-            "history": [{"verdict": "unsupported", "source": "llm"}],
-        },
-    )
-    assert projected.status == MetricStatus.OBSERVED
-    assert projected.value == 1.0
-    assert projected.evaluator_mode == "append_only_llm_support_adjudication"
 
 
 def test_support_coordinator_uses_same_durable_lifecycle(tmp_path, monkeypatch) -> None:

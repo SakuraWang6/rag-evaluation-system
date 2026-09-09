@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from rag_eval.contracts.run import RunStatus
 from rag_eval.evaluation.unified import EvaluationMetricStatus
 from rag_eval.execution import RunExecutor
 from rag_eval.runs import ArtifactV2Reader, RunRecordStateV2
@@ -62,12 +61,11 @@ def test_standalone_fake_adapter_run_is_reproducible_and_source_only(
     ).command
     executor = RunExecutor(
         service.datasets,
-        service.runs,
+        service.run_records,
         dataset_release_store=service.formal_datasets.releases,
-        run_record_store=service.run_records,
     )
 
-    manifest = executor.execute(
+    record = executor.execute(
         experiment,
         command,
         run_id="fake-run",
@@ -75,14 +73,7 @@ def test_standalone_fake_adapter_run_is_reproducible_and_source_only(
         resolved_plan_reference=reference,
     )
 
-    assert manifest.status == RunStatus.COMPLETED
-    assert manifest.effective_config["query"]["final_context_k"] == 5
-    assert len(manifest.index_fingerprints) == 2
-    assert manifest.repetition_seeds == [0, 1]
-    assert manifest.reproducibility is not None
-    assert len(manifest.reproducibility.dependency_lock_digest) == 64
-
-    record = service.run_records.get("fake-run")
+    assert record == service.run_records.get("fake-run")
     reader = ArtifactV2Reader(service.paths.runs / "fake-run" / "artifact-v2")
     assert record.state == RunRecordStateV2.COMPLETED
     assert reader.verify().valid
@@ -163,11 +154,10 @@ def test_query_protocol_error_is_persisted_as_unavailable_artifact_case(
         raise WorkerProtocolError("malformed Direct Wire 2 query payload")
 
     monkeypatch.setattr("rag_eval.worker.client.WorkerClient.query", fail_query)
-    manifest = RunExecutor(
+    record = RunExecutor(
         service.datasets,
-        service.runs,
+        service.run_records,
         dataset_release_store=service.formal_datasets.releases,
-        run_record_store=service.run_records,
     ).execute(
         experiment,
         command,
@@ -176,8 +166,7 @@ def test_query_protocol_error_is_persisted_as_unavailable_artifact_case(
         resolved_plan_reference=reference,
     )
 
-    assert manifest.status == RunStatus.COMPLETED
-    record = service.run_records.get("protocol-error-run")
+    assert record == service.run_records.get("protocol-error-run")
     assert record.state == RunRecordStateV2.COMPLETED
     reader = ArtifactV2Reader(
         service.paths.runs / "protocol-error-run" / "artifact-v2"

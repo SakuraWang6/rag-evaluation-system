@@ -68,7 +68,7 @@ def test_v2_baseline_characterization_nodes_still_exist() -> None:
     assert set(baseline["characterization_nodes"]) == {
         "source_document",
         "rag-anything_answer_only",
-        "legacy_artifact",
+        "artifact_v2_authority",
         "p0_unobservable_semantics",
     }
     for node_ids in baseline["characterization_nodes"].values():

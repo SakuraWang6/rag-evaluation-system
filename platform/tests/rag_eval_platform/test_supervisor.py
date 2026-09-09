@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from rag_eval.artifact_contract import artifact_digest
-from rag_eval.contracts.run import ExperimentSpec, RunStatus
+from rag_eval.contracts.run import ExperimentSpec
 from rag_eval.evaluation.unified.models import EvaluationProfile
 from rag_eval.execution import RunExecutor
 from rag_eval.jobs import JobStatus, JobStore
@@ -189,7 +189,10 @@ def test_supervisor_keeps_the_formal_release_store_for_queued_runs(tmp_path, mon
         observed.append(
             (self.dataset_release_store, _kwargs.get("resolved_plan"))
         )
-        return SimpleNamespace(status=RunStatus.COMPLETED, run_id="formal-run")
+        return SimpleNamespace(
+            state=RunRecordStateV2.COMPLETED,
+            run_id="formal-run",
+        )
 
     monkeypatch.setattr(RunExecutor, "execute", execute)
     supervisor = JobSupervisor(

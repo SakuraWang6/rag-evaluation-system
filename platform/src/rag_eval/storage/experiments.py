@@ -6,7 +6,7 @@ from pathlib import Path
 
 from rag_eval.contracts.run import ExperimentSpec
 from rag_eval.storage.atomic import atomic_write_json
-from rag_eval.storage.runs import safe_id
+from rag_eval.storage.ids import safe_id
 
 
 class ExperimentStore:

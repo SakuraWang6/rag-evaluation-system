@@ -267,6 +267,27 @@ class RunRecordStoreV2:
             reverse=True,
         )
 
+    def prepare_execution_layout(self, run_id: str) -> Path:
+        """Create only the operational directories used by a Native v2 Run.
+
+        Evaluation facts never live in these directories; Artifact 2.0 owns
+        them exclusively.  Requiring an existing RunRecordV2 prevents this
+        workspace helper from reviving the retired mixed RunStore format.
+        """
+
+        with self._lock:
+            self.get(run_id)
+            run_directory = self._run_directory(run_id)
+            for name in ("worker", "source", "work"):
+                (run_directory / name).mkdir(exist_ok=True)
+            return run_directory
+
+    def run_directory(self, run_id: str) -> Path:
+        """Return a validated Native v2 Run directory."""
+
+        self.get(run_id)
+        return self._run_directory(run_id)
+
     def mark_running(
         self, run_id: str, *, started_at: datetime | None = None
     ) -> RunRecordV2:

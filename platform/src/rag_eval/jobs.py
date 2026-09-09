@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from rag_eval.contracts.run import ExperimentSpec
 from rag_eval.runs.plans import ResolvedRunPlanReferenceV2
 from rag_eval.storage.atomic import atomic_write_json
-from rag_eval.storage.runs import safe_id
+from rag_eval.storage.ids import safe_id
 from rag_eval.worker.process import terminate_process_group
 
 

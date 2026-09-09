@@ -24,8 +24,6 @@ from rag_eval.contracts.observation import (
     ObservationStatus,
     RuntimeChunkRecord,
 )
-from rag_eval.evaluation import evidence as evidence_module
-from rag_eval.evaluation.evidence import CorpusEvidenceIndex
 from rag_eval.runs.plans import digest_json
 import rag_eval_lightrag_adapter.adapter as adapter_module
 from rag_eval_lightrag_adapter.adapter import (
@@ -658,20 +656,9 @@ def test_native_manifest_catalog_round_trip_uses_typed_locator_and_normalized_wi
         },
     )
 
-    index = CorpusEvidenceIndex.from_provenance_map(
-        manifest,
-        documents={document_id: "canonical source view"},
-        runtime_documents={document_id: table},
-        source_digests={document_id: source_sha},
-        expected_map_digest=evidence_module._mapping_digest(manifest),
-    )
-
-    assert index.catalog_verified is True
-    assert index.map_digest_verified is True
-    assert index.source_pins_verified is True
-    assert index._catalog_round_trip_ok is True
     edge = manifest["runtime_chunks"]["native-fullwidth"]["canonical_edges"][1]
     catalog = manifest["object_catalog"][cell_id]
+    reverse = manifest["object_to_runtime_chunks"][cell_id]
     assert edge["witness_sha256"] == normalized_hash
     assert catalog["witness_sha256"] == normalized_hash
     assert edge["locator"] == catalog["locator"] == {
@@ -683,6 +670,23 @@ def test_native_manifest_catalog_round_trip_uses_typed_locator_and_normalized_wi
     assert edge["source_locator"] == catalog["source_locator"]
     assert edge["expected_extent"]["status"] == "complete"
     assert catalog["mapping_status"] == "complete"
+    assert len(reverse) == 1
+    reverse_edge = reverse[0]
+    assert reverse_edge["runtime_chunk_id"] == "native-fullwidth"
+    assert reverse_edge["document_id"] == document_id
+    assert reverse_edge["object_id"] == cell_id
+    assert reverse_edge["coverage"] == "full"
+    assert reverse_edge["mapping_status"] == "complete"
+    for identity_field in (
+        "object_type",
+        "source_sha256",
+        "witness_sha256",
+        "locator",
+        "source_locator",
+        "expected_extent",
+        "overlap_span",
+    ):
+        assert reverse_edge[identity_field] == edge[identity_field]
 
 
 def test_formal_native_lineage_rejects_witness_mismatch_and_duplicate_locator(

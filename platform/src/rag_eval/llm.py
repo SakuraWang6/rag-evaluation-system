@@ -23,7 +23,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rag_eval.storage.atomic import atomic_write_json
-from rag_eval.storage.runs import safe_id
+from rag_eval.storage.ids import safe_id
 
 if TYPE_CHECKING:
     from rag_eval.authoring.providers import StructuredProposalProvider

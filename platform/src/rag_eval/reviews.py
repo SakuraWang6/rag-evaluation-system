@@ -22,7 +22,7 @@ from rag_eval.contracts.dataset import GoldAnswerKind
 from rag_eval.contracts.observation import ObservationStatus
 from rag_eval.runs.models import ArtifactAnswerStatus, RunArtifactCaseV2
 from rag_eval.storage.atomic import atomic_write_json
-from rag_eval.storage.runs import safe_id
+from rag_eval.storage.ids import safe_id
 
 if TYPE_CHECKING:
     from rag_eval.llm import LLMConfigurationService

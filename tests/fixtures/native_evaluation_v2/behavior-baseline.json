@@ -65,12 +65,12 @@
   },
   "baseline_revision": "adbad6c",
   "characterization_nodes": {
-    "legacy_artifact": [
-      "platform/tests/rag_eval_platform/test_history_provenance.py::test_baseline_and_destination_guards_are_read_only",
-      "platform/tests/rag_eval_platform/test_run_history.py::test_archive_run_is_available_through_normal_run_contract"
+    "artifact_v2_authority": [
+      "platform/tests/rag_eval_platform/test_artifact_presentation_v2.py::test_artifact_v2_api_reads_only_persisted_views",
+      "platform/tests/rag_eval_platform/test_run_record_v2.py::test_native_executor_persists_no_legacy_evaluation_authority"
     ],
     "p0_unobservable_semantics": [
-      "platform/tests/rag_eval_platform/test_evidence_localization_contract.py::test_catalogued_unmapped_gold_is_not_scored_as_retrieval_missed"
+      "platform/tests/rag_eval_platform/test_unified_evaluation_v2.py::test_unknown_mapping_is_unavailable_unless_the_metric_is_already_one"
     ],
     "rag-anything_answer_only": [
       "tests/rag_eval_adapters/test_rag_anything_adapter.py::test_capabilities_are_honest_about_public_api_observability",

@@ -117,34 +117,31 @@ class JobSupervisor:
 
             executor = RunExecutor(
                 self.executor.dataset_store,
-                self.executor.run_store,
+                self.run_records,
                 self.providers.get(resolved.provider),
                 # A queued run must retain the formal-release authority used
                 # by its preview; otherwise formal releases look unavailable
                 # only after the supervisor claims the job.
                 dataset_release_store=self.executor.dataset_release_store,
-                run_record_store=self.run_records,
             )
-            manifest = executor.execute(
+            record = executor.execute(
                 job.experiment,
                 resolved.command,
                 cancelled=cancelled,
                 worker_started=worker_started,
-                execution_metadata=resolved.execution_metadata,
                 resolved_plan=plan,
                 resolved_plan_reference=ResolvedRunPlanReferenceV2(
                     path=job.resolved_plan_path,
                     digest=job.resolved_plan_digest,
                 ),
             )
-            record = self.run_records.get(manifest.run_id)
             current = self.jobs.get(job.job_id)
             if (
                 record.state == RunRecordStateV2.CANCELLED
                 or current.status == JobStatus.CANCELLING
             ):
                 self.jobs.transition(
-                    job.job_id, JobStatus.CANCELLED, run_id=manifest.run_id
+                    job.job_id, JobStatus.CANCELLED, run_id=record.run_id
                 )
             else:
                 if record.state != RunRecordStateV2.COMPLETED:
@@ -152,7 +149,7 @@ class JobSupervisor:
                         "executor returned without a completed RunRecordV2"
                     )
                 self.jobs.transition(
-                    job.job_id, JobStatus.COMPLETED, run_id=manifest.run_id
+                    job.job_id, JobStatus.COMPLETED, run_id=record.run_id
                 )
                 if self.on_run_completed is not None:
                     # Semantic review is scheduled only after the immutable
@@ -160,11 +157,11 @@ class JobSupervisor:
                     # quickly (it owns any background model work), so a slow
                     # local LLM cannot block the single-writer supervisor.
                     try:
-                        self.on_run_completed(manifest.run_id)
+                        self.on_run_completed(record.run_id)
                     except Exception:  # pragma: no cover - defensive callback boundary
                         logger.exception(
                             "could not schedule post-run review for %s",
-                            manifest.run_id,
+                            record.run_id,
                         )
         except Exception as exc:
             current = self.jobs.get(job.job_id)

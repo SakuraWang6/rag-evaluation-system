@@ -1,182 +1,33 @@
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from rag_eval.api import create_app
-from rag_eval.contracts.adapter import AdapterCapabilities
-from rag_eval.contracts.run import RunManifest, RunStatus
-from rag_eval.run_history import RunHistory
-from rag_eval.run_presentations import RunPresentationStore
 from rag_eval.service import PlatformService
 from rag_eval.storage.layout import PlatformPaths
-from rag_eval.storage.runs import RunStore
 
 
-def _manifest() -> RunManifest:
-    now = datetime.now(UTC)
-    return RunManifest(
-        run_id="archive-run-1",
-        experiment_id="archive-experiment-1",
-        status=RunStatus.COMPLETED,
-        bundle_id="bundle-v3",
-        dataset_release_id="dataset-release-1",
-        case_selection_id="selection-1",
-        platform_version="test",
-        adapter_id="lightrag",
-        adapter_version="0.1.0",
-        system_id="lightrag",
-        system_version="1.5.5",
-        declared_config={},
-        effective_config={},
-        scorer_id="test",
-        scorer_version="1",
-        scorer_digest="test",
-        declared_capabilities=AdapterCapabilities(),
-        observed_capabilities=AdapterCapabilities(),
-        seed=0,
-        repetitions=1,
-        started_at=now,
-        completed_at=now,
-        execution_counts={"completed": 1},
-    )
-
-
-def _write_archive(root: Path) -> None:
-    run = root / "runs" / "archive-run-1"
-    private = run / "private-evaluation"
-    private.mkdir(parents=True)
-    (run / "run.json").write_text(_manifest().model_dump_json(), encoding="utf-8")
-    execution = {
-        "case_id": "case-1",
-        "case_revision_id": "case-revision-1",
-        "ordinal": 1,
-        "question": "Which value is recorded?",
-        "status": "completed",
-        "started_at": "2026-08-30T00:00:00+00:00",
-        "completed_at": "2026-08-30T00:00:01+00:00",
-        "rag_result": {
-            "answer": "42",
-            "raw_retrieval": [],
-            "ranked_retrieval": [],
-            "final_context": [],
-        },
-    }
-    evaluation = {
-        "case_id": "case-1",
-        "answer_evaluation": {
-            "answer_scorer": {"id": "typed-answer", "version": "1", "digest": "digest"},
-            "answer_accuracy": {"status": "observed", "value": 1.0, "reason": "ok"},
-        },
-        "failure_assessment": {
-            "labels": [], "certainty": "deterministic", "reasons": [], "review_required": False,
-        },
-    }
-    (private / "case-execution.jsonl").write_text(json.dumps(execution) + "\n", encoding="utf-8")
-    (private / "case-evaluation.jsonl").write_text(json.dumps(evaluation) + "\n", encoding="utf-8")
-    (private / "summary.json").write_text(
-        json.dumps({"completed_case_count": 1, "mean_metrics": {"answer_accuracy": 1.0}, "evaluator": {"id": "test"}}),
-        encoding="utf-8",
-    )
-
-
-def test_archive_run_is_available_through_normal_run_contract(tmp_path: Path, monkeypatch) -> None:
-    archive = tmp_path / "archive"
-    _write_archive(archive)
-    primary = RunStore(tmp_path / "primary-runs")
-    monkeypatch.setenv("RAG_EVAL_RUN_ARCHIVES", str(archive))
-    history = RunHistory(primary)
-
-    assert [item.run_id for item in history.list()] == ["archive-run-1"]
-    cases = history.cases("archive-run-1")
-    assert cases[0].question == "Which value is recorded?"
-    assert cases[0].gold_answer is None
-    assert history.summary("archive-run-1")["metrics"]["answer_accuracy"]["value"] == 1.0
-    assert "Gold values" in history.report("archive-run-1")
-
-
-def test_launcher_bootstrap_registers_system_without_starting_worker(tmp_path: Path, monkeypatch) -> None:
+def test_launcher_bootstrap_registers_system_without_starting_worker(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     monkeypatch.setenv("RAG_EVAL_BOOTSTRAP_LOCAL_SYSTEM", "1")
-    monkeypatch.setenv("RAG_EVAL_LIGHTRAG_WORKER_PYTHON", str(Path(__file__).resolve()))
+    monkeypatch.setenv(
+        "RAG_EVAL_LIGHTRAG_WORKER_PYTHON",
+        str(Path(__file__).resolve()),
+    )
     service = PlatformService(PlatformPaths(tmp_path / "platform"))
 
-    connections = service.products.connections.list() if service.products is not None else []
+    connections = (
+        service.products.connections.list()
+        if service.products is not None
+        else []
+    )
     assert len(connections) == 1
     assert connections[0].system_id == "lightrag"
-    assert not service.runs.list()
-
-
-def test_archive_run_is_not_visible_from_native_v2_api(tmp_path: Path, monkeypatch) -> None:
-    archive = tmp_path / "archive"
-    _write_archive(archive)
-    monkeypatch.setenv("RAG_EVAL_RUN_ARCHIVES", str(archive))
-    service = PlatformService(PlatformPaths(tmp_path / "platform"))
-    client = TestClient(create_app(service, start_supervisor=False))
-
-    runs = client.get("/api/v1/runs")
-    assert runs.status_code == 200
-    assert runs.json() == []
-    assert client.get("/api/v1/runs/archive-run-1/cases").status_code == 404
-    assert client.get("/api/v1/runs/archive-run-1/cases/index").status_code == 404
-    assert client.get("/api/v1/runs/archive-run-1/cases/case-1").status_code == 404
-
-
-def test_run_presentation_is_an_append_only_overlay_not_a_run_mutation(
-    tmp_path: Path, monkeypatch
-) -> None:
-    archive = tmp_path / "archive"
-    _write_archive(archive)
-    primary = RunStore(tmp_path / "primary-runs")
-    monkeypatch.setenv("RAG_EVAL_RUN_ARCHIVES", str(archive))
-    presentations = RunPresentationStore(tmp_path / "product" / "run-presentations")
-    history = RunHistory(primary, presentations=presentations)
-
-    generated = history.run_view("archive-run-1")
-    started = history.get("archive-run-1").started_at.strftime("%Y-%m-%d %H:%M UTC")
-    assert generated["display_name"] == f"lightrag · {started} · archive-"
-    assert generated["display_name_source"] == "generated"
-    original_bytes = (archive / "runs" / "archive-run-1" / "run.json").read_bytes()
-
-    first = presentations.append(
-        run_id="archive-run-1",
-        display_name="首次人工命名",
-        actor="reviewer-a",
-    )
-    second = presentations.append(
-        run_id="archive-run-1",
-        display_name="最终运行名称",
-        actor="reviewer-b",
-        note="rename after review",
-    )
-
-    assert [item.revision for item in first.history] == [1]
-    assert [item.revision for item in second.history] == [1, 2]
-    assert history.run_view("archive-run-1")["display_name"] == "最终运行名称"
-    assert history.run_view("archive-run-1")["display_name_source"] == "override"
-    assert (archive / "runs" / "archive-run-1" / "run.json").read_bytes() == original_bytes
-
-
-def test_run_presentation_api_rejects_legacy_run(
-    tmp_path: Path, monkeypatch
-) -> None:
-    archive = tmp_path / "archive"
-    _write_archive(archive)
-    monkeypatch.setenv("RAG_EVAL_RUN_ARCHIVES", str(archive))
-    service = PlatformService(PlatformPaths(tmp_path / "platform"))
-    client = TestClient(create_app(service, start_supervisor=False))
-    source = archive / "runs" / "archive-run-1" / "run.json"
-    original_bytes = source.read_bytes()
-
-    response = client.put(
-        "/api/v1/runs/archive-run-1/presentation",
-        json={"display_name": "人工确认后的历史运行", "actor": "reviewer"},
-    )
-
-    assert response.status_code == 404
-    assert source.read_bytes() == original_bytes
+    assert not service.run_records.list()
 
 
 def test_formal_dataset_catalog_endpoint_is_separate_from_bundle2_catalog(tmp_path: Path) -> None:

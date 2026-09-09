@@ -5,9 +5,6 @@ import json
 from pathlib import Path
 
 from rag_eval.contracts.adapter import RAGEvidenceItem
-from rag_eval.contracts.dataset import GoldEvidence, ObjectLocator
-from rag_eval.evaluation import evidence as evidence_module
-from rag_eval.evaluation.evidence import CorpusEvidenceIndex, match_evidence
 from rag_eval_lightrag_adapter.adapter import LightRAGAdapter
 from rag_eval_lightrag_adapter.canonical_provenance import (
     build_provenance_manifest,
@@ -161,8 +158,7 @@ def test_gold_matches_projected_full_object_without_gold_aware_mapping(
     adapter = LightRAGAdapter()
     adapter._source_by_file = {"source.txt": "doc-1"}
     adapter._runtime_provenance_by_chunk = manifest["runtime_chunks"]
-    map_digest = evidence_module._mapping_digest(manifest)
-    adapter._provenance_map_digest = map_digest
+    adapter._provenance_map_digest = "a" * 64
     assert manifest["object_catalog"]["doc-1:block:00002"]["mapping_status"] == "mapped"
     assert manifest["object_catalog"]["doc-1:block:00002"]["expected_extent"] == {
         "start": SOURCE.index("Beta"),
@@ -193,24 +189,18 @@ def test_gold_matches_projected_full_object_without_gold_aware_mapping(
         "doc-1:block:00001",
         "doc-1:block:00002",
     ]
-    gold = GoldEvidence(
-        evidence_id="gold-beta",
-        document_id="doc-1",
-        locator=ObjectLocator(object_type="block", object_id="doc-1:block:00002"),
-        canonical_value="Beta statement is deliberately long.",
-    )
-    corpus = CorpusEvidenceIndex.from_provenance_map(
-        manifest,
-        documents={"doc-1": SOURCE},
-        source_digests={
-            "doc-1": hashlib.sha256(SOURCE.encode("utf-8")).hexdigest()
-        },
-        expected_map_digest=map_digest,
-    )
-    assert corpus.has_provenance_catalog
-    match = match_evidence(item, gold, corpus)
-    assert match is not None
-    assert match.kind == "exact_provenance"
+    reverse = manifest["object_to_runtime_chunks"]["doc-1:block:00002"]
+    assert reverse == [
+        {
+            "runtime_chunk_id": "runtime-all",
+            "coverage": "full",
+            "overlap_span": {
+                "start": SOURCE.index("Beta"),
+                "end": SOURCE.index("Beta")
+                + len("Beta statement is deliberately long."),
+            },
+        }
+    ]
 
 
 def test_structure_bridge_preserves_hierarchy_table_topology_and_round_trips(

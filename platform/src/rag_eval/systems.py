@@ -13,7 +13,7 @@ from rag_eval.products import ProductResources, SystemConnection
 from rag_eval.runs.plans import ResolvedSystemIdentityV2, digest_json
 from rag_eval.secrets import SecretStore
 from rag_eval.storage.atomic import atomic_write_json
-from rag_eval.storage.runs import safe_id
+from rag_eval.storage.ids import safe_id
 from rag_eval.worker.process import WorkerCommand
 
 

@@ -85,11 +85,6 @@ def build_parser() -> argparse.ArgumentParser:
     verify = subparsers.add_parser("verify-run")
     verify.add_argument("run_id")
 
-    replay = subparsers.add_parser("replay")
-    replay.add_argument("run_id")
-    replay.add_argument("--new-run-id")
-    replay.add_argument("--allow-drift", action="store_true")
-
     schemas = subparsers.add_parser("export-schemas")
     schemas.add_argument("output", type=Path)
 
@@ -179,12 +174,6 @@ def main(argv: list[str] | None = None) -> int:
         ).verification
         print(verification.model_dump_json(indent=2))
         return 0 if verification.valid else 2
-    elif args.command == "replay":
-        print(
-            "historical replay/rescore is unsupported by the Native v2 runtime",
-            file=sys.stderr,
-        )
-        return 2
     elif args.command == "freeze-model-lock":
         lock = ModelLock.model_validate_json(args.source.read_text(encoding="utf-8"))
         digest = freeze_artifact(lock, args.destination)

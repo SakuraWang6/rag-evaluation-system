@@ -32,8 +32,6 @@ from rag_eval.runs import (
     build_artifact_summary,
     derive_leaderboard_eligibility,
 )
-from rag_eval.storage.runs import RunStore
-from tests.rag_eval_platform.test_run_history import _manifest as legacy_manifest
 from tests.rag_eval_platform.test_unified_evaluation_v2 import (
     SHA_A,
     SHA_C,
@@ -214,10 +212,6 @@ def test_artifact_v2_is_immutable_self_verifying_and_read_without_scorer(
     assert reader.case("case-1").adapter_result is not None
     assert reader.case_index().cases[0].answer_judgment.value == "correct"
     assert reader.summary().leaderboard_eligibility.eligible is True
-    store = RunStore(tmp_path)
-    assert store.artifact_v2_manifest("run-1") == manifest
-    assert store.verify_artifact_v2("run-1").valid
-
     def forbidden_rescore(*_args, **_kwargs):
         raise AssertionError("artifact read must not call the current scorer")
 
@@ -488,20 +482,3 @@ def test_run_v2_core_has_no_rag_or_corpus_mode_branches() -> None:
         "benchmark_segments",
     ):
         assert forbidden not in source
-
-
-def test_artifact_1_2_reader_remains_unchanged_when_v2_is_absent(
-    tmp_path: Path,
-) -> None:
-    store = RunStore(tmp_path / "runs")
-    manifest = legacy_manifest()
-    run_dir = store.root / manifest.run_id
-    run_dir.mkdir(parents=True)
-    source = run_dir / "run.json"
-    source.write_text(manifest.model_dump_json(), encoding="utf-8")
-    original = source.read_bytes()
-
-    with pytest.raises(FileNotFoundError):
-        ArtifactV2Reader(run_dir / "artifact-v2").manifest()
-    assert store.get(manifest.run_id) == manifest
-    assert source.read_bytes() == original

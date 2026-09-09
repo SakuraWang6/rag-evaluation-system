@@ -49,7 +49,7 @@ from rag_eval.datasets.portfolio import (
     PortfolioStore,
 )
 from rag_eval.storage.atomic import atomic_write_bytes
-from rag_eval.storage.runs import safe_id
+from rag_eval.storage.ids import safe_id
 
 
 BUNDLE_V3_SCHEMA_VERSION = "dataset-bundle/3.0"

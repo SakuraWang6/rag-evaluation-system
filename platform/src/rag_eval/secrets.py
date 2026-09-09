@@ -10,6 +10,25 @@ import stat
 from pathlib import Path
 from typing import Protocol
 
+SAFE_ENVIRONMENT_KEYS = {
+    "EMBEDDING_BINDING",
+    "EMBEDDING_MODEL",
+    "LLM_BINDING",
+    "LLM_MODEL",
+    "QUERY_LLM_BINDING",
+    "QUERY_LLM_MODEL",
+    "RAG_EVAL_SEED",
+}
+
+
+def safe_environment(values: os._Environ[str] | dict[str, str]) -> dict[str, str]:
+    """Return the non-secret environment allowlist safe for diagnostics."""
+
+    return {
+        key: str(values[key])
+        for key in sorted(SAFE_ENVIRONMENT_KEYS.intersection(values))
+    }
+
 
 class SecretStore(Protocol):
     def set(self, value: str) -> str: ...
