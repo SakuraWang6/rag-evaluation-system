@@ -1,0 +1,56 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "case_id": {
+      "minLength": 1,
+      "title": "Case Id",
+      "type": "string"
+    },
+    "question": {
+      "minLength": 1,
+      "title": "Question",
+      "type": "string"
+    },
+    "generate_answer": {
+      "title": "Generate Answer",
+      "type": "boolean"
+    },
+    "retrieval_candidate_k": {
+      "minimum": 1,
+      "title": "Retrieval Candidate K",
+      "type": "integer"
+    },
+    "final_context_k": {
+      "minimum": 1,
+      "title": "Final Context K",
+      "type": "integer"
+    },
+    "max_context_tokens": {
+      "minimum": 1,
+      "title": "Max Context Tokens",
+      "type": "integer"
+    },
+    "generation_options": {
+      "additionalProperties": true,
+      "title": "Generation Options",
+      "type": "object"
+    }
+  },
+  "required": [
+    "case_id",
+    "question",
+    "generate_answer",
+    "retrieval_candidate_k",
+    "final_context_k",
+    "max_context_tokens",
+    "generation_options"
+  ],
+  "title": "NativeQueryV2",
+  "type": "object"
+}

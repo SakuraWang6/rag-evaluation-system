@@ -15,7 +15,6 @@ import subprocess
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -27,7 +26,7 @@ import yaml
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 SAFE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-PROTOCOL_VERSION = "1.0"
+PROTOCOL_VERSION = "2.0"
 CONTAINER_PORT = 8765
 
 
@@ -287,16 +286,27 @@ class WorkerHttpClient:
             raise SmokeError(f"non-JSON response from {path}") from exc
         return _mapping(parsed, f"response from {path}")
 
-    def wait_for_handshake(self, timeout: float) -> Mapping[str, Any]:
+    def health(self, timeout: float = 5.0) -> Mapping[str, Any]:
+        health = self._request("GET", "/health", timeout=timeout)
+        if health.get("protocol_version") != PROTOCOL_VERSION:
+            raise SmokeError("/health returned an incompatible protocol version")
+        return health
+
+    def wait_until_ready(self, timeout: float) -> Mapping[str, Any]:
         deadline = time.monotonic() + timeout
         last_error: Exception | None = None
         while time.monotonic() < deadline:
             try:
-                return self._request("GET", "/handshake", timeout=2.0)
+                health = self.health(timeout=2.0)
+                if health.get("ready") is True:
+                    return health
+                last_error = SmokeError(
+                    f"Worker is not ready: {health.get('status')!r}"
+                )
             except SmokeError as exc:
                 last_error = exc
-                time.sleep(0.1)
-        raise SmokeError(f"handshake timed out after {timeout:g}s: {last_error}")
+            time.sleep(0.1)
+        raise SmokeError(f"readiness timed out after {timeout:g}s: {last_error}")
 
     def _wire_request(
         self,
@@ -327,63 +337,47 @@ class WorkerHttpClient:
             raise SmokeError(f"{path} returned Worker error: {envelope.get('error')!r}")
         return _mapping(envelope.get("payload"), f"{path} payload")
 
-    def prepare(self, config: Mapping[str, Any], timeout: float) -> Mapping[str, Any]:
-        return self._wire_request(
-            "/prepare",
-            {
-                "context": {
-                    "run_id": self.run_id,
-                    "work_dir": "/run/rag-eval-work",
-                    "source_dir": "/run/rag-eval-source",
-                    "platform_version": "0.1.0",
-                    "seed": 0,
-                    "repetition": 1,
-                },
-                "config": dict(config),
-            },
-            timeout,
-        )
-
-    def health(self, timeout: float = 5.0) -> Mapping[str, Any]:
-        request_id = secrets.token_hex(16)
-        query = urllib.parse.urlencode(
-            {
-                "protocol_version": PROTOCOL_VERSION,
-                "request_id": request_id,
-                "run_id": self.run_id,
-            }
-        )
-        envelope = self._request("GET", f"/health?{query}", timeout=timeout)
-        if envelope.get("protocol_version") != PROTOCOL_VERSION:
-            raise SmokeError("/health returned an incompatible protocol version")
-        if (
-            envelope.get("request_id") != request_id
-            or envelope.get("run_id") != self.run_id
+    def assert_retired_routes_absent(self, timeout: float = 5.0) -> None:
+        for method, path in (
+            ("GET", "/handshake"),
+            ("POST", "/ingest"),
+            ("POST", "/reset"),
         ):
-            raise SmokeError("/health returned mismatched request identity")
-        if envelope.get("status") != "ok":
-            raise SmokeError(
-                f"/health returned Worker error: {envelope.get('error')!r}"
+            request = urllib.request.Request(
+                f"{self.base_url}{path}",
+                data=(b"{}" if method == "POST" else None),
+                headers={
+                    "Authorization": f"Bearer {self.token}",
+                    "Content-Type": "application/json",
+                },
+                method=method,
             )
-        return _mapping(envelope.get("payload"), "/health payload")
+            try:
+                urllib.request.urlopen(request, timeout=timeout)
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404:
+                    continue
+                raise SmokeError(f"retired route {path} returned HTTP {exc.code}") from exc
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                raise SmokeError(f"retired route check for {path} failed: {exc}") from exc
+            raise SmokeError(f"retired Worker route is still reachable: {path}")
 
     def close(self, timeout: float = 10.0) -> Mapping[str, Any]:
         return self._wire_request("/close", {}, timeout)
 
 
 class LifecycleClient(Protocol):
-    def wait_for_handshake(self, timeout: float) -> Mapping[str, Any]: ...
-
-    def prepare(
-        self, config: Mapping[str, Any], timeout: float
-    ) -> Mapping[str, Any]: ...
+    def wait_until_ready(self, timeout: float) -> Mapping[str, Any]: ...
 
     def health(self, timeout: float = 5.0) -> Mapping[str, Any]: ...
+
+    def assert_retired_routes_absent(self, timeout: float = 5.0) -> None: ...
 
     def close(self, timeout: float = 10.0) -> Mapping[str, Any]: ...
 
 
-def _validate_handshake(spec: WorkerSpec, handshake: Mapping[str, Any]) -> None:
+def _validate_health(spec: WorkerSpec, health: Mapping[str, Any]) -> None:
+    identity = _mapping(health.get("identity"), "health identity")
     expected = {
         "protocol_version": PROTOCOL_VERSION,
         "adapter_id": spec.adapter_id,
@@ -391,11 +385,13 @@ def _validate_handshake(spec: WorkerSpec, handshake: Mapping[str, Any]) -> None:
         "system_version": spec.system_version,
     }
     for field, wanted in expected.items():
-        if handshake.get(field) != wanted:
+        actual = health.get(field) if field == "protocol_version" else identity.get(field)
+        if actual != wanted:
             raise SmokeError(
-                f"handshake {field} mismatch: expected {wanted!r}, found {handshake.get(field)!r}"
+                f"health {field} mismatch: expected {wanted!r}, found {actual!r}"
             )
-    _mapping(handshake.get("capabilities"), "handshake capabilities")
+    if health.get("ready") is not True:
+        raise SmokeError(f"Worker health is not ready: {health!r}")
 
 
 def run_smoke(
@@ -419,33 +415,18 @@ def run_smoke(
         port = docker.published_port(container_id)
         client = client_factory(f"http://127.0.0.1:{port}", token, run_id)
 
-        stage = "handshake"
-        handshake = client.wait_for_handshake(startup_timeout)
-        _validate_handshake(spec, handshake)
-
-        stage = "prepare"
-        prepared = client.prepare(spec.prepare_config, spec.prepare_timeout_seconds)
-        prepared_capabilities = _mapping(
-            prepared.get("capabilities"), "prepared capabilities"
-        )
-        if prepared_capabilities != handshake.get("capabilities"):
-            raise SmokeError("prepare capabilities differ from handshake capabilities")
-        if prepared.get("system_version") != spec.system_version:
-            raise SmokeError(
-                "prepared system_version differs from the immutable runtime lock"
-            )
-
         stage = "health"
-        health = client.health()
-        if health.get("ready") is not True:
-            raise SmokeError(f"Worker is not ready after prepare: {health!r}")
-        details = _mapping(health.get("details", {}), "health details")
-        if details.get("prepared") is not True:
-            raise SmokeError(
-                f"Worker health does not report prepared state: {health!r}"
-            )
+        health = client.wait_until_ready(startup_timeout)
+        _validate_health(spec, health)
         if health.get("status") in {None, "closed", "failed"}:
             raise SmokeError(f"Worker health status is not usable: {health!r}")
+
+        # Native prepare necessarily parses and indexes the DOCX and therefore
+        # is covered by the Adapter TCK with model-free fakes.  This real-image
+        # smoke remains model-free: it verifies boot, fixed V2 identity, and
+        # that retired Wire 1 routes are absent.
+        stage = "retired-routes"
+        client.assert_retired_routes_absent()
 
         stage = "close"
         closed = client.close()
@@ -454,10 +435,10 @@ def run_smoke(
         return {
             "worker": spec.name,
             "image": image,
-            "protocol_version": handshake["protocol_version"],
-            "adapter_id": handshake["adapter_id"],
-            "system_id": handshake["system_id"],
-            "system_version": handshake["system_version"],
+            "protocol_version": health["protocol_version"],
+            "adapter_id": health["identity"]["adapter_id"],
+            "system_id": health["identity"]["system_id"],
+            "system_version": health["identity"]["system_version"],
             "health_status": health["status"],
             "result": "PASS",
         }

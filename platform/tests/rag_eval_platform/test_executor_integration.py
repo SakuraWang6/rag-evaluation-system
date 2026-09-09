@@ -8,14 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from rag_eval.cli import main as cli_main
-from rag_eval.contracts.run import ExperimentSpec, RunStatus
-from rag_eval.datasets.bundle import DatasetBundleStore, case_selection_id
+from rag_eval.contracts.run import RunStatus
+from rag_eval.evaluation.unified import EvaluationMetricStatus
 from rag_eval.execution import RunExecutor
-from rag_eval.storage.runs import RunStore
-from rag_eval.systems import SystemRegistration, SystemRegistry
-from rag_eval.worker.process import WorkerCommand
-from tests.rag_eval_platform.test_bundle_store import write_bundle
+from rag_eval.runs import ArtifactV2Reader, RunRecordStateV2
+from rag_eval.systems import SystemRegistration
+from rag_eval.worker.client import WorkerProtocolError
+from tests.rag_eval_platform.test_resolved_run_plan_v2 import _native_experiment
 
 
 def require_loopback_bind() -> None:
@@ -29,78 +28,15 @@ def require_loopback_bind() -> None:
 def test_standalone_fake_adapter_run_is_reproducible_and_source_only(
     tmp_path: Path,
 ) -> None:
-    require_loopback_bind()
-    source = tmp_path / "bundle"
-    source.mkdir()
-    write_bundle(source)
-    dataset_store = DatasetBundleStore(tmp_path / "platform" / "datasets")
-    bundle = dataset_store.register(source)
-    run_store = RunStore(tmp_path / "platform" / "runs")
-    executor = RunExecutor(dataset_store, run_store)
+    """The retained CI node now exercises the complete Direct Wire 2 path."""
 
+    require_loopback_bind()
+    service, source_experiment, bundle = _native_experiment(tmp_path)
     platform_src = Path(__file__).resolve().parents[2] / "src"
     pythonpath = str(platform_src)
     if inherited := os.environ.get("PYTHONPATH"):
         pythonpath = os.pathsep.join([pythonpath, inherited])
-    command = WorkerCommand(
-        adapter_id="fake",
-        adapter_factory="rag_eval.adapters.fake:create_worker_definition",
-        python_executable=sys.executable,
-        environment={"PYTHONPATH": pythonpath},
-    )
-    spec = ExperimentSpec(
-        experiment_id="standalone-fake",
-        bundle_id=bundle.bundle_id,
-        system_id="fake-rag",
-        adapter_id="fake",
-        query_config={"final_context_k": 1},
-        metric_config={"k_values": [1]},
-        case_selection_id=case_selection_id(
-            ["case-1"], policy="all", seed=0
-        ),
-        repetitions=2,
-    )
-    manifest = executor.execute(spec, command, run_id="fake-run")
-
-    assert manifest.status == RunStatus.COMPLETED
-    assert manifest.schema_version == 2
-    assert manifest.producer == "rag_eval_platform"
-    assert manifest.effective_config["query"]["final_context_k"] == 1
-    assert manifest.index_fingerprint
-    assert len(manifest.index_fingerprints) == 2
-    assert manifest.repetition_seeds == [0, 1]
-    assert manifest.reproducibility is not None
-    assert len(manifest.reproducibility.dependency_lock_digest) == 64
-    assert manifest.artifact_checksums
-    cases = run_store.cases("fake-run")
-    assert [case.repetition for case in cases] == [1, 2]
-    case = cases[0]
-    groundedness = next(
-        metric for metric in case.metrics if metric.metric_id == "answer_groundedness"
-    )
-    assert groundedness.value == 1.0
-
-    source_files = sorted(
-        path.name for path in (run_store.root / "fake-run" / "source").iterdir()
-    )
-    assert len(source_files) == 1
-    assert source_files[0].startswith("source-00000-")
-    assert source_files[0].endswith(".txt")
-    assert not any("gold" in name or "answer" in name for name in source_files)
-
-    summary_path = run_store.root / "fake-run" / "summary.json"
-    summary = json.loads(summary_path.read_text())
-    assert summary["metrics"]["answer_groundedness"]["repetition_values"] == [
-        1.0,
-        1.0,
-    ]
-    assert summary["metrics"]["answer_groundedness"][
-        "standard_deviation"
-    ] == 0.0
-    assert summary["execution"]["execution_failure_rate"] == 0.0
-    assert run_store.verify_artifacts("fake-run").valid
-
-    SystemRegistry(tmp_path / "platform" / "systems").register(
+    service.systems.register(
         SystemRegistration(
             system_id="fake-rag",
             adapter_id="fake",
@@ -109,36 +45,149 @@ def test_standalone_fake_adapter_run_is_reproducible_and_source_only(
             environment={"PYTHONPATH": pythonpath},
         )
     )
-    assert (
-        cli_main(
-            [
-                "--home",
-                str(tmp_path / "platform"),
-                "replay",
-                "fake-run",
-                "--new-run-id",
-                "fake-replay",
-            ]
-        )
-        == 2
+    experiment = source_experiment.model_copy(
+        update={
+            "experiment_id": "standalone-fake",
+            "display_name": "Direct Wire 2 fake integration",
+            "system_id": "fake-rag",
+            "adapter_id": "fake",
+            "repetitions": 2,
+        }
     )
-    assert not (run_store.root / "fake-replay").exists()
+    reference = service.admit_new_public_experiment(experiment, bundle)
+    plan = service.resolved_run_plans.get(reference)
+    command = service.system_resolver.resolve(
+        experiment.system_id,
+        provider=plan.system.execution_provider,
+    ).command
+    executor = RunExecutor(
+        service.datasets,
+        service.runs,
+        dataset_release_store=service.formal_datasets.releases,
+        run_record_store=service.run_records,
+    )
 
-    summary_path.write_text("{}", encoding="utf-8")
-    verification = run_store.verify_artifacts("fake-run")
-    assert not verification.valid
-    assert verification.mismatched == ("summary.json",)
-    assert (
-        cli_main(
-            [
-                "--home",
-                str(tmp_path / "platform"),
-                "replay",
-                "fake-run",
-                "--new-run-id",
-                "must-not-exist",
-            ]
-        )
-        == 2
+    manifest = executor.execute(
+        experiment,
+        command,
+        run_id="fake-run",
+        resolved_plan=plan,
+        resolved_plan_reference=reference,
     )
-    assert not (run_store.root / "must-not-exist").exists()
+
+    assert manifest.status == RunStatus.COMPLETED
+    assert manifest.effective_config["query"]["final_context_k"] == 5
+    assert len(manifest.index_fingerprints) == 2
+    assert manifest.repetition_seeds == [0, 1]
+    assert manifest.reproducibility is not None
+    assert len(manifest.reproducibility.dependency_lock_digest) == 64
+
+    record = service.run_records.get("fake-run")
+    reader = ArtifactV2Reader(service.paths.runs / "fake-run" / "artifact-v2")
+    assert record.state == RunRecordStateV2.COMPLETED
+    assert reader.verify().valid
+    assert record.artifact_digest == reader.manifest().artifact_digest
+    cases = reader.cases()
+    assert [case.repetition for case in cases] == [1, 2]
+    assert all(case.adapter_result is not None for case in cases)
+    assert all(
+        case.adapter_result.telemetry["native_query_executions"] == 1
+        for case in cases
+        if case.adapter_result is not None
+    )
+    assert all(
+        metric.status == EvaluationMetricStatus.UNAVAILABLE
+        for case in cases
+        for metric in case.evaluation.metrics
+    )
+
+    source_files = sorted(
+        path.name for path in (service.paths.runs / "fake-run" / "source").iterdir()
+    )
+    assert len(source_files) == 2
+    assert any(name.endswith(".docx") for name in source_files)
+    assert any("canonical" in name for name in source_files)
+    assert not any(
+        token in name
+        for name in source_files
+        for token in ("gold", "answer", "question")
+    )
+
+    case_path = (
+        service.paths.runs
+        / "fake-run"
+        / "artifact-v2"
+        / reader.manifest().cases[0].path
+    )
+    payload = json.loads(case_path.read_text(encoding="utf-8"))
+    payload["question"] = "tampered"
+    case_path.write_text(json.dumps(payload), encoding="utf-8")
+    assert not reader.verify().valid
+
+
+def test_query_protocol_error_is_persisted_as_unavailable_artifact_case(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    require_loopback_bind()
+    service, source_experiment, bundle = _native_experiment(tmp_path)
+    platform_src = Path(__file__).resolve().parents[2] / "src"
+    pythonpath = str(platform_src)
+    if inherited := os.environ.get("PYTHONPATH"):
+        pythonpath = os.pathsep.join([pythonpath, inherited])
+    service.systems.register(
+        SystemRegistration(
+            system_id="fake-rag",
+            adapter_id="fake",
+            adapter_factory="rag_eval.adapters.fake:create_worker_definition",
+            python_executable=sys.executable,
+            environment={"PYTHONPATH": pythonpath},
+        )
+    )
+    experiment = source_experiment.model_copy(
+        update={
+            "experiment_id": "protocol-error",
+            "system_id": "fake-rag",
+            "adapter_id": "fake",
+            "repetitions": 1,
+        }
+    )
+    reference = service.admit_new_public_experiment(experiment, bundle)
+    plan = service.resolved_run_plans.get(reference)
+    command = service.system_resolver.resolve(
+        experiment.system_id,
+        provider=plan.system.execution_provider,
+    ).command
+
+    def fail_query(*_args, **_kwargs):
+        raise WorkerProtocolError("malformed Direct Wire 2 query payload")
+
+    monkeypatch.setattr("rag_eval.worker.client.WorkerClient.query", fail_query)
+    manifest = RunExecutor(
+        service.datasets,
+        service.runs,
+        dataset_release_store=service.formal_datasets.releases,
+        run_record_store=service.run_records,
+    ).execute(
+        experiment,
+        command,
+        run_id="protocol-error-run",
+        resolved_plan=plan,
+        resolved_plan_reference=reference,
+    )
+
+    assert manifest.status == RunStatus.COMPLETED
+    record = service.run_records.get("protocol-error-run")
+    assert record.state == RunRecordStateV2.COMPLETED
+    reader = ArtifactV2Reader(
+        service.paths.runs / "protocol-error-run" / "artifact-v2"
+    )
+    assert reader.verify().valid
+    case = reader.cases()[0]
+    assert case.status == "system_error"
+    assert case.error is not None
+    assert case.error.code == "worker_protocol_error"
+    assert all(
+        metric.status == EvaluationMetricStatus.UNAVAILABLE
+        for metric in case.evaluation.metrics
+    )

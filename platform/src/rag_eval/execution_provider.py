@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
-from rag_eval.contracts.adapter import PrepareContext
+from rag_eval.contracts.native import ResolvedAdapterConfigV2
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.worker.client import WorkerClient
 from rag_eval.worker.process import WorkerCommand, WorkerProcess, reserve_loopback_port
@@ -39,7 +39,10 @@ class WorkerHandle(Protocol):
     handle_id: str | None
     launch_metadata: dict[str, object]
 
-    def prepare_context(self, context: PrepareContext) -> PrepareContext: ...
+    def resolve_adapter_config(
+        self, config: ResolvedAdapterConfigV2
+    ) -> ResolvedAdapterConfigV2: ...
+
     def stop(self) -> None: ...
     def cancel(self) -> bool: ...
 
@@ -64,8 +67,10 @@ class LocalWorkerHandle:
         if self.launch_metadata is None:
             self.launch_metadata = {"provider": "local", "resolver_strategy": "loopback_process"}
 
-    def prepare_context(self, context: PrepareContext) -> PrepareContext:
-        return context
+    def resolve_adapter_config(
+        self, config: ResolvedAdapterConfigV2
+    ) -> ResolvedAdapterConfigV2:
+        return config
 
     def stop(self) -> None:
         self.process.stop()
@@ -126,8 +131,10 @@ class DockerWorkerHandle:
     def handle_id(self) -> str:
         return self.container_id
 
-    def prepare_context(self, context: PrepareContext) -> PrepareContext:
-        return context.model_copy(
+    def resolve_adapter_config(
+        self, config: ResolvedAdapterConfigV2
+    ) -> ResolvedAdapterConfigV2:
+        return config.model_copy(
             update={
                 "source_dir": "/rag-eval/source",
                 "work_dir": "/rag-eval/work",
@@ -220,7 +227,7 @@ class DockerProvider:
             container_id = _docker(argv).strip()
         except RuntimeError as exc:
             # A worker launch can fail after Docker has created the named
-            # container (for example, during an interrupted handshake).  The
+            # container (for example, during an interrupted readiness check). The
             # next attempt must not blindly delete an arbitrary user
             # container that happens to share the generated name.  Inspect the
             # managed labels first and remove only the exact stale Platform
@@ -238,7 +245,7 @@ class DockerProvider:
             timeout=request.command.request_timeout_seconds,
         )
         try:
-            client.wait_for_handshake()
+            client.wait_until_ready()
             inspect = json.loads(_docker(["inspect", container_id, "--format", "{{json .State}}"])).get("Pid")
             return DockerWorkerHandle(
                 container_id=container_id,

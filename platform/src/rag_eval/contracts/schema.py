@@ -21,6 +21,14 @@ from rag_eval.contracts.dataset import (
     GoldEvidenceSet,
     Question,
 )
+from rag_eval.contracts.native import (
+    IngestionReceiptV2,
+    NativeHealthReportV2,
+    NativeQueryV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
+)
 from rag_eval.contracts.observation import (
     AdapterCapabilitiesV2,
     AdapterRunResultV2,
@@ -35,7 +43,15 @@ from rag_eval.contracts.research import (
     ModelLock,
 )
 from rag_eval.contracts.run import CaseResult, ExperimentSpec, RunManifest
-from rag_eval.contracts.wire import HandshakeResponse, WireRequest, WireResponse
+from rag_eval.contracts.wire import (
+    HandshakeResponse,
+    WireRequest,
+    WireRequestV2,
+    WireResponse,
+    WireResponseV2,
+    WorkerHealthV2,
+    WorkerIdentityV2,
+)
 from rag_eval.runs.models import (
     ArtifactCaseIndexV2,
     RunArtifactCaseV2,
@@ -67,6 +83,12 @@ PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "adapter-capabilities-v2": AdapterCapabilitiesV2,
     "unified-trace-v2": UnifiedTrace,
     "adapter-run-result-v2": AdapterRunResultV2,
+    "original-document-v2": OriginalDocumentV2,
+    "resolved-adapter-config-v2": ResolvedAdapterConfigV2,
+    "ingestion-receipt-v2": IngestionReceiptV2,
+    "prepared-system-v2": PreparedSystemV2,
+    "native-query-v2": NativeQueryV2,
+    "native-health-report-v2": NativeHealthReportV2,
     "experiment-spec": ExperimentSpec,
     "case-result": CaseResult,
     "run-manifest": RunManifest,
@@ -89,6 +111,10 @@ PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "worker-handshake": HandshakeResponse,
     "wire-request": WireRequest,
     "wire-response": WireResponse,
+    "worker-identity-v2": WorkerIdentityV2,
+    "worker-health-v2": WorkerHealthV2,
+    "wire-request-v2": WireRequestV2,
+    "wire-response-v2": WireResponseV2,
 }
 
 

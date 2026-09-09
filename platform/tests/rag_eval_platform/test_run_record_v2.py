@@ -3,21 +3,26 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
-from rag_eval.contracts.adapter import (
-    AdapterCapabilities,
-    DocumentInput,
-    IngestionResult,
-    PrepareContext,
-    PreparedSystem,
-    RAGQuery,
-    RAGResult,
+from rag_eval.adapters.native_observation import unavailable_native_result
+from rag_eval.contracts.native import (
+    IngestionReceiptV2,
+    NativeQueryV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
 )
-from rag_eval.contracts.wire import HandshakeResponse
+from rag_eval.contracts.observation import (
+    AdapterCapabilitiesV2,
+    ObservationProfileIdentity,
+    ObservationStatus,
+    RuntimeProfileIdentity,
+    SourceIdentity,
+)
+from rag_eval.contracts.wire import WorkerHealthV2, WorkerIdentityV2
 from rag_eval.execution import RunExecutor
 from rag_eval.execution_provider import ExecutionRequest
 from rag_eval.runs import ArtifactV2Reader, ArtifactWriter
@@ -110,55 +115,81 @@ def _record_plan_store(
 
 class _NativeClient:
     def __init__(self, *, adapter_id: str, system_id: str) -> None:
-        self.capabilities = AdapterCapabilities(
+        self.capabilities = AdapterCapabilitiesV2(
             answer=True,
-            raw_retrieval=True,
-            ranked_retrieval=True,
-            final_context=True,
         )
         self.adapter_id = adapter_id
         self.system_id = system_id
         self.query_count = 0
+        self.prepared: PreparedSystemV2 | None = None
 
-    def handshake(self) -> HandshakeResponse:
-        return HandshakeResponse(
-            adapter_id=self.adapter_id,
-            adapter_version="phase3-fixture",
-            system_id=self.system_id,
-            system_version="phase3-fixture",
-            capabilities=self.capabilities,
+    def health(self) -> WorkerHealthV2:
+        return WorkerHealthV2(
+            identity=WorkerIdentityV2(
+                adapter_id=self.adapter_id,
+                adapter_version="phase4-fixture",
+                system_id=self.system_id,
+                system_version="phase4-fixture",
+            ),
+            status="ready",
+            ready=True,
         )
 
     def prepare(
-        self, _context: PrepareContext, _config: dict[str, Any]
-    ) -> PreparedSystem:
-        return PreparedSystem(
-            effective_config={"fixture": "native-v2"},
-            capabilities=self.capabilities,
-            system_version="phase3-fixture",
-        )
-
-    def ingest(
         self,
-        documents: list[DocumentInput],
+        original: OriginalDocumentV2,
+        resolved: ResolvedAdapterConfigV2,
         *,
         timeout: float | None = None,
-    ) -> IngestionResult:
-        assert len(documents) == 1
-        assert documents[0].source_path is not None
+    ) -> PreparedSystemV2:
         assert timeout is not None
-        return IngestionResult(
-            ingested_documents=1,
-            index_fingerprint="phase3-index",
+        source = SourceIdentity(
+            document_id=original.document_id,
+            source_sha256=original.source_sha256,
+            media_type=original.media_type,
+            source_coordinate_schema="ooxml-structural-v1",
+            canonical_catalog_sha256=original.canonical_catalog_sha256,
         )
+        runtime = RuntimeProfileIdentity(
+            profile_id="phase4-fixture",
+            system_id=self.system_id,
+            system_version="phase4-fixture",
+            configuration_digest="a" * 64,
+        )
+        observation = ObservationProfileIdentity.build(
+            profile_id="phase4-fixture",
+            adapter_id=self.adapter_id,
+            adapter_version="phase4-fixture",
+            capabilities=self.capabilities,
+        )
+        receipt = IngestionReceiptV2.build(
+            document_id=original.document_id,
+            source_sha256=original.source_sha256,
+            index_fingerprint="phase4-index",
+        )
+        self.prepared = PreparedSystemV2.build(
+            effective_config=dict(resolved.adapter_config),
+            source_identity=source,
+            runtime_profile=runtime,
+            observation_profile=observation,
+            ingestion_receipt=receipt,
+        )
+        return self.prepared
 
-    def query(self, _query: RAGQuery) -> RAGResult:
+    def query(
+        self,
+        prepared: PreparedSystemV2,
+        query: NativeQueryV2,
+    ):
+        assert self.prepared == prepared
         self.query_count += 1
-        return RAGResult(
+        return unavailable_native_result(
+            prepared=prepared,
+            query=query,
+            status=ObservationStatus.UNOBSERVED,
+            reason="phase4 fixture does not expose retrieval",
             answer="No verified evidence was observed.",
-            raw_retrieval=[],
-            ranked_retrieval=[],
-            final_context=[],
+            telemetry={"native_query_executions": 1},
         )
 
 
@@ -169,8 +200,10 @@ class _NativeHandle:
         self.handle_id = None
         self.launch_metadata = {"provider": "phase3-fixture"}
 
-    def prepare_context(self, context: PrepareContext) -> PrepareContext:
-        return context
+    def resolve_adapter_config(
+        self, config: ResolvedAdapterConfigV2
+    ) -> ResolvedAdapterConfigV2:
+        return config
 
     def stop(self) -> None:
         return None

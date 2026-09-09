@@ -1,35 +1,40 @@
-"""Authenticated loopback implementation of Wire Protocol 1.0."""
+"""Authenticated loopback implementation of the direct Worker Wire 2.0."""
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import Body, FastAPI, Header, HTTPException, Query
+from fastapi import Body, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from rag_eval.contracts import PROTOCOL_VERSION
-from rag_eval.contracts.adapter import (
-    DocumentInput,
-    PrepareContext,
-    RAGAdapter,
-    RAGQuery,
+from rag_eval.contracts.native import (
+    NativeQueryV2,
+    NativeRAGAdapterV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
 )
+from rag_eval.contracts.observation import AdapterRunResultV2
 from rag_eval.contracts.wire import (
-    HandshakeResponse,
     WireError,
-    WireRequest,
-    WireResponse,
+    WireRequestV2,
+    WireResponseV2,
+    WorkerHealthV2,
+    WorkerIdentityV2,
 )
 
 
 @dataclass(slots=True)
 class WorkerDefinition:
-    adapter: RAGAdapter
-    handshake: HandshakeResponse
+    adapter: NativeRAGAdapterV2
+    identity: WorkerIdentityV2
 
 
 def create_worker_app(
@@ -41,7 +46,10 @@ def create_worker_app(
     if not token:
         raise ValueError("worker token must not be empty")
     app = FastAPI(title="RAG Adapter Worker", version=PROTOCOL_VERSION)
-    state = {"prepared": False, "closed": False}
+    state: dict[str, PreparedSystemV2 | bool | None] = {
+        "prepared_system": None,
+        "closed": False,
+    }
 
     def authorize(authorization: str | None) -> None:
         expected = f"Bearer {token}"
@@ -50,21 +58,22 @@ def create_worker_app(
 
     def parse_request(
         body: dict[str, Any], *, allow_closed: bool = False
-    ) -> WireRequest:
+    ) -> WireRequestV2:
         try:
-            request = WireRequest.model_validate(body)
+            request = WireRequestV2.model_validate(body)
         except ValidationError as exc:
             raise WorkerRequestError("invalid_request", str(exc)) from exc
-        if request.protocol_version != PROTOCOL_VERSION:
-            raise WorkerRequestError("protocol_incompatible", "protocol mismatch")
         if request.run_id != run_id:
             raise WorkerRequestError("run_mismatch", "request run_id is not this worker")
         if state["closed"] and not allow_closed:
             raise WorkerRequestError("worker_closed", "adapter worker is closed")
         return request
 
-    def ok(request: WireRequest, payload: dict[str, Any] | None = None) -> JSONResponse:
-        response = WireResponse(
+    def ok(
+        request: WireRequestV2,
+        payload: dict[str, Any] | None = None,
+    ) -> JSONResponse:
+        response = WireResponseV2(
             request_id=request.request_id,
             run_id=request.run_id,
             status="ok",
@@ -80,7 +89,7 @@ def create_worker_app(
         status_code: int = 400,
         retryable: bool = False,
     ) -> JSONResponse:
-        response = WireResponse(
+        response = WireResponseV2(
             request_id=request_id or "unknown",
             run_id=run_id,
             status="error",
@@ -91,7 +100,7 @@ def create_worker_app(
     async def invoke(
         body: dict[str, Any],
         authorization: str | None,
-        operation: Callable[[WireRequest], Awaitable[dict[str, Any] | None]],
+        operation: Callable[[WireRequestV2], Awaitable[dict[str, Any] | None]],
         *,
         allow_closed: bool = False,
     ) -> JSONResponse:
@@ -102,15 +111,19 @@ def create_worker_app(
             return ok(request, await operation(request))
         except WorkerRequestError as exc:
             return error_response(
-                request_id=request_id, code=exc.code, message=str(exc)
+                request_id=request_id,
+                code=exc.code,
+                message=str(exc),
             )
         except ValidationError as exc:
             return error_response(
-                request_id=request_id, code="invalid_payload", message=str(exc)
+                request_id=request_id,
+                code="invalid_payload",
+                message=str(exc),
             )
-        # Adapter code is an untrusted plugin boundary. Normalize any ordinary
-        # adapter exception while allowing BaseException cancellation/crash
-        # signals to terminate the worker process.
+        # Adapter code is an untrusted plugin boundary. Normalize ordinary
+        # exceptions while allowing cancellation/crash BaseExceptions to end
+        # the worker process.
         except Exception as exc:  # noqa: BLE001
             return error_response(
                 request_id=request_id,
@@ -119,64 +132,50 @@ def create_worker_app(
                 status_code=500,
             )
 
-    @app.get("/handshake")
-    async def handshake(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        authorize(authorization)
-        return definition.handshake.model_dump(mode="json")
-
     @app.get("/health")
     async def health(
-        protocol_version: str = Query(),
-        request_id: str = Query(),
-        requested_run_id: str = Query(alias="run_id"),
         authorization: str | None = Header(default=None),
-    ) -> JSONResponse:
-        body = {
-            "protocol_version": protocol_version,
-            "request_id": request_id,
-            "run_id": requested_run_id,
-            "payload": {},
-        }
-
-        async def operation(_request: WireRequest) -> dict[str, Any]:
-            return (await definition.adapter.health()).model_dump(mode="json")
-
-        return await invoke(body, authorization, operation)
+    ) -> dict[str, Any]:
+        authorize(authorization)
+        report = await definition.adapter.health()
+        return WorkerHealthV2(
+            identity=definition.identity,
+            status=report.status,
+            ready=report.ready,
+            details=report.details,
+        ).model_dump(mode="json")
 
     @app.post("/prepare")
     async def prepare(
         body: Annotated[dict[str, Any], Body()],
         authorization: str | None = Header(default=None),
     ) -> JSONResponse:
-        async def operation(request: WireRequest) -> dict[str, Any]:
-            context = PrepareContext.model_validate(request.payload.get("context"))
-            config = request.payload.get("config")
-            if not isinstance(config, dict):
-                raise WorkerRequestError("invalid_payload", "prepare config must be an object")
-            prepared = await definition.adapter.prepare(context, config)
-            if prepared.capabilities != definition.handshake.capabilities:
+        async def operation(request: WireRequestV2) -> dict[str, Any]:
+            if state["prepared_system"] is not None:
                 raise WorkerRequestError(
-                    "capability_mismatch",
-                    "prepared capabilities differ from handshake declaration",
+                    "already_prepared",
+                    "run-scoped worker may prepare exactly once",
                 )
-            state["prepared"] = True
-            return prepared.model_dump(mode="json")
-
-        return await invoke(body, authorization, operation)
-
-    @app.post("/ingest")
-    async def ingest(
-        body: Annotated[dict[str, Any], Body()],
-        authorization: str | None = Header(default=None),
-    ) -> JSONResponse:
-        async def operation(request: WireRequest) -> dict[str, Any]:
-            require_prepared(state)
-            raw_documents = request.payload.get("documents")
-            if not isinstance(raw_documents, list):
-                raise WorkerRequestError("invalid_payload", "documents must be an array")
-            documents = [DocumentInput.model_validate(item) for item in raw_documents]
-            result = await definition.adapter.ingest(documents)
-            return result.model_dump(mode="json")
+            original = OriginalDocumentV2.model_validate(
+                request.payload.get("original_docx")
+            )
+            resolved = ResolvedAdapterConfigV2.model_validate(
+                request.payload.get("resolved_config")
+            )
+            if resolved.run_id != run_id:
+                raise WorkerRequestError(
+                    "run_mismatch",
+                    "resolved config run_id is not this worker",
+                )
+            _verify_original_document(original, resolved)
+            prepared = await definition.adapter.prepare(original, resolved)
+            _verify_prepared_system(
+                prepared,
+                original=original,
+                identity=definition.identity,
+            )
+            state["prepared_system"] = prepared
+            return prepared.model_dump(mode="json", exclude_none=True)
 
         return await invoke(body, authorization, operation)
 
@@ -185,23 +184,30 @@ def create_worker_app(
         body: Annotated[dict[str, Any], Body()],
         authorization: str | None = Header(default=None),
     ) -> JSONResponse:
-        async def operation(request: WireRequest) -> dict[str, Any]:
-            require_prepared(state)
-            query_request = RAGQuery.model_validate(request.payload)
-            result = await definition.adapter.query(query_request)
-            return result.model_dump(mode="json")
-
-        return await invoke(body, authorization, operation)
-
-    @app.post("/reset")
-    async def reset(
-        body: Annotated[dict[str, Any], Body()],
-        authorization: str | None = Header(default=None),
-    ) -> JSONResponse:
-        async def operation(_request: WireRequest) -> dict[str, Any]:
-            require_prepared(state)
-            result = await definition.adapter.reset()
-            return result.model_dump(mode="json")
+        async def operation(request: WireRequestV2) -> dict[str, Any]:
+            prepared = state["prepared_system"]
+            if not isinstance(prepared, PreparedSystemV2):
+                raise WorkerRequestError(
+                    "not_prepared",
+                    "prepare must complete before query",
+                )
+            supplied = PreparedSystemV2.model_validate(
+                request.payload.get("prepared_system")
+            )
+            if supplied != prepared:
+                raise WorkerRequestError(
+                    "prepared_system_mismatch",
+                    "query does not reference this Worker's prepared system",
+                )
+            native_query = NativeQueryV2.model_validate(request.payload.get("query"))
+            result = await definition.adapter.query(prepared, native_query)
+            _verify_adapter_result(
+                result,
+                prepared=prepared,
+                identity=definition.identity,
+                case_id=native_query.case_id,
+            )
+            return result.model_dump(mode="json", exclude_none=True)
 
         return await invoke(body, authorization, operation)
 
@@ -210,7 +216,7 @@ def create_worker_app(
         body: Annotated[dict[str, Any], Body()],
         authorization: str | None = Header(default=None),
     ) -> JSONResponse:
-        async def operation(_request: WireRequest) -> dict[str, Any]:
+        async def operation(_request: WireRequestV2) -> dict[str, Any]:
             if not state["closed"]:
                 await definition.adapter.close()
                 state["closed"] = True
@@ -221,12 +227,95 @@ def create_worker_app(
     return app
 
 
+def _verified_file(source_dir: str, relative_path: str, expected_sha256: str) -> None:
+    root = Path(source_dir).resolve()
+    candidate = (root / relative_path).resolve()
+    if not candidate.is_relative_to(root) or not candidate.is_file():
+        raise WorkerRequestError(
+            "source_unavailable",
+            "declared native source is outside or absent from the source sandbox",
+        )
+    if hashlib.sha256(candidate.read_bytes()).hexdigest() != expected_sha256:
+        raise WorkerRequestError(
+            "source_identity_mismatch",
+            "declared native source checksum does not match staged bytes",
+        )
+
+
+def _verify_original_document(
+    original: OriginalDocumentV2,
+    resolved: ResolvedAdapterConfigV2,
+) -> None:
+    _verified_file(resolved.source_dir, original.source_path, original.source_sha256)
+    _verified_file(
+        resolved.source_dir,
+        original.canonical_catalog_path,
+        original.canonical_catalog_sha256,
+    )
+
+
+def _verify_prepared_system(
+    prepared: PreparedSystemV2,
+    *,
+    original: OriginalDocumentV2,
+    identity: WorkerIdentityV2,
+) -> None:
+    source = prepared.source_identity
+    if (
+        source.document_id != original.document_id
+        or source.source_sha256 != original.source_sha256
+        or source.media_type != original.media_type
+        or source.canonical_catalog_sha256
+        != original.canonical_catalog_sha256
+    ):
+        raise WorkerRequestError(
+            "prepared_identity_mismatch",
+            "prepared system does not bind the declared original DOCX",
+        )
+    if (
+        prepared.observation_profile.adapter_id != identity.adapter_id
+        or prepared.observation_profile.adapter_version != identity.adapter_version
+        or prepared.runtime_profile.system_id != identity.system_id
+        or prepared.runtime_profile.system_version != identity.system_version
+    ):
+        raise WorkerRequestError(
+            "prepared_identity_mismatch",
+            "prepared runtime/observation identity differs from Worker identity",
+        )
+
+
+def _verify_adapter_result(
+    result: AdapterRunResultV2,
+    *,
+    prepared: PreparedSystemV2,
+    identity: WorkerIdentityV2,
+    case_id: str,
+) -> None:
+    if result.normalization is not None:
+        raise WorkerRequestError(
+            "legacy_normalization_forbidden",
+            "Direct Wire 2.0 results cannot contain compatibility normalization",
+        )
+    if (
+        result.adapter_id != identity.adapter_id
+        or result.adapter_version != identity.adapter_version
+        or result.system_id != identity.system_id
+        or result.system_version != identity.system_version
+        or result.trace.case_id != case_id
+        or result.trace.source_identity != prepared.source_identity
+        or result.trace.runtime_profile != prepared.runtime_profile
+        or result.trace.observation_profile != prepared.observation_profile
+    ):
+        raise WorkerRequestError(
+            "result_identity_mismatch",
+            "Adapter result differs from the prepared system or query identity",
+        )
+
+
 class WorkerRequestError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
 
 
-def require_prepared(state: dict[str, bool]) -> None:
-    if not state["prepared"]:
-        raise WorkerRequestError("not_prepared", "prepare must complete first")
+__all__ = ["WorkerDefinition", "WorkerRequestError", "create_worker_app"]

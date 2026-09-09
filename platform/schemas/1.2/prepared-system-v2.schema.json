@@ -1,0 +1,337 @@
+{
+  "$defs": {
+    "AdapterCapabilitiesV2": {
+      "additionalProperties": false,
+      "description": "Adapter observation capabilities, independent of runtime behavior.",
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "ingestion_catalog": {
+          "default": false,
+          "title": "Ingestion Catalog",
+          "type": "boolean"
+        },
+        "candidate_retrieval": {
+          "default": false,
+          "title": "Candidate Retrieval",
+          "type": "boolean"
+        },
+        "ranked_retrieval": {
+          "default": false,
+          "title": "Ranked Retrieval",
+          "type": "boolean"
+        },
+        "final_context": {
+          "default": false,
+          "title": "Final Context",
+          "type": "boolean"
+        },
+        "prompt_trace": {
+          "default": false,
+          "title": "Prompt Trace",
+          "type": "boolean"
+        },
+        "answer": {
+          "default": false,
+          "title": "Answer",
+          "type": "boolean"
+        },
+        "provenance": {
+          "default": false,
+          "title": "Provenance",
+          "type": "boolean"
+        },
+        "transformation_lineage": {
+          "default": false,
+          "title": "Transformation Lineage",
+          "type": "boolean"
+        },
+        "latency_breakdown": {
+          "default": false,
+          "title": "Latency Breakdown",
+          "type": "boolean"
+        },
+        "token_usage": {
+          "default": false,
+          "title": "Token Usage",
+          "type": "boolean"
+        },
+        "transitions": {
+          "items": {
+            "$ref": "#/$defs/StageTransitionDeclaration"
+          },
+          "title": "Transitions",
+          "type": "array"
+        }
+      },
+      "title": "AdapterCapabilitiesV2",
+      "type": "object"
+    },
+    "IngestionReceiptV2": {
+      "additionalProperties": false,
+      "description": "Content-addressed proof that prepare indexed the declared DOCX once.",
+      "properties": {
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "ingested_documents": {
+          "const": 1,
+          "default": 1,
+          "title": "Ingested Documents",
+          "type": "integer"
+        },
+        "failed_documents": {
+          "const": 0,
+          "default": 0,
+          "title": "Failed Documents",
+          "type": "integer"
+        },
+        "index_fingerprint": {
+          "minLength": 1,
+          "title": "Index Fingerprint",
+          "type": "string"
+        },
+        "index_artifact_digest": {
+          "anyOf": [
+            {
+              "pattern": "^(sha256:)?[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Index Artifact Digest"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Receipt Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "index_fingerprint",
+        "receipt_digest"
+      ],
+      "title": "IngestionReceiptV2",
+      "type": "object"
+    },
+    "ObservationProfileIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_version": {
+          "minLength": 1,
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/AdapterCapabilitiesV2"
+        },
+        "profile_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Profile Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id",
+        "adapter_id",
+        "adapter_version",
+        "capabilities",
+        "profile_digest"
+      ],
+      "title": "ObservationProfileIdentity",
+      "type": "object"
+    },
+    "RuntimeProfileIdentity": {
+      "additionalProperties": false,
+      "description": "Opaque RAG-owned runtime configuration identity.",
+      "properties": {
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "system_id": {
+          "minLength": 1,
+          "title": "System Id",
+          "type": "string"
+        },
+        "system_version": {
+          "minLength": 1,
+          "title": "System Version",
+          "type": "string"
+        },
+        "configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id",
+        "system_id",
+        "system_version",
+        "configuration_digest"
+      ],
+      "title": "RuntimeProfileIdentity",
+      "type": "object"
+    },
+    "SourceIdentity": {
+      "additionalProperties": false,
+      "description": "Identity of the original document and its Canonical Catalog.",
+      "properties": {
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "source_coordinate_schema": {
+          "minLength": 1,
+          "title": "Source Coordinate Schema",
+          "type": "string"
+        },
+        "canonical_catalog_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Catalog Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "media_type",
+        "source_coordinate_schema",
+        "canonical_catalog_sha256"
+      ],
+      "title": "SourceIdentity",
+      "type": "object"
+    },
+    "StageName": {
+      "enum": [
+        "candidate",
+        "ranked",
+        "context"
+      ],
+      "title": "StageName",
+      "type": "string"
+    },
+    "StageTransitionDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "source_stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "target_stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "mode": {
+          "$ref": "#/$defs/StageTransitionMode"
+        }
+      },
+      "required": [
+        "source_stage",
+        "target_stage",
+        "mode"
+      ],
+      "title": "StageTransitionDeclaration",
+      "type": "object"
+    },
+    "StageTransitionMode": {
+      "enum": [
+        "identity_subset",
+        "verified_derivation",
+        "unobservable"
+      ],
+      "title": "StageTransitionMode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable handle and identities for one successfully ingested system.",
+  "properties": {
+    "protocol_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "prepared_system_id": {
+      "pattern": "^prepared:sha256:[0-9a-f]{64}$",
+      "title": "Prepared System Id",
+      "type": "string"
+    },
+    "effective_config": {
+      "additionalProperties": true,
+      "title": "Effective Config",
+      "type": "object"
+    },
+    "source_identity": {
+      "$ref": "#/$defs/SourceIdentity"
+    },
+    "runtime_profile": {
+      "$ref": "#/$defs/RuntimeProfileIdentity"
+    },
+    "observation_profile": {
+      "$ref": "#/$defs/ObservationProfileIdentity"
+    },
+    "ingestion_receipt": {
+      "$ref": "#/$defs/IngestionReceiptV2"
+    }
+  },
+  "required": [
+    "prepared_system_id",
+    "effective_config",
+    "source_identity",
+    "runtime_profile",
+    "observation_profile",
+    "ingestion_receipt"
+  ],
+  "title": "PreparedSystemV2",
+  "type": "object"
+}

@@ -8,13 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from rag_eval.contracts.adapter import DocumentInput, PrepareContext, RAGQuery
 from rag_eval.worker.process import (
     WorkerCommand,
     WorkerProcess,
     process_group_has_live_members,
     terminate_process_group,
 )
+
+from .native_worker_fixtures import native_query, stage_native_worker_input
 
 
 def test_fake_adapter_runs_over_real_loopback_process(tmp_path: Path) -> None:
@@ -38,30 +39,20 @@ def test_fake_adapter_runs_over_real_loopback_process(tmp_path: Path) -> None:
 
     try:
         client = process.start()
-        handshake = client.handshake()
-        assert handshake.adapter_id == "fake"
-        prepared = client.prepare(
-            PrepareContext(
-                run_id="process-run",
-                work_dir=str(tmp_path / "work"),
-                source_dir=str(tmp_path / "source"),
-                platform_version="0.1.0",
-            ),
-            {"final_context_k": 1},
+        health = client.health()
+        assert health.identity.adapter_id == "fake"
+        original, resolved = stage_native_worker_input(
+            tmp_path,
+            run_id="process-run",
         )
+        prepared = client.prepare(original, resolved)
         assert prepared.effective_config["final_context_k"] == 1
-        client.ingest(
-            [
-                DocumentInput(
-                    document_id="doc-1", content="The controlled value is 42."
-                )
-            ]
+        result = client.query(prepared, native_query())
+        assert result.trace.final_context.items
+        assert result.trace.final_context.items[0].content == (
+            "The controlled value is 42."
         )
-        result = client.query(
-            RAGQuery(case_id="case-1", question="controlled value")
-        )
-        assert result.final_context is not None
-        assert result.final_context[0].document_id == "doc-1"
+        assert result.telemetry["native_query_executions"] == 1
     finally:
         process.stop()
 
@@ -80,7 +71,7 @@ def test_worker_prepends_selected_python_bin_to_path(
             return None
 
     class ClientStub:
-        def wait_for_handshake(self, _timeout):
+        def wait_until_ready(self, _timeout):
             return None
 
     def popen(argv, **kwargs):

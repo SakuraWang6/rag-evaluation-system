@@ -64,6 +64,17 @@ from rag_eval.contracts.dataset import (
     TableCellLocator,
     TextSpanLocator,
 )
+from rag_eval.contracts.native import (
+    DOCX_MEDIA_TYPE,
+    NATIVE_ADAPTER_PROTOCOL_VERSION,
+    IngestionReceiptV2,
+    NativeHealthReportV2,
+    NativeQueryV2,
+    NativeRAGAdapterV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
+)
 from rag_eval.contracts.observation import (
     OBSERVATION_SCHEMA_VERSION,
     AdapterCapabilitiesV2,
@@ -115,11 +126,15 @@ from rag_eval.contracts.wire import (
     HandshakeResponse,
     WireError,
     WireRequest,
+    WireRequestV2,
     WireResponse,
+    WireResponseV2,
+    WorkerHealthV2,
+    WorkerIdentityV2,
 )
 
 CONTRACT_VERSION = "1.0"
-PROTOCOL_VERSION = "1.0"
+PROTOCOL_VERSION = NATIVE_ADAPTER_PROTOCOL_VERSION
 SCHEMA_VERSION = 2
 PRODUCER = "rag_eval_platform"
 
@@ -130,8 +145,10 @@ __all__ = [
     "CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY",
     "CANONICAL_SCHEMA_VERSION",
     "CONTRACT_VERSION",
+    "DOCX_MEDIA_TYPE",
     "MAX_ENVELOPED_SEGMENT_CHARACTERS",
     "OBSERVATION_SCHEMA_VERSION",
+    "NATIVE_ADAPTER_PROTOCOL_VERSION",
     "PRODUCER",
     "PROTOCOL_VERSION",
     "SCHEMA_VERSION",
@@ -174,6 +191,7 @@ __all__ = [
     "HandshakeResponse",
     "HealthReport",
     "IngestionCatalogObservation",
+    "IngestionReceiptV2",
     "IngestionResult",
     "LineageIntegrityStatus",
     "MappingDiagnostic",
@@ -182,15 +200,20 @@ __all__ = [
     "MetricResult",
     "MetricStatus",
     "NativeLineage",
+    "NativeHealthReportV2",
+    "NativeQueryV2",
+    "NativeRAGAdapterV2",
     "NativeSpan",
     "ObjectLocator",
     "ObservationCompleteness",
     "ObservationProfileIdentity",
     "ObservationStatus",
+    "OriginalDocumentV2",
     "ObservedStageItem",
     "PageRegionLocator",
     "PhysicalCellFootprint",
     "PrepareContext",
+    "PreparedSystemV2",
     "PreparedSystem",
     "ProvenanceCoverageStatus",
     "ProvenanceEdge",
@@ -200,6 +223,7 @@ __all__ = [
     "RAGQuery",
     "RAGResult",
     "ReceiptStatus",
+    "ResolvedAdapterConfigV2",
     "RepresentationStatus",
     "ReproducibilityRecord",
     "ResetResult",
@@ -230,5 +254,9 @@ __all__ = [
     "ValidationReceipt",
     "WireError",
     "WireRequest",
+    "WireRequestV2",
     "WireResponse",
+    "WireResponseV2",
+    "WorkerHealthV2",
+    "WorkerIdentityV2",
 ]

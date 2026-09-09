@@ -1,189 +1,357 @@
-"""Deterministic, source-only adapter used by the contract test kit."""
+"""Deterministic native-DOCX Adapter used by the Worker 2.0 contract kit."""
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
 import re
+import zipfile
+from pathlib import Path
 from time import monotonic
-from typing import Any
+from xml.etree import ElementTree
 
-from rag_eval.contracts.adapter import (
-    AdapterCapabilities,
-    DocumentInput,
-    HealthReport,
-    IngestionResult,
-    PrepareContext,
-    PreparedSystem,
-    RAGEvidenceItem,
-    RAGQuery,
-    RAGResult,
-    ResetResult,
+from rag_eval.contracts.canonical import canonical_json
+from rag_eval.contracts.native import (
+    IngestionReceiptV2,
+    NativeHealthReportV2,
+    NativeQueryV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
 )
-from rag_eval.contracts.dataset import TextSpanLocator
-from rag_eval.contracts.wire import HandshakeResponse
+from rag_eval.contracts.observation import (
+    AdapterCapabilitiesV2,
+    AdapterRunResultV2,
+    ContentObservation,
+    IngestionCatalogObservation,
+    ObservationCompleteness,
+    ObservationProfileIdentity,
+    ObservationStatus,
+    ObservedStageItem,
+    RuntimeChunkRecord,
+    RuntimeProfileIdentity,
+    SourceIdentity,
+    StageName,
+    StageObservation,
+    StageTransitionDeclaration,
+    StageTransitionMode,
+    UnifiedTrace,
+)
+from rag_eval.contracts.wire import WorkerIdentityV2
 from rag_eval.worker.app import WorkerDefinition
 
 _TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+_WORD_NAMESPACE = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+ADAPTER_VERSION = "0.2.0"
+SYSTEM_VERSION = "fake-rag-2"
+
+
+def _sha256(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _config_digest(value: object) -> str:
+    return _sha256(canonical_json(value).encode("utf-8"))
+
+
+def _capabilities() -> AdapterCapabilitiesV2:
+    return AdapterCapabilitiesV2(
+        ingestion_catalog=True,
+        candidate_retrieval=True,
+        ranked_retrieval=True,
+        final_context=True,
+        prompt_trace=False,
+        answer=True,
+        provenance=False,
+        latency_breakdown=True,
+        token_usage=True,
+        transitions=(
+            StageTransitionDeclaration(
+                source_stage=StageName.CANDIDATE,
+                target_stage=StageName.RANKED,
+                mode=StageTransitionMode.IDENTITY_SUBSET,
+            ),
+            StageTransitionDeclaration(
+                source_stage=StageName.RANKED,
+                target_stage=StageName.CONTEXT,
+                mode=StageTransitionMode.IDENTITY_SUBSET,
+            ),
+        ),
+    )
 
 
 class FakeAdapter:
     """Small honest RAG implementation with no access to evaluation Gold."""
 
-    def __init__(self, *, capabilities: AdapterCapabilities | None = None) -> None:
-        self.capabilities = capabilities or AdapterCapabilities(
-            answer=True,
-            raw_retrieval=True,
-            ranked_retrieval=True,
-            final_context=True,
-            object_provenance=True,
-            latency_breakdown=True,
-            token_usage=True,
-            reset=True,
-        )
-        self._config: dict[str, Any] = {}
-        self._documents: list[DocumentInput] = []
-        self._prepared = False
+    def __init__(self, *, capabilities: AdapterCapabilitiesV2 | None = None) -> None:
+        self.capabilities = capabilities or _capabilities()
+        self._prepared: PreparedSystemV2 | None = None
+        self._chunk: RuntimeChunkRecord | None = None
+        self._config: dict[str, object] = {}
         self._closed = False
 
     async def prepare(
-        self, context: PrepareContext, config: dict[str, Any]
-    ) -> PreparedSystem:
+        self,
+        original_docx: OriginalDocumentV2,
+        resolved_config: ResolvedAdapterConfigV2,
+    ) -> PreparedSystemV2:
         if self._closed:
             raise RuntimeError("adapter is closed")
+        if self._prepared is not None:
+            raise RuntimeError("adapter is already prepared")
+        source_path = (Path(resolved_config.source_dir) / original_docx.source_path).resolve()
+        content = _docx_text(source_path)
         self._config = {
-            "final_context_k": int(config.get("final_context_k", 3)),
-            "delay_seconds": float(config.get("delay_seconds", 0)),
-            "answer_mode": str(config.get("answer_mode", "first_context")),
+            "final_context_k": int(
+                resolved_config.adapter_config.get("final_context_k", 3)
+            ),
+            "delay_seconds": float(
+                resolved_config.adapter_config.get("delay_seconds", 0)
+            ),
             "cache_policy": {"answer": False, "query": False, "llm": False},
         }
-        self._prepared = True
-        return PreparedSystem(
-            effective_config=self._config,
+        model_artifacts = resolved_config.adapter_config.get("model_artifacts")
+        if isinstance(model_artifacts, dict) and model_artifacts:
+            self._config["model_artifacts"] = model_artifacts
+        content_sha256 = _sha256(content.encode("utf-8"))
+        chunk_id = f"fake-chunk:{content_sha256}"
+        self._chunk = RuntimeChunkRecord(
+            native_document_id=original_docx.document_id,
+            native_chunk_id=chunk_id,
+            content_sha256=content_sha256,
+            content=content,
+            parser_identity="fake-docx-parser/2.0",
+            chunker_identity="fake-whole-document-chunker/2.0",
+            persisted_metadata_digest=_config_digest(
+                {"document_id": original_docx.document_id, "chunk_id": chunk_id}
+            ),
+        )
+        source_identity = SourceIdentity(
+            document_id=original_docx.document_id,
+            source_sha256=original_docx.source_sha256,
+            media_type=original_docx.media_type,
+            source_coordinate_schema="ooxml-structural-v1",
+            canonical_catalog_sha256=original_docx.canonical_catalog_sha256,
+        )
+        runtime_profile = RuntimeProfileIdentity(
+            profile_id="fake:native-docx",
+            system_id="fake-rag",
+            system_version=SYSTEM_VERSION,
+            configuration_digest=_config_digest(self._config),
+        )
+        observation_profile = ObservationProfileIdentity.build(
+            profile_id="fake-native-docx-observation/2.0",
+            adapter_id="fake",
+            adapter_version=ADAPTER_VERSION,
             capabilities=self.capabilities,
-            system_version="fake-rag-1",
         )
+        index_fingerprint = _config_digest(
+            {
+                "source_sha256": original_docx.source_sha256,
+                "content_sha256": content_sha256,
+                "config": self._config,
+            }
+        )
+        receipt = IngestionReceiptV2.build(
+            document_id=original_docx.document_id,
+            source_sha256=original_docx.source_sha256,
+            index_fingerprint=index_fingerprint,
+            details={"runtime_chunk_count": 1},
+        )
+        self._prepared = PreparedSystemV2.build(
+            effective_config=dict(self._config),
+            source_identity=source_identity,
+            runtime_profile=runtime_profile,
+            observation_profile=observation_profile,
+            ingestion_receipt=receipt,
+        )
+        return self._prepared
 
-    async def health(self) -> HealthReport:
-        return HealthReport(
-            status="ready" if not self._closed else "closed",
+    async def health(self) -> NativeHealthReportV2:
+        return NativeHealthReportV2(
+            status="closed" if self._closed else "ready",
             ready=not self._closed,
-            details={"prepared": self._prepared},
+            details={"prepared": self._prepared is not None},
         )
 
-    async def ingest(self, documents: list[DocumentInput]) -> IngestionResult:
-        if not self._prepared:
+    async def query(
+        self,
+        prepared_system: PreparedSystemV2,
+        request: NativeQueryV2,
+    ) -> AdapterRunResultV2:
+        if self._prepared is None or self._chunk is None:
             raise RuntimeError("adapter is not prepared")
-        self._documents = list(documents)
-        digest = hashlib.sha256()
-        for document in self._documents:
-            if document.content is None:
-                raise ValueError("FakeAdapter only supports inline text documents")
-            digest.update(document.document_id.encode())
-            digest.update(b"\0")
-            digest.update(document.content.encode())
-            digest.update(b"\0")
-        return IngestionResult(
-            ingested_documents=len(documents),
-            index_fingerprint=digest.hexdigest(),
-        )
-
-    async def query(self, request: RAGQuery) -> RAGResult:
-        if not self._prepared:
-            raise RuntimeError("adapter is not prepared")
-        delay = self._config.get("delay_seconds", 0)
+        if prepared_system != self._prepared:
+            raise ValueError("query references a different prepared system")
+        delay = float(self._config.get("delay_seconds", 0))
         if delay:
             await asyncio.sleep(delay)
         started = monotonic()
-        query_tokens = {token.casefold() for token in _TOKEN_RE.findall(request.question)}
-        scored: list[tuple[int, int, DocumentInput]] = []
-        for index, document in enumerate(self._documents):
-            if document.content is None:
-                raise ValueError("FakeAdapter only supports inline text documents")
-            document_tokens = {
-                token.casefold() for token in _TOKEN_RE.findall(document.content)
-            }
-            scored.append((len(query_tokens & document_tokens), index, document))
-
-        raw_items = [
-            self._item(document, rank=index + 1, score=float(score))
-            for index, (score, _original, document) in enumerate(scored)
-        ]
-        ranked_rows = sorted(scored, key=lambda row: (-row[0], row[1]))
-        ranked_items = [
-            self._item(document, rank=index + 1, score=float(score))
-            for index, (score, _original, document) in enumerate(ranked_rows)
-        ]
-        candidate_k = request.retrieval_candidate_k or len(ranked_items)
-        ranked_items = ranked_items[:candidate_k]
-        context_k = request.final_context_k or self._config["final_context_k"]
-        final_items = ranked_items[:context_k]
-        answer = None
-        if request.generate_answer and self.capabilities.answer:
-            answer = final_items[0].content if final_items else ""
-        elapsed = monotonic() - started
-        return RAGResult(
-            answer=answer,
-            raw_retrieval=raw_items if self.capabilities.raw_retrieval else None,
-            ranked_retrieval=(
-                ranked_items if self.capabilities.ranked_retrieval else None
+        query_tokens = {
+            token.casefold() for token in _TOKEN_RE.findall(request.question)
+        }
+        chunk_tokens = {
+            token.casefold() for token in _TOKEN_RE.findall(self._chunk.content or "")
+        }
+        score = float(len(query_tokens & chunk_tokens))
+        item = ObservedStageItem(
+            native_chunk_id=self._chunk.native_chunk_id,
+            native_rank=1,
+            runtime_score=score,
+            content_sha256=self._chunk.content_sha256,
+            content=self._chunk.content or "",
+            provenance_edge_ids=(),
+        )
+        candidate = _stage_observation(
+            StageName.CANDIDATE,
+            item,
+            cutoff=request.retrieval_candidate_k,
+            supported=self.capabilities.candidate_retrieval,
+        )
+        ranked = _stage_observation(
+            StageName.RANKED,
+            item,
+            cutoff=request.retrieval_candidate_k,
+            supported=self.capabilities.ranked_retrieval,
+        )
+        context = _stage_observation(
+            StageName.CONTEXT,
+            item,
+            cutoff=request.final_context_k,
+            supported=self.capabilities.final_context,
+        )
+        answer_text = self._chunk.content or ""
+        answer = (
+            ContentObservation.observed(answer_text)
+            if request.generate_answer and self.capabilities.answer
+            else ContentObservation(
+                observation_status=ObservationStatus.UNSUPPORTED,
+                completeness=ObservationCompleteness.UNKNOWN,
+                reason="answer capability is unavailable",
+            )
+        )
+        if not request.generate_answer and self.capabilities.answer:
+            answer = ContentObservation(
+                observation_status=ObservationStatus.UNOBSERVED,
+                completeness=ObservationCompleteness.UNKNOWN,
+                reason="answer generation was not requested",
+            )
+        prompt = ContentObservation(
+            observation_status=(
+                ObservationStatus.UNOBSERVED
+                if self.capabilities.prompt_trace
+                else ObservationStatus.UNSUPPORTED
             ),
-            final_context=final_items if self.capabilities.final_context else None,
-            latency={"query_seconds": elapsed}
-            if self.capabilities.latency_breakdown
-            else None,
-            token_usage={"context_characters": sum(len(item.content) for item in final_items)}
-            if self.capabilities.token_usage
-            else None,
-            native_metadata={"fake": True},
+            completeness=ObservationCompleteness.UNKNOWN,
+            reason="fake Adapter does not expose a rendered prompt",
         )
-
-    def _item(
-        self, document: DocumentInput, *, rank: int, score: float
-    ) -> RAGEvidenceItem:
-        if document.content is None:
-            raise ValueError("FakeAdapter only supports inline text documents")
-        return RAGEvidenceItem(
-            item_id=f"{document.document_id}:{rank}",
-            rank=rank,
-            content=document.content,
-            document_id=document.document_id,
-            locator=TextSpanLocator(start=0, end=max(1, len(document.content)))
-            if document.content
-            else None,
-            score=score,
-            native_id=document.document_id,
+        ingestion_catalog = IngestionCatalogObservation(
+            observation_status=(
+                ObservationStatus.OBSERVED
+                if self.capabilities.ingestion_catalog
+                else ObservationStatus.UNSUPPORTED
+            ),
+            completeness=(
+                ObservationCompleteness.COMPLETE
+                if self.capabilities.ingestion_catalog
+                else ObservationCompleteness.UNKNOWN
+            ),
+            items=(self._chunk,) if self.capabilities.ingestion_catalog else (),
+            reason=(
+                None
+                if self.capabilities.ingestion_catalog
+                else "ingestion catalog capability is unavailable"
+            ),
         )
-
-    async def reset(self) -> ResetResult:
-        if not self.capabilities.reset:
-            return ResetResult(supported=False, reset=False)
-        self._documents = []
-        return ResetResult(supported=True, reset=True)
+        trace = UnifiedTrace.build(
+            case_id=request.case_id,
+            source_identity=self._prepared.source_identity,
+            runtime_profile=self._prepared.runtime_profile,
+            observation_profile=self._prepared.observation_profile,
+            ingestion_catalog=ingestion_catalog,
+            provenance_edges=(),
+            canonical_mapping_records=(),
+            mapping_diagnostics=(),
+            raw_retrieval=candidate,
+            ranked_retrieval=ranked,
+            final_context=context,
+            transformations=(),
+            prompt_trace=prompt,
+            answer=answer,
+            validation_receipts=(),
+        )
+        return AdapterRunResultV2(
+            adapter_id="fake",
+            adapter_version=ADAPTER_VERSION,
+            system_id="fake-rag",
+            system_version=SYSTEM_VERSION,
+            trace=trace,
+            telemetry={
+                "latency": {"native_query_latency": monotonic() - started},
+                "token_usage": {"context_characters": len(answer_text)},
+                "native_query_executions": 1,
+            },
+        )
 
     async def close(self) -> None:
         self._closed = True
-        self._documents = []
+        self._prepared = None
+        self._chunk = None
+
+
+def _stage_observation(
+    stage: StageName,
+    item: ObservedStageItem,
+    *,
+    cutoff: int,
+    supported: bool,
+) -> StageObservation:
+    if not supported:
+        return StageObservation(
+            stage=stage,
+            observation_status=ObservationStatus.UNSUPPORTED,
+            completeness=ObservationCompleteness.UNKNOWN,
+            configured_cutoff=cutoff,
+            items=(),
+            reason=f"{stage.value} capability is unavailable",
+        )
+    return StageObservation(
+        stage=stage,
+        observation_status=ObservationStatus.OBSERVED,
+        completeness=ObservationCompleteness.COMPLETE,
+        configured_cutoff=cutoff,
+        items=(item,),
+    )
+
+
+def _docx_text(path: Path) -> str:
+    if not path.is_file():
+        raise ValueError("original DOCX is unavailable")
+    try:
+        with zipfile.ZipFile(path) as archive:
+            root = ElementTree.fromstring(archive.read("word/document.xml"))
+    except (KeyError, OSError, ElementTree.ParseError, zipfile.BadZipFile) as exc:
+        raise ValueError("original source is not a readable DOCX") from exc
+    paragraphs: list[str] = []
+    for paragraph in root.iter(f"{_WORD_NAMESPACE}p"):
+        text = "".join(
+            node.text or "" for node in paragraph.iter(f"{_WORD_NAMESPACE}t")
+        )
+        if text:
+            paragraphs.append(text)
+    return "\n".join(paragraphs)
 
 
 def create_worker_definition() -> WorkerDefinition:
-    capabilities = AdapterCapabilities(
-        answer=True,
-        raw_retrieval=True,
-        ranked_retrieval=True,
-        final_context=True,
-        object_provenance=True,
-        latency_breakdown=True,
-        token_usage=True,
-        reset=True,
-    )
     return WorkerDefinition(
-        adapter=FakeAdapter(capabilities=capabilities),
-        handshake=HandshakeResponse(
+        adapter=FakeAdapter(),
+        identity=WorkerIdentityV2(
             adapter_id="fake",
-            adapter_version="0.1.0",
+            adapter_version=ADAPTER_VERSION,
             system_id="fake-rag",
-            system_version="fake-rag-1",
-            capabilities=capabilities,
+            system_version=SYSTEM_VERSION,
         ),
     )
+
+
+__all__ = ["FakeAdapter", "create_worker_definition"]

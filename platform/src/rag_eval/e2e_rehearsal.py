@@ -26,10 +26,14 @@ from rag_eval.artifact_contract import artifact_digest
 from rag_eval.contracts.adapter import (
     AdapterCapabilities,
     DocumentInput,
-    PrepareContext,
-    RAGQuery,
 )
 from rag_eval.contracts.dataset import GoldAnswer, GoldAnswerKind
+from rag_eval.contracts.native import (
+    NativeQueryV2,
+    OriginalDocumentV2,
+    ResolvedAdapterConfigV2,
+)
+from rag_eval.contracts.observation import AdapterCapabilitiesV2
 from rag_eval.contracts.research import ModelArtifactIdentity
 from rag_eval.contracts.run import ExperimentSpec, RunManifest, RunStatus
 from rag_eval.datasets.bundle_v3 import (
@@ -46,10 +50,10 @@ from rag_eval.evaluation.answers import (
     normalize_text,
     score_answer,
 )
+from rag_eval.runs.plans import digest_json
 from rag_eval.storage.experiments import ExperimentStore
 from rag_eval.storage.runs import RunStore
 from rag_eval.worker.process import WorkerCommand, WorkerProcess
-
 
 E2E_REHEARSAL_SCHEMA_VERSION = "rag-eval-e2e-rehearsal/1.0"
 E2E_EVALUATOR_ID = "bundle-v3-private-mses-evaluator"
@@ -211,6 +215,86 @@ def stage_runtime_sources(
             )
         staged[destination_relative.as_posix()] = source.source_digest
     return documents, staged
+
+
+def stage_direct_native_source(
+    *,
+    bundle: DatasetBundleV3,
+    documents: list[DocumentInput],
+    source_dir: Path,
+) -> tuple[OriginalDocumentV2, dict[str, str]]:
+    """Bind the legacy rehearsal fixture to the sole Direct Wire 2 input.
+
+    The rehearsal remains scheduled for removal with the old persistence
+    stack, but while it exists it must exercise the same one-DOCX Worker
+    protocol as every other runtime caller.  Canonical objects are Platform
+    data, not private Gold, and are staged as the observation sidecar.
+    """
+
+    if len(documents) != 1:
+        raise RehearsalIntegrityError(
+            "Direct Wire 2 rehearsal requires exactly one original DOCX"
+        )
+    document = documents[0]
+    if (
+        document.content is not None
+        or document.source_path is None
+        or document.sha256 is None
+        or document.mime_type
+        != "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ):
+        raise RehearsalIntegrityError(
+            "Direct Wire 2 rehearsal source must be one staged DOCX"
+        )
+    pins = [
+        pin
+        for pin in bundle.manifest.canonical_documents
+        if pin.release_id == bundle.manifest.target_release_id
+        and pin.document_id == document.document_id
+    ]
+    if len(pins) != 1:
+        raise RehearsalIntegrityError(
+            "Direct Wire 2 rehearsal requires one target-release Canonical Catalog"
+        )
+    canonical_source = bundle.root / pins[0].objects_path
+    if not canonical_source.is_file():
+        raise RehearsalIntegrityError("Canonical object catalog is missing")
+    canonical_digest = sha256_file(canonical_source)
+    canonical_name = f"canonical-{canonical_digest[:16]}.jsonl"
+    canonical_destination = source_dir / canonical_name
+    shutil.copy2(canonical_source, canonical_destination)
+    if sha256_file(canonical_destination) != canonical_digest:
+        raise RehearsalIntegrityError("staged Canonical Catalog digest mismatch")
+    return (
+        OriginalDocumentV2(
+            document_id=document.document_id,
+            source_path=document.source_path,
+            source_sha256=document.sha256,
+            media_type=document.mime_type,
+            original_name=Path(document.source_path).name,
+            canonical_catalog_path=canonical_name,
+            canonical_catalog_sha256=canonical_digest,
+        ),
+        {canonical_name: canonical_digest},
+    )
+
+
+def legacy_manifest_capabilities(
+    capabilities: AdapterCapabilitiesV2,
+) -> AdapterCapabilities:
+    """Project V2 capability facts into the soon-to-be-retired RunManifest."""
+
+    return AdapterCapabilities(
+        answer=capabilities.answer,
+        raw_retrieval=capabilities.candidate_retrieval,
+        ranked_retrieval=capabilities.ranked_retrieval,
+        final_context=capabilities.final_context,
+        object_provenance=capabilities.provenance,
+        prompt_trace=capabilities.prompt_trace,
+        latency_breakdown=capabilities.latency_breakdown,
+        token_usage=capabilities.token_usage,
+        segment_traces=True,
+    )
 
 
 def case_selection_id(case_ids: Iterable[str]) -> str:
@@ -684,10 +768,10 @@ def _stage_matches(
     provenance: list[dict[str, Any]] = []
     for item in items or []:
         mapping = matcher.map_content(str(item.get("content") or ""))
-        mapping["item_id"] = item.get("item_id")
-        mapping["rank"] = item.get("rank")
+        mapping["item_id"] = item.get("native_chunk_id")
+        mapping["rank"] = item.get("native_rank")
         provenance.append(mapping)
-        rank = item.get("rank")
+        rank = item.get("native_rank")
         if not isinstance(rank, int):
             continue
         for object_id in mapping["canonical_object_ids"]:
@@ -724,7 +808,8 @@ def evaluate_private_bundle(
                 }
             )
             continue
-        result = record["rag_result"]
+        result = record["adapter_result"]
+        trace = result["trace"]
         matcher = index.matcher_for(
             evidence.canonical_object_id for evidence in gold.payload.evidence
         )
@@ -734,9 +819,18 @@ def evaluate_private_bundle(
             ("ranked", "ranked_retrieval"),
             ("context", "final_context"),
         ):
-            ranks, provenance = _stage_matches(result.get(key), gold, matcher)
+            stage = trace.get(key) or {}
+            ranks, provenance = _stage_matches(stage.get("items"), gold, matcher)
             stage_entries[name] = _stage_evaluation(gold.payload, ranks, provenance)
-        answer_evaluation = _answer_evaluation(gold, result.get("answer"), stage_entries["context"])
+        answer_observation = trace.get("answer") or {}
+        answer = (
+            answer_observation.get("content")
+            if answer_observation.get("observation_status") == "observed"
+            else None
+        )
+        answer_evaluation = _answer_evaluation(
+            gold, answer, stage_entries["context"]
+        )
         results.append(
             {
                 "case_id": case_id,
@@ -817,22 +911,18 @@ def summarize_trace_capture(execution: list[dict[str, Any]]) -> dict[str, int]:
     for record in execution:
         if record.get("status") != "completed":
             continue
-        result = record.get("rag_result") or {}
+        result = record.get("adapter_result") or {}
         trace = result.get("trace") or {}
-        native = trace.get("light_rag_evaluation_trace") or {}
-        if isinstance(native.get("final_prompt"), str) and native["final_prompt"].strip():
+        prompt = trace.get("prompt_trace") or {}
+        if prompt.get("observation_status") == "observed":
             counts["rendered_answer_prompt"] += 1
-        if native.get("query_rewrite") is not None:
-            counts["query_rewrite"] += 1
-        if isinstance(native.get("retrieval_stages"), dict):
-            counts["retrieval_stages"] += 1
-        if result.get("raw_retrieval") is not None:
+        if trace.get("raw_retrieval", {}).get("observation_status") == "observed":
             counts["raw_retrieval"] += 1
-        if result.get("ranked_retrieval") is not None:
+        if trace.get("ranked_retrieval", {}).get("observation_status") == "observed":
             counts["ranked_retrieval"] += 1
-        if result.get("final_context") is not None:
+        if trace.get("final_context", {}).get("observation_status") == "observed":
             counts["final_context"] += 1
-        if result.get("answer") is not None:
+        if trace.get("answer", {}).get("observation_status") == "observed":
             counts["answer"] += 1
     return dict(sorted(counts.items()))
 
@@ -937,6 +1027,12 @@ def run_rehearsal(
     run_store = RunStore(output_root / "runs")
     run_dir = run_store.prepare_execution_layout(run_id)
     documents, staged_sources = stage_runtime_sources(runtime, run_dir / "source")
+    original_docx, staged_catalog = stage_direct_native_source(
+        bundle=bundle,
+        documents=documents,
+        source_dir=run_dir / "source",
+    )
+    staged_sources.update(staged_catalog)
     audit["staged_worker_sources"] = staged_sources
     audit["worker_private_bundle_path_supplied"] = False
     write_json(run_dir / "runtime-view-audit.json", audit)
@@ -966,23 +1062,28 @@ def run_rehearsal(
     run_error: BaseException | None = None
 
     try:
-        client = worker.start(handshake_timeout=20.0)
-        handshake = client.handshake()
-        declared = handshake.capabilities
-        adapter_version = handshake.adapter_version
-        system_version = handshake.system_version
+        client = worker.start(readiness_timeout=20.0)
+        health = client.health()
+        adapter_version = health.identity.adapter_version
+        system_version = health.identity.system_version
+        adapter_config = dict(experiment.adapter_config)
         prepared = client.prepare(
-            PrepareContext(
+            original_docx,
+            ResolvedAdapterConfigV2(
                 run_id=run_id,
                 work_dir=str(run_dir / "work"),
                 source_dir=str(run_dir / "source"),
                 platform_version=importlib.metadata.version("rag-eval-platform"),
                 seed=experiment.seed,
                 repetition=1,
+                adapter_config=adapter_config,
+                adapter_config_digest=digest_json(adapter_config),
             ),
-            experiment.adapter_config,
         )
-        observed = prepared.capabilities
+        declared = legacy_manifest_capabilities(
+            prepared.observation_profile.capabilities
+        )
+        observed = declared
         prepared_config = prepared.effective_config
         model_artifacts = {
             role: ModelArtifactIdentity.model_validate(value)
@@ -994,7 +1095,7 @@ def run_rehearsal(
             declared=declared,
             observed=observed,
             adapter_version=adapter_version,
-            system_version=prepared.system_version,
+            system_version=prepared.runtime_profile.system_version,
             effective_config=prepared_config,
             model_artifacts=model_artifacts,
             status=RunStatus.INGESTING,
@@ -1003,29 +1104,31 @@ def run_rehearsal(
         run_store.create(manifest, experiment)
         manifest_created = True
 
-        ingestion_result = client.ingest(documents)
+        ingestion_result = prepared.ingestion_receipt
         ingestion = ingestion_result.model_dump(mode="json")
-        if ingestion_result.ingested_documents != len(documents):
-            raise RuntimeError("LightRAG did not acknowledge every runtime source document")
         index_fingerprint = ingestion_result.index_fingerprint
-        index_artifact_digest = str(
-            ingestion_result.details.get("index_artifact_digest") or ""
-        ) or None
+        index_artifact_digest = ingestion_result.index_artifact_digest
 
         for ordinal, question in enumerate(runtime.questions, 1):
             case_started = _utc_now()
             timer = monotonic()
             try:
                 result = client.query(
-                    RAGQuery(
+                    prepared,
+                    NativeQueryV2(
                         case_id=question.case_id,
                         question=question.question,
                         generate_answer=True,
                         retrieval_candidate_k=20,
                         final_context_k=5,
                         max_context_tokens=12000,
+                        generation_options={},
                     )
                 )
+                if result.telemetry.get("native_query_executions") != 1:
+                    raise RehearsalIntegrityError(
+                        "Direct Wire 2 Adapter did not prove one native query"
+                    )
                 execution.append(
                     {
                         "case_id": question.case_id,
@@ -1036,7 +1139,7 @@ def run_rehearsal(
                         "started_at": case_started.isoformat(),
                         "completed_at": _utc_now().isoformat(),
                         "end_to_end_query_latency": monotonic() - timer,
-                        "rag_result": result.model_dump(mode="json"),
+                        "adapter_result": result.model_dump(mode="json"),
                     }
                 )
             except Exception as exc:  # noqa: BLE001 - preserve every Case attempt

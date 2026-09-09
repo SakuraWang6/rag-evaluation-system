@@ -1,4 +1,4 @@
-"""Run-scoped RAG-Anything adapter with Wire 1.0 and additive Wire 2.0."""
+"""Run-scoped RAG-Anything Adapter behind direct Worker Wire 2.0."""
 
 from __future__ import annotations
 
@@ -23,22 +23,25 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
+from rag_eval.adapters.native_observation import unavailable_native_result
 from rag_eval.contracts.adapter import (
     AdapterCapabilities,
     DocumentInput,
-    HealthReport,
     IngestionResult,
     PrepareContext,
     PreparedSystem,
-    RAGQuery,
-    RAGResult,
     ResetResult,
-    SegmentTraceSet,
-    SegmentTraceStage,
-    SegmentTraceStatus,
 )
-from rag_eval.contracts.observation import ObservationStatus
-from rag_eval.contracts.wire import HandshakeResponse
+from rag_eval.contracts.native import (
+    IngestionReceiptV2,
+    NativeHealthReportV2,
+    NativeQueryV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
+)
+from rag_eval.contracts.observation import AdapterRunResultV2, ObservationStatus
+from rag_eval.contracts.wire import WorkerIdentityV2
 from rag_eval.worker.app import WorkerDefinition
 
 from rag_eval_rag_anything_adapter.native_observation import (
@@ -47,6 +50,7 @@ from rag_eval_rag_anything_adapter.native_observation import (
     RuntimeQueryCapture,
     build_native_observation_snapshot,
     build_native_run_result_v2,
+    build_prepared_identities,
 )
 
 ADAPTER_VERSION = "0.1.0"
@@ -63,9 +67,8 @@ CAPABILITIES = AdapterCapabilities(
     latency_breakdown=True,
     token_usage=False,
     reset=False,
-    # Wire 1.0 stays answer-only. Native retrieval facts are additive inside
-    # the Wire 2.0 envelope so an unsupported profile cannot turn into a
-    # legacy observed-empty result.
+    # Native retrieval facts remain explicit observations so an unsupported
+    # stage cannot turn into an observed-empty result.
     segment_traces=True,
     strict_segment_ranking=False,
 )
@@ -350,7 +353,7 @@ class OfficialRAGAnythingRuntime:
     async def query(
         self, question: str, *, mode: str, generate_answer: bool, options: dict[str, Any]
     ) -> str | None:
-        """Retain the documented answer-only API for Wire 1.0 callers."""
+        """Invoke the native RAG-Anything query API without a second execution."""
 
         return await self._query_native(
             question,
@@ -785,8 +788,94 @@ class RAGAnythingAdapter:
         self._native_observation_snapshot: NativeObservationSnapshot | None = None
         self._native_observation_status = ObservationStatus.UNOBSERVED
         self._native_observation_reason = "native ingestion has not completed"
+        self._prepared_system: PreparedSystemV2 | None = None
 
     async def prepare(
+        self,
+        original_docx: OriginalDocumentV2,
+        resolved_config: ResolvedAdapterConfigV2,
+    ) -> PreparedSystemV2:
+        if "evaluation_corpus" in resolved_config.adapter_config:
+            raise ValueError(
+                "Direct Wire 2.0 owns the native source route; "
+                "evaluation_corpus is not accepted"
+            )
+        context = PrepareContext(
+            run_id=resolved_config.run_id,
+            work_dir=resolved_config.work_dir,
+            source_dir=resolved_config.source_dir,
+            platform_version=resolved_config.platform_version,
+            seed=resolved_config.seed,
+            repetition=resolved_config.repetition,
+        )
+        prepared = await self._prepare_runtime(
+            context,
+            dict(resolved_config.adapter_config),
+        )
+        document = DocumentInput(
+            document_id=original_docx.document_id,
+            source_path=original_docx.source_path,
+            sha256=original_docx.source_sha256,
+            mime_type=original_docx.media_type,
+            metadata={
+                "original_name": original_docx.original_name,
+                "canonical_provenance_path": original_docx.canonical_catalog_path,
+                "canonical_provenance_sha256": (
+                    original_docx.canonical_catalog_sha256
+                ),
+            },
+        )
+        ingestion = await self._ingest_documents([document])
+        if ingestion.index_fingerprint is None:
+            raise RuntimeError("RAG-Anything did not return an index fingerprint")
+        runtime = self._require_prepared()[0]
+        runtime_config = self._require_prepared()[1]
+        query_observation_supported = (
+            callable(getattr(runtime, "query_with_observation", None))
+            and runtime_config.query_mode == "naive"
+            and not runtime_config.enable_vlm_query
+        )
+        source, runtime_profile, observation = build_prepared_identities(
+            document=original_docx,
+            runtime_config=runtime_config.model_dump(mode="json"),
+            system_version=runtime.system_version,
+            core_version=runtime.core_version,
+            adapter_version=ADAPTER_VERSION,
+            ingestion_observation_supported=(
+                self._native_observation_status != ObservationStatus.UNSUPPORTED
+            ),
+            query_observation_supported=query_observation_supported,
+        )
+        if self._native_observation_snapshot is not None:
+            snapshot = self._native_observation_snapshot
+            if (source, runtime_profile, observation) != (
+                snapshot.source_identity,
+                snapshot.runtime_profile,
+                snapshot.observation_profile,
+            ):
+                raise RuntimeError(
+                    "RAG-Anything prepared identities drifted after ingest"
+                )
+        artifact_digest = ingestion.details.get("index_artifact_digest")
+        receipt = IngestionReceiptV2.build(
+            document_id=original_docx.document_id,
+            source_sha256=original_docx.source_sha256,
+            index_fingerprint=ingestion.index_fingerprint,
+            index_artifact_digest=(
+                str(artifact_digest) if artifact_digest is not None else None
+            ),
+            details=dict(ingestion.details),
+        )
+        self._prepared_system = PreparedSystemV2.build(
+            effective_config=prepared.effective_config,
+            source_identity=source,
+            runtime_profile=runtime_profile,
+            observation_profile=observation,
+            ingestion_receipt=receipt,
+        )
+        return self._prepared_system
+
+    async def _prepare_runtime(
         self, context: PrepareContext, config: dict[str, Any]
     ) -> PreparedSystem:
         if self._closed:
@@ -833,21 +922,23 @@ class RAGAnythingAdapter:
             system_version=self._runtime.system_version,
         )
 
-    async def health(self) -> HealthReport:
+    async def health(self) -> NativeHealthReportV2:
         if self._closed:
-            return HealthReport(status="closed", ready=False)
+            return NativeHealthReportV2(status="closed", ready=False)
         liveness = self._liveness.snapshot() if self._liveness is not None else None
         stage = str((liveness or {}).get("stage") or "idle")
         status = stage if stage not in {"idle", "completed"} else (
             "ready" if self._runtime is not None else "initialized"
         )
-        return HealthReport(
+        return NativeHealthReportV2(
             status=status,
             ready=stage not in {"stalled", "failed", "cancelled"},
             details={"prepared": self._runtime is not None, "ingestion": liveness},
         )
 
-    async def ingest(self, documents: list[DocumentInput]) -> IngestionResult:
+    async def _ingest_documents(
+        self, documents: list[DocumentInput]
+    ) -> IngestionResult:
         runtime, config, context = self._require_prepared()
         benchmark_documents = [
             document
@@ -959,7 +1050,7 @@ class RAGAnythingAdapter:
             "index_artifact_digest": directory_digest(
                 self._require_work_dir() / "storage"
             ),
-            "wire_v2_native_observation": {
+            "native_observation": {
                 "observation_status": self._native_observation_status.value,
                 "reason": self._native_observation_reason,
                 "runtime_chunk_count": (
@@ -985,7 +1076,13 @@ class RAGAnythingAdapter:
             details=details,
         )
 
-    async def query(self, request: RAGQuery) -> RAGResult:
+    async def query(
+        self,
+        prepared_system: PreparedSystemV2,
+        request: NativeQueryV2,
+    ) -> AdapterRunResultV2:
+        if self._prepared_system is None or prepared_system != self._prepared_system:
+            raise ValueError("query references a different prepared system")
         runtime, config, _context = self._require_prepared()
         reserved = {"mode", "only_need_context", "only_need_prompt"}
         invalid = reserved.intersection(request.generation_options)
@@ -994,18 +1091,22 @@ class RAGAnythingAdapter:
         options = generation_options(config, request.generation_options)
         options.update(
             {
-                "top_k": request.retrieval_candidate_k or config.top_k,
-                "chunk_top_k": request.final_context_k or config.chunk_top_k,
-                "max_total_tokens": request.max_context_tokens
-                or config.max_context_tokens,
+                "top_k": request.retrieval_candidate_k,
+                "chunk_top_k": request.final_context_k,
+                "max_total_tokens": request.max_context_tokens,
                 "vlm_enhanced": config.enable_vlm_query,
             }
         )
         started = monotonic()
         query_with_observation = getattr(runtime, "query_with_observation", None)
+        query_observation_supported = (
+            prepared_system.observation_profile.capabilities.candidate_retrieval
+        )
         capture: RuntimeQueryCapture | None = None
-        if self._native_observation_snapshot is not None and callable(
-            query_with_observation
+        if (
+            self._native_observation_snapshot is not None
+            and query_observation_supported
+            and callable(query_with_observation)
         ):
             observed = await query_with_observation(
                 request.question,
@@ -1016,22 +1117,6 @@ class RAGAnythingAdapter:
             if not isinstance(observed, RuntimeQueryCapture):
                 raise TypeError("runtime query observation has an invalid type")
             capture = observed
-            if config.query_mode != "naive" and (
-                capture.observation_status == ObservationStatus.OBSERVED
-            ):
-                capture = RuntimeQueryCapture.unavailable(
-                    answer=capture.answer,
-                    reason="rag_anything_non_naive_stage_derivation_is_not_observable",
-                    query_parameters=capture.query_parameters,
-                )
-            if config.enable_vlm_query and (
-                capture.observation_status == ObservationStatus.OBSERVED
-            ):
-                capture = RuntimeQueryCapture.unavailable(
-                    answer=capture.answer,
-                    reason="rag_anything_vlm_stage_derivation_is_not_observable",
-                    query_parameters=capture.query_parameters,
-                )
             answer = capture.answer
         else:
             answer = await runtime.query(
@@ -1043,7 +1128,15 @@ class RAGAnythingAdapter:
             if self._native_observation_snapshot is not None:
                 capture = RuntimeQueryCapture.unavailable(
                     answer=answer,
-                    reason="runtime does not expose same-execution native query hooks",
+                    reason=(
+                        "RAG-Anything profile does not expose verifiable "
+                        "same-execution query stages"
+                    ),
+                    status=(
+                        ObservationStatus.UNOBSERVED
+                        if query_observation_supported
+                        else ObservationStatus.UNSUPPORTED
+                    ),
                     query_parameters={
                         "mode": config.query_mode,
                         "top_k": options["top_k"],
@@ -1051,67 +1144,51 @@ class RAGAnythingAdapter:
                         "max_total_tokens": options["max_total_tokens"],
                     },
                 )
-        wire_v2 = self._wire_v2_observation(
-            request=request,
-            capture=capture,
-            answer=answer,
-        )
-        return RAGResult(
-            answer=answer,
-            raw_retrieval=None,
-            ranked_retrieval=None,
-            final_context=None,
-            segment_traces=SegmentTraceSet(
-                raw=SegmentTraceStage(
-                    stage="raw",
-                    status=SegmentTraceStatus.UNSUPPORTED_STAGE,
-                    reason="RAG-Anything public API does not expose raw retrieval trace items",
-                ),
-                ranked=SegmentTraceStage(
-                    stage="ranked",
-                    status=SegmentTraceStatus.UNSUPPORTED_STAGE,
-                    reason="RAG-Anything public API does not expose ranked retrieval trace items",
-                ),
-                context=SegmentTraceStage(
-                    stage="context",
-                    status=SegmentTraceStatus.UNSUPPORTED_STAGE,
-                    reason="RAG-Anything public API does not expose final context trace items",
-                ),
+        elapsed = monotonic() - started
+        telemetry = {
+            "latency": {"native_query_latency": elapsed},
+            "native_query_executions": 1,
+            "query_mode": config.query_mode,
+            "index_fingerprint": self._index_fingerprint,
+            "retrieval_observability": (
+                capture.observation_status.value
+                if capture is not None
+                else self._native_observation_status.value
             ),
-            latency={"native_query_latency": monotonic() - started},
-            trace={
-                "schema_version": "rag-eval-rag-anything-adapter-trace/2.0",
-                "wire_v2_native_observation": wire_v2,
-                "native_behavior_shadow": {
-                    "status": (
-                        "verified"
-                        if capture is not None
-                        and capture.observation_status == ObservationStatus.OBSERVED
-                        else (
-                            capture.observation_status.value
-                            if capture is not None
-                            else "unobserved"
-                        )
-                    ),
-                    "execution_count": 1,
-                    "answer_sha256": (
-                        hashlib.sha256(answer.encode("utf-8")).hexdigest()
-                        if isinstance(answer, str)
-                        else None
-                    ),
-                    "source": "same_native_query_execution",
-                },
-            },
-            native_metadata={
-                "query_mode": config.query_mode,
-                "index_fingerprint": self._index_fingerprint,
-                "retrieval_observability": (
-                    capture.observation_status.value
-                    if capture is not None
-                    else self._native_observation_status.value
-                ),
-            },
-        )
+        }
+        snapshot = self._native_observation_snapshot
+        if snapshot is None:
+            return unavailable_native_result(
+                prepared=prepared_system,
+                query=request,
+                status=self._native_observation_status,
+                reason=self._native_observation_reason,
+                answer=answer,
+                telemetry=telemetry,
+            )
+        if capture is None:
+            capture = RuntimeQueryCapture.unavailable(
+                answer=answer,
+                reason="same-execution native query observation is unavailable",
+            )
+        try:
+            result = build_native_run_result_v2(
+                snapshot=snapshot,
+                case_id=request.case_id,
+                capture=capture,
+                generate_answer=request.generate_answer,
+                adapter_version=ADAPTER_VERSION,
+            )
+        except (TypeError, ValueError) as exc:
+            return unavailable_native_result(
+                prepared=prepared_system,
+                query=request,
+                status=ObservationStatus.CORRUPTED,
+                reason=f"native Wire 2.0 trace failed validation: {exc}",
+                answer=answer,
+                telemetry=telemetry,
+            )
+        return result.model_copy(update={"telemetry": telemetry})
 
     async def _capture_native_observation_snapshot(
         self,
@@ -1154,6 +1231,11 @@ class RAGAnythingAdapter:
                 system_version=runtime.system_version,
                 core_version=runtime.core_version,
                 adapter_version=ADAPTER_VERSION,
+                query_observation_supported=(
+                    callable(getattr(runtime, "query_with_observation", None))
+                    and config.query_mode == "naive"
+                    and not config.enable_vlm_query
+                ),
             )
         except (OSError, TypeError, ValueError, RuntimeError) as exc:
             self._native_observation_status = ObservationStatus.CORRUPTED
@@ -1164,42 +1246,6 @@ class RAGAnythingAdapter:
         self._native_observation_snapshot = snapshot
         self._native_observation_status = ObservationStatus.OBSERVED
         self._native_observation_reason = None
-
-    def _wire_v2_observation(
-        self,
-        *,
-        request: RAGQuery,
-        capture: RuntimeQueryCapture | None,
-        answer: str | None,
-    ) -> dict[str, Any]:
-        snapshot = self._native_observation_snapshot
-        if snapshot is None:
-            return {
-                "observation_status": self._native_observation_status.value,
-                "reason": self._native_observation_reason,
-            }
-        if capture is None:
-            capture = RuntimeQueryCapture.unavailable(
-                answer=answer,
-                reason="same-execution native query observation is unavailable",
-            )
-        try:
-            result = build_native_run_result_v2(
-                snapshot=snapshot,
-                case_id=request.case_id,
-                capture=capture,
-                generate_answer=request.generate_answer,
-                adapter_version=ADAPTER_VERSION,
-            )
-        except (TypeError, ValueError) as exc:
-            return {
-                "observation_status": ObservationStatus.CORRUPTED.value,
-                "reason": f"native Wire 2.0 trace failed validation: {exc}",
-            }
-        return {
-            "observation_status": ObservationStatus.OBSERVED.value,
-            "adapter_run_result": result.model_dump(mode="json", exclude_none=True),
-        }
 
     async def reset(self) -> ResetResult:
         return ResetResult(
@@ -1637,11 +1683,10 @@ def create_worker_definition() -> WorkerDefinition:
     version = distribution_version("raganything")
     return WorkerDefinition(
         adapter=RAGAnythingAdapter(),
-        handshake=HandshakeResponse(
+        identity=WorkerIdentityV2(
             adapter_id="rag-anything",
             adapter_version=ADAPTER_VERSION,
             system_id="rag-anything",
             system_version=version,
-            capabilities=CAPABILITIES,
         ),
     )

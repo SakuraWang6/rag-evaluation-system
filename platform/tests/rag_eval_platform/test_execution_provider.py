@@ -23,7 +23,7 @@ def test_docker_provider_launches_the_resolved_immutable_image_id(
         def __init__(self, *_args, **_kwargs) -> None:
             pass
 
-        def wait_for_handshake(self) -> None:
+        def wait_until_ready(self) -> None:
             return None
 
         def close(self) -> None:
@@ -79,7 +79,7 @@ def test_docker_provider_retries_after_removing_matching_managed_conflict(
         def __init__(self, *_args, **_kwargs) -> None:
             pass
 
-        def wait_for_handshake(self) -> None:
+        def wait_until_ready(self) -> None:
             return None
 
         def close(self) -> None:

@@ -1,0 +1,25 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "minLength": 1,
+      "title": "Status",
+      "type": "string"
+    },
+    "ready": {
+      "title": "Ready",
+      "type": "boolean"
+    },
+    "details": {
+      "additionalProperties": true,
+      "title": "Details",
+      "type": "object"
+    }
+  },
+  "required": [
+    "status",
+    "ready"
+  ],
+  "title": "NativeHealthReportV2",
+  "type": "object"
+}

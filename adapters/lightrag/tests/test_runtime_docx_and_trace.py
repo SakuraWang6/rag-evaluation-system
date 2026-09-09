@@ -10,9 +10,23 @@ from pathlib import Path
 
 import pytest
 
-from rag_eval.contracts.adapter import DocumentInput, PrepareContext, RAGQuery
+from rag_eval.contracts.adapter import DocumentInput, PrepareContext, PreparedSystem
+from rag_eval.contracts.native import (
+    IngestionReceiptV2,
+    NativeQueryV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
+)
+from rag_eval.contracts.observation import (
+    IngestionCatalogObservation,
+    ObservationCompleteness,
+    ObservationStatus,
+    RuntimeChunkRecord,
+)
 from rag_eval.evaluation import evidence as evidence_module
 from rag_eval.evaluation.evidence import CorpusEvidenceIndex
+from rag_eval.runs.plans import digest_json
 import rag_eval_lightrag_adapter.adapter as adapter_module
 from rag_eval_lightrag_adapter.adapter import (
     CAPABILITIES,
@@ -25,6 +39,10 @@ from rag_eval_lightrag_adapter.canonical_provenance import (
     build_native_docx_provenance_manifest,
     load_native_docx_document_map,
     native_docx_runtime_chunk_mapping,
+)
+from rag_eval_lightrag_adapter.native_observation import (
+    NativeObservationSnapshot,
+    build_prepared_identities,
 )
 
 
@@ -99,16 +117,22 @@ def test_source_only_docx_is_uploaded_from_prepared_runtime_sandbox(
     canonical.write_text('{"document_id":"doc-runtime-fixture"}\n', encoding="utf-8")
 
     adapter = LightRAGAdapter()
-    adapter._config = resolve_config({})  # exercise ingest without a server
-    adapter._server = _AliveServer()  # type: ignore[assignment]
-    adapter._context = PrepareContext(
-        run_id="runtime-docx-regression",
-        work_dir=str(tmp_path / "work"),
-        source_dir=str(source_dir),
-        platform_version="test",
-    )
-    adapter._work_dir = tmp_path / "work"
-    adapter._work_dir.mkdir()
+
+    async def prepare_runtime(context, config):
+        adapter._config = resolve_config(config)
+        adapter._context = context
+        adapter._server = _AliveServer()  # type: ignore[assignment]
+        adapter._work_dir = Path(context.work_dir)
+        adapter._work_dir.mkdir()
+        (adapter._work_dir / "inputs").mkdir()
+        (adapter._work_dir / "storage").mkdir()
+        return PreparedSystem(
+            effective_config=adapter._config.model_dump(mode="json"),
+            capabilities=CAPABILITIES,
+            system_version="fixture-system",
+        )
+
+    adapter._prepare_runtime = prepare_runtime  # type: ignore[method-assign]
 
     uploaded: list[tuple[str, bytes, str]] = []
 
@@ -122,29 +146,33 @@ def test_source_only_docx_is_uploaded_from_prepared_runtime_sandbox(
     adapter._post_document = post_document  # type: ignore[method-assign]
     adapter._wait_for_ingestion = wait_for_ingestion  # type: ignore[method-assign]
 
+    config: dict[str, object] = {}
     result = asyncio.run(
-        adapter.ingest(
-            [
-                DocumentInput(
-                    document_id="doc-runtime-fixture",
-                    source_path="source/fixture.docx",
-                    sha256=hashlib.sha256(payload).hexdigest(),
-                    mime_type=(
-                        "application/vnd.openxmlformats-officedocument."
-                        "wordprocessingml.document"
-                    ),
-                    metadata={
-                        "canonical_provenance_path": canonical.name,
-                        "canonical_provenance_sha256": hashlib.sha256(
-                            canonical.read_bytes()
-                        ).hexdigest(),
-                    },
-                )
-            ]
+        adapter.prepare(
+            OriginalDocumentV2(
+                document_id="doc-runtime-fixture",
+                source_path="source/fixture.docx",
+                source_sha256=hashlib.sha256(payload).hexdigest(),
+                original_name="fixture.docx",
+                canonical_catalog_path=canonical.name,
+                canonical_catalog_sha256=hashlib.sha256(
+                    canonical.read_bytes()
+                ).hexdigest(),
+            ),
+            ResolvedAdapterConfigV2(
+                run_id="runtime-docx-regression",
+                work_dir=str(tmp_path / "work"),
+                source_dir=str(source_dir),
+                platform_version="test",
+                seed=0,
+                repetition=1,
+                adapter_config=config,
+                adapter_config_digest=digest_json(config),
+            ),
         )
     )
 
-    assert result.ingested_documents == 1
+    assert result.ingestion_receipt.ingested_documents == 1
     assert uploaded == [
         (
             "source-00000-6e02105e9e80.docx",
@@ -191,34 +219,114 @@ def test_query_retains_native_trace_and_exposes_rendered_prompt() -> None:
     adapter._config = resolve_config({})
     adapter._server = _AliveServer()  # type: ignore[assignment]
     adapter._index_fingerprint = "index-fixture"
+    content = "observed context"
+    content_sha = hashlib.sha256(content.encode()).hexdigest()
+    original = OriginalDocumentV2(
+        document_id="doc-query",
+        source_path="source.docx",
+        source_sha256="a" * 64,
+        original_name="source.docx",
+        canonical_catalog_path="canonical.jsonl",
+        canonical_catalog_sha256="b" * 64,
+    )
+    runtime_config = adapter._config.model_dump(mode="json")
+    source, runtime, observation = build_prepared_identities(
+        document=original,
+        runtime_config=runtime_config,
+        system_version="fixture-system",
+        adapter_version=adapter_module.ADAPTER_VERSION,
+    )
+    chunk = RuntimeChunkRecord(
+        native_document_id="native-doc-query",
+        native_chunk_id="chunk-1",
+        content_sha256=content_sha,
+        content=content,
+        parser_identity="fixture-parser",
+        chunker_identity="fixture-chunker",
+        persisted_metadata_digest="c" * 64,
+    )
+    adapter._native_observation_snapshot = NativeObservationSnapshot(
+        source_identity=source,
+        runtime_profile=runtime,
+        observation_profile=observation,
+        ingestion_catalog=IngestionCatalogObservation(
+            observation_status=ObservationStatus.OBSERVED,
+            completeness=ObservationCompleteness.COMPLETE,
+            items=(chunk,),
+        ),
+        provenance_edges=(),
+        canonical_mapping_records=(),
+        mapping_diagnostics=(),
+        validation_receipts=(),
+        runtime_chunks={chunk.native_chunk_id: chunk},
+        legacy_mappings={
+            chunk.native_chunk_id: {
+                "document_id": original.document_id,
+                "native_document_id": chunk.native_document_id,
+                "content_sha256": content_sha,
+                "source_span": None,
+                "canonical_objects": [],
+            }
+        },
+        provenance_edge_ids_by_chunk={chunk.native_chunk_id: ()},
+        candidate_completeness=ObservationCompleteness.COMPLETE,
+    )
+    prepared = PreparedSystemV2.build(
+        effective_config=runtime_config,
+        source_identity=source,
+        runtime_profile=runtime,
+        observation_profile=observation,
+        ingestion_receipt=IngestionReceiptV2.build(
+            document_id=original.document_id,
+            source_sha256=original.source_sha256,
+            index_fingerprint="index-fixture",
+        ),
+    )
+    adapter._prepared_system = prepared
 
     async def post_json(_path: str, _payload: dict[str, object]) -> dict[str, object]:
+        item = {
+            "item_id": chunk.native_chunk_id,
+            "native_id": chunk.native_chunk_id,
+            "document_id": chunk.native_document_id,
+            "rank": 1,
+            "content": content,
+            "score": 1.0,
+            "source_span": None,
+        }
         return {
             "response": "answer",
             "evaluation_trace": {
                 "schema_version": "lightrag-evaluation-trace/1",
                 "final_prompt": "rendered prompt from LightRAG",
                 "retrieval_stages": {
-                    "raw_retrieval": [],
-                    "ranked_retrieval": [],
-                    "final_context": [],
+                    "raw_retrieval": [dict(item)],
+                    "ranked_retrieval": [dict(item)],
+                    "final_context": [dict(item)],
                 },
             },
         }
 
     adapter._post_json = post_json  # type: ignore[method-assign]
     result = asyncio.run(
-        adapter.query(RAGQuery(case_id="case-1", question="What happened?"))
+        adapter.query(
+            prepared,
+            NativeQueryV2(
+                case_id="case-1",
+                question="What happened?",
+                generate_answer=True,
+                retrieval_candidate_k=20,
+                final_context_k=5,
+                max_context_tokens=4096,
+                generation_options={},
+            ),
+        )
     )
 
-    assert result.trace is not None
-    assert result.trace["light_rag_evaluation_trace"]["schema_version"] == (
-        "lightrag-evaluation-trace/1"
-    )
-    assert result.trace["answer_prompt"] == {
-        "status": "available",
-        "value": "rendered prompt from LightRAG",
-    }
+    assert result.trace.prompt_trace.content == "rendered prompt from LightRAG"
+    assert result.trace.answer.content == "answer"
+    assert result.trace.final_context.items[0].content == content
+    assert result.telemetry["native_query_executions"] == 1
     assert CAPABILITIES.prompt_trace is True
 
 

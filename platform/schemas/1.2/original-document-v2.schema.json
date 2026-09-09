@@ -1,0 +1,58 @@
+{
+  "additionalProperties": false,
+  "description": "The sole native ingestion input staged in the Worker source sandbox.",
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "document_id": {
+      "minLength": 1,
+      "title": "Document Id",
+      "type": "string"
+    },
+    "source_path": {
+      "minLength": 1,
+      "title": "Source Path",
+      "type": "string"
+    },
+    "source_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Sha256",
+      "type": "string"
+    },
+    "media_type": {
+      "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "default": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "title": "Media Type",
+      "type": "string"
+    },
+    "original_name": {
+      "minLength": 1,
+      "title": "Original Name",
+      "type": "string"
+    },
+    "canonical_catalog_path": {
+      "minLength": 1,
+      "title": "Canonical Catalog Path",
+      "type": "string"
+    },
+    "canonical_catalog_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Canonical Catalog Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "document_id",
+    "source_path",
+    "source_sha256",
+    "original_name",
+    "canonical_catalog_path",
+    "canonical_catalog_sha256"
+  ],
+  "title": "OriginalDocumentV2",
+  "type": "object"
+}

@@ -1,0 +1,63 @@
+{
+  "additionalProperties": false,
+  "description": "Run-scoped, path-resolved Adapter configuration supplied at prepare.",
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "work_dir": {
+      "minLength": 1,
+      "title": "Work Dir",
+      "type": "string"
+    },
+    "source_dir": {
+      "minLength": 1,
+      "title": "Source Dir",
+      "type": "string"
+    },
+    "platform_version": {
+      "minLength": 1,
+      "title": "Platform Version",
+      "type": "string"
+    },
+    "seed": {
+      "title": "Seed",
+      "type": "integer"
+    },
+    "repetition": {
+      "minimum": 1,
+      "title": "Repetition",
+      "type": "integer"
+    },
+    "adapter_config": {
+      "additionalProperties": true,
+      "title": "Adapter Config",
+      "type": "object"
+    },
+    "adapter_config_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Adapter Config Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "work_dir",
+    "source_dir",
+    "platform_version",
+    "seed",
+    "repetition",
+    "adapter_config",
+    "adapter_config_digest"
+  ],
+  "title": "ResolvedAdapterConfigV2",
+  "type": "object"
+}

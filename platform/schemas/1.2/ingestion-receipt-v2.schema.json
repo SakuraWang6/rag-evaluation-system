@@ -1,0 +1,70 @@
+{
+  "additionalProperties": false,
+  "description": "Content-addressed proof that prepare indexed the declared DOCX once.",
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "document_id": {
+      "minLength": 1,
+      "title": "Document Id",
+      "type": "string"
+    },
+    "source_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Sha256",
+      "type": "string"
+    },
+    "ingested_documents": {
+      "const": 1,
+      "default": 1,
+      "title": "Ingested Documents",
+      "type": "integer"
+    },
+    "failed_documents": {
+      "const": 0,
+      "default": 0,
+      "title": "Failed Documents",
+      "type": "integer"
+    },
+    "index_fingerprint": {
+      "minLength": 1,
+      "title": "Index Fingerprint",
+      "type": "string"
+    },
+    "index_artifact_digest": {
+      "anyOf": [
+        {
+          "pattern": "^(sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Index Artifact Digest"
+    },
+    "details": {
+      "additionalProperties": true,
+      "title": "Details",
+      "type": "object"
+    },
+    "receipt_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Receipt Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "document_id",
+    "source_sha256",
+    "index_fingerprint",
+    "receipt_digest"
+  ],
+  "title": "IngestionReceiptV2",
+  "type": "object"
+}

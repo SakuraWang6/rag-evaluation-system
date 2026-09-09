@@ -4,7 +4,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from rag_eval.contracts.adapter import PrepareContext
+from rag_eval.contracts.native import OriginalDocumentV2, ResolvedAdapterConfigV2
+from rag_eval.runs.plans import digest_json
 from rag_eval_lightrag_adapter.adapter import (
     CAPABILITIES,
     LightRAGAdapter,
@@ -228,13 +229,24 @@ async def test_prepare_rejects_nonempty_workdir(tmp_path) -> None:
 
     with pytest.raises(RuntimeError, match="stale index"):
         await adapter.prepare(
-            PrepareContext(
+            OriginalDocumentV2(
+                document_id="doc-1",
+                source_path="source.docx",
+                source_sha256="a" * 64,
+                original_name="source.docx",
+                canonical_catalog_path="canonical.jsonl",
+                canonical_catalog_sha256="b" * 64,
+            ),
+            ResolvedAdapterConfigV2(
                 run_id="run-1",
                 work_dir=str(work_dir),
                 source_dir=str(tmp_path / "source"),
                 platform_version="0.1.0",
+                seed=0,
+                repetition=1,
+                adapter_config={},
+                adapter_config_digest=digest_json({}),
             ),
-            {},
         )
     adapter._start_server.assert_not_awaited()
 

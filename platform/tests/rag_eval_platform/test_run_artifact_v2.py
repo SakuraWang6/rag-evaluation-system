@@ -3,26 +3,23 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import ClassVar
 
 import pytest
 
-from rag_eval.contracts.adapter import (
-    AdapterCapabilities,
-    RAGEvidenceItem,
-    RAGQuery,
-    RAGResult,
-)
+from rag_eval.adapters.native_observation import unavailable_native_result
 from rag_eval.contracts.dataset import GoldAnswer, GoldAnswerKind, Question
+from rag_eval.contracts.native import (
+    IngestionReceiptV2,
+    NativeQueryV2,
+    PreparedSystemV2,
+)
 from rag_eval.contracts.observation import (
     AdapterRunResultV2,
+    CompatibilityNormalization,
     ObservationStatus,
     UnifiedTrace,
 )
-from rag_eval.contracts.run import ExperimentSpec
-from rag_eval.evaluation.evidence import CorpusEvidenceIndex
 from rag_eval.evaluation.unified import EvaluationMetricStatus, FailureKind
-from rag_eval.execution import execute_case
 from rag_eval.runs import (
     AdapterSession,
     ArtifactV2Reader,
@@ -92,27 +89,6 @@ def _observed_fixture(case_id: str = "case-1"):
         system_version=trace.runtime_profile.system_version,
         trace=trace,
     )
-    legacy_item = RAGEvidenceItem(
-        item_id=chunk.native_chunk_id,
-        native_id=chunk.native_chunk_id,
-        rank=1,
-        content=chunk.content or "",
-    )
-    rag_result = RAGResult(
-        answer="42",
-        raw_retrieval=[legacy_item],
-        ranked_retrieval=[legacy_item],
-        final_context=[legacy_item],
-        trace={
-            "wire_v2_native_observation": {
-                "observation_status": "observed",
-                "adapter_run_result": adapter_result.model_dump(
-                    mode="json", exclude_none=True
-                ),
-                "wire_comparison": {"status": "verified"},
-            }
-        },
-    )
     question = Question(
         case_id=case_id,
         question="What value is recorded?",
@@ -124,7 +100,34 @@ def _observed_fixture(case_id: str = "case-1"):
         kind=GoldAnswerKind.NUMERIC,
         canonical="42",
     )
-    return question, answer, _gold(("gold-a",)), rag_result
+    return question, answer, _gold(("gold-a",)), adapter_result
+
+
+def _prepared_fixture(result: AdapterRunResultV2) -> PreparedSystemV2:
+    receipt = IngestionReceiptV2.build(
+        document_id=result.trace.source_identity.document_id,
+        source_sha256=result.trace.source_identity.source_sha256,
+        index_fingerprint="fixture-index",
+    )
+    return PreparedSystemV2.build(
+        effective_config={"fixture": "direct-wire-v2"},
+        source_identity=result.trace.source_identity,
+        runtime_profile=result.trace.runtime_profile,
+        observation_profile=result.trace.observation_profile,
+        ingestion_receipt=receipt,
+    )
+
+
+def _native_query(case_id: str = "case-1") -> NativeQueryV2:
+    return NativeQueryV2(
+        case_id=case_id,
+        question="What value is recorded?",
+        generate_answer=True,
+        retrieval_candidate_k=5,
+        final_context_k=1,
+        max_context_tokens=4096,
+        generation_options={},
+    )
 
 
 def _resolver(case_ids: tuple[str, ...] = ("case-1",)) -> BenchmarkResolver:
@@ -143,14 +146,14 @@ def _evaluated_case(
     *,
     context_budget: int = 4096,
 ):
-    question, answer, gold, rag_result = _observed_fixture(case_id)
+    question, answer, gold, adapter_result = _observed_fixture(case_id)
     resolved = BenchmarkResolver(
         questions={case_id: question},
         gold_answers={answer.gold_answer_id: answer},
         gold_evidence_sets={gold.gold_evidence_set_id: gold},
     ).resolve(case_id)
     validation = TraceValidator().validate(
-        rag_result,
+        adapter_result,
         expected_case_id=case_id,
         expected_adapter_id="adapter-under-test",
         expected_system_id="system-under-test",
@@ -255,11 +258,17 @@ def test_artifact_v2_is_immutable_self_verifying_and_read_without_scorer(
 
 
 @pytest.mark.native_v2_characterization
-def test_artifact_v2_persists_an_unobservable_run_without_a_trace(
+def test_artifact_v2_persists_an_unobservable_direct_v2_result(
     tmp_path: Path,
 ) -> None:
-    _, _, _, no_trace = _observed_fixture()
-    no_trace = no_trace.model_copy(update={"trace": None})
+    _, _, _, observed = _observed_fixture()
+    no_trace = unavailable_native_result(
+        prepared=_prepared_fixture(observed),
+        query=_native_query(),
+        status=ObservationStatus.UNOBSERVED,
+        reason="fixture cannot observe native retrieval",
+        answer=None,
+    )
     resolved = _resolver().resolve("case-1")
     started = datetime(2026, 9, 8, tzinfo=UTC)
     case = EvaluationEngine(_profile(1)).evaluate(
@@ -281,12 +290,23 @@ def test_artifact_v2_persists_an_unobservable_run_without_a_trace(
     )
     reader = ArtifactV2Reader(tmp_path / "artifact-v2")
 
-    assert manifest.runtime_profiles == ()
-    assert manifest.observation_profiles == ()
+    assert len(manifest.runtime_profiles) == 1
+    assert len(manifest.observation_profiles) == 1
     assert reader.verify().valid
     assert reader.summary().leaderboard_eligibility.eligible is False
     assert reader.case("case-1").evaluation.failure is not None
     assert reader.case("case-1").evaluation.failure.kind == FailureKind.UNOBSERVABLE
+
+    retrieval_only = unavailable_native_result(
+        prepared=_prepared_fixture(observed),
+        query=_native_query().model_copy(update={"generate_answer": False}),
+        status=ObservationStatus.UNOBSERVED,
+        reason="fixture cannot observe native retrieval",
+        answer=None,
+    )
+    assert retrieval_only.trace.answer.observation_status == (
+        ObservationStatus.UNOBSERVED
+    )
 
 
 @pytest.mark.native_v2_characterization
@@ -302,8 +322,14 @@ def test_leaderboard_eligibility_uses_persisted_metric_availability_and_descript
     assert mismatched.eligible is False
     assert any("descriptor" in reason for reason in mismatched.reasons)
 
-    _, _, _, no_trace = _observed_fixture("case-3")
-    no_trace = no_trace.model_copy(update={"trace": None})
+    _, _, _, observed = _observed_fixture("case-3")
+    no_trace = unavailable_native_result(
+        prepared=_prepared_fixture(observed),
+        query=_native_query("case-3"),
+        status=ObservationStatus.UNOBSERVED,
+        reason="fixture cannot observe native retrieval",
+        answer=None,
+    )
     resolved_c = _resolver(("case-3",)).resolve("case-3")
     unavailable = EvaluationEngine(_profile(1)).evaluate(
         resolved_c,
@@ -323,7 +349,7 @@ def test_leaderboard_eligibility_uses_persisted_metric_availability_and_descript
     assert resolved_b.case_id == "case-2"
 
 
-def test_trace_validator_fails_closed_without_guessing_or_changing_wire_v1() -> None:
+def test_trace_validator_fails_closed_on_direct_v2_identity_or_compatibility() -> None:
     _, _, _, result = _observed_fixture()
     original = result.model_dump(mode="json")
     validator = TraceValidator()
@@ -332,34 +358,22 @@ def test_trace_validator_fails_closed_without_guessing_or_changing_wire_v1() -> 
     assert observed.status == ObservationStatus.OBSERVED
     assert observed.adapter_result is not None
 
-    absent = validator.validate(
-        result.model_copy(update={"trace": None}), expected_case_id="case-1"
-    )
-    assert absent.status == ObservationStatus.UNOBSERVED
-    malformed = result.model_copy(
-        update={
-            "trace": {
-                "wire_v2_native_observation": {
-                    "observation_status": "observed",
-                    "adapter_run_result": {"broken": True},
-                }
-            }
-        }
-    )
+    mismatched = result.model_copy(update={"adapter_id": "different-adapter"})
     assert validator.validate(
-        malformed, expected_case_id="case-1"
+        mismatched,
+        expected_case_id="case-1",
+        expected_adapter_id="adapter-under-test",
     ).status == ObservationStatus.CORRUPTED
-
-    assert result.ranked_retrieval is not None
-    changed_stage = result.model_copy(
+    normalized = result.model_copy(
         update={
-            "ranked_retrieval": [
-                result.ranked_retrieval[0].model_copy(update={"content": "changed"})
-            ]
+            "normalization": CompatibilityNormalization(
+                source_result_sha256="a" * 64,
+                limitations=("legacy wrapper",),
+            )
         }
     )
     assert validator.validate(
-        changed_stage, expected_case_id="case-1"
+        normalized, expected_case_id="case-1"
     ).status == ObservationStatus.CORRUPTED
     assert validator.validate(
         result, expected_case_id="different"
@@ -373,10 +387,14 @@ def test_named_v2_orchestration_flow_queries_once_and_never_sends_gold() -> None
 
     class Client:
         def __init__(self) -> None:
-            self.calls: list[RAGQuery] = []
+            self.calls: list[tuple[PreparedSystemV2, NativeQueryV2]] = []
 
-        def query(self, query: RAGQuery) -> RAGResult:
-            self.calls.append(query)
+        def query(
+            self,
+            prepared_system: PreparedSystemV2,
+            query: NativeQueryV2,
+        ) -> AdapterRunResultV2:
+            self.calls.append((prepared_system, query))
             return result
 
     client = Client()
@@ -388,13 +406,15 @@ def test_named_v2_orchestration_flow_queries_once_and_never_sends_gold() -> None
     )
     outcome = flow.execute(
         case_id="case-1",
-        query=RAGQuery(case_id="case-1", question="What value is recorded?"),
+        prepared_system=_prepared_fixture(result),
+        query=_native_query(),
         repetition=1,
         seed=7,
     )
 
     assert len(client.calls) == 1
-    assert set(client.calls[0].model_dump()) == {
+    assert set(client.calls[0][1].model_dump()) == {
+        "schema_version",
         "case_id",
         "question",
         "generate_answer",
@@ -407,86 +427,48 @@ def test_named_v2_orchestration_flow_queries_once_and_never_sends_gold() -> None
     assert outcome.artifact_case.evaluation.core_metrics_available
 
 
-def test_legacy_executor_shadows_one_query_without_changing_case_result(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    question, answer, gold, result = _observed_fixture()
+def test_direct_orchestrator_rejects_legacy_normalization_after_one_query() -> None:
+    _, _, _, observed = _observed_fixture()
+    result = observed.model_copy(
+        update={
+            "normalization": CompatibilityNormalization(
+                source_result_sha256="a" * 64,
+                limitations=("legacy wrapper",),
+            )
+        }
+    )
 
     class Client:
         def __init__(self) -> None:
             self.calls = 0
 
-        def query(self, query: RAGQuery) -> RAGResult:
-            assert query.case_id == question.case_id
+        def query(
+            self,
+            prepared_system: PreparedSystemV2,
+            query: NativeQueryV2,
+        ) -> AdapterRunResultV2:
+            assert prepared_system == _prepared_fixture(observed)
+            assert query.case_id == "case-1"
             self.calls += 1
             return result
 
-    class Bundle:
-        gold_answers: ClassVar = {answer.gold_answer_id: answer}
-        gold_evidence_sets: ClassVar = {gold.gold_evidence_set_id: gold}
-
-    ticks = iter((0.0, 0.5, 1.0, 1.5))
-    monkeypatch.setattr(
-        "rag_eval.runs.orchestration.monotonic", lambda: next(ticks)
-    )
-    capabilities = AdapterCapabilities(
-        answer=True,
-        raw_retrieval=True,
-        ranked_retrieval=True,
-        final_context=True,
-    )
-    experiment = ExperimentSpec(
-        experiment_id="experiment-1",
-        bundle_id=SHA_A,
-        system_id="system-under-test",
-        adapter_id="adapter-under-test",
-        query_config={
-            "retrieval_candidate_k": 1,
-            "final_context_k": 1,
-            "max_context_tokens": 4096,
-        },
-        case_selection_id="selection-1",
-    )
-    corpus = CorpusEvidenceIndex({})
-    legacy_client = Client()
-    legacy_case = execute_case(
-        legacy_client,
-        capabilities,
-        question,
-        Bundle(),  # type: ignore[arg-type]
-        corpus,
-        experiment,
-        lambda: False,
-        1,
-        7,
-    )
-    persisted = []
-    shadow_client = Client()
-    case = execute_case(
-        shadow_client,
-        capabilities,
-        question,
-        Bundle(),  # type: ignore[arg-type]
-        corpus,
-        experiment,
-        lambda: False,
-        1,
-        7,
-        artifact_v2_profile=_profile(1),
-        artifact_v2_cases=persisted,
-        expected_adapter_id="adapter-under-test",
-        expected_adapter_version="1",
-        expected_system_id="system-under-test",
-        expected_system_version="1",
+    client = Client()
+    outcome = NativeCaseOrchestrator(
+        benchmark_resolver=_resolver(),
+        adapter_session=AdapterSession(client),
+        trace_validator=TraceValidator(),
+        evaluation_engine=EvaluationEngine(_profile(1)),
+    ).execute(
+        case_id="case-1",
+        prepared_system=_prepared_fixture(observed),
+        query=_native_query(),
+        repetition=1,
+        seed=7,
     )
 
-    assert case.status == "completed"
-    assert legacy_client.calls == shadow_client.calls == 1
-    assert legacy_case.model_dump(
-        mode="json", exclude={"started_at", "completed_at"}
-    ) == case.model_dump(mode="json", exclude={"started_at", "completed_at"})
-    assert len(persisted) == 1
-    assert persisted[0].evaluation.core_metrics_available
+    assert client.calls == 1
+    assert outcome.validation.status == ObservationStatus.CORRUPTED
+    assert not outcome.artifact_case.evaluation.core_metrics_available
 
 
 @pytest.mark.native_v2_characterization

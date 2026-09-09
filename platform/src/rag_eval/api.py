@@ -1864,7 +1864,7 @@ def create_app(
                 # abandoned connection-test worker owned by this app.
                 cleanup_managed_run(f"connection-test-{system_id}")
             # A connection test is a real, short-lived Worker launch.  Give
-            # every attempt a unique run ID so a failed Docker handshake can
+            # every attempt a unique run ID so a failed Worker readiness
             # never collide with the previous attempt's container name.
             test_run_id = f"connection-test-{safe_id(system_id)}-{uuid4_hex()}"
             sandbox = service.paths.product_uploads / test_run_id
@@ -1879,7 +1879,7 @@ def create_app(
                 )
             )
             try:
-                handshake = handle.client.handshake()
+                identity = handle.client.health().identity
             finally:
                 handle.stop()
             service.products.save_connection(
@@ -1892,8 +1892,8 @@ def create_app(
             )
             return {
                 "status": "ok",
-                "system_id": handshake.system_id,
-                "adapter_id": handshake.adapter_id,
+                "system_id": identity.system_id,
+                "adapter_id": identity.adapter_id,
                 "execution_provider": resolved.provider,
             }
         except (OSError, ValueError, RuntimeError, KeyError) as exc:

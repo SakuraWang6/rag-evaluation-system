@@ -21,7 +21,6 @@ from rag_eval.artifact_contract import artifact_digest as contract_digest
 from rag_eval.contracts.adapter import (
     AdapterCapabilities,
     DocumentInput,
-    PrepareContext,
     PreparedSystem,
     RAGQuery,
     RAGResult,
@@ -34,11 +33,16 @@ from rag_eval.contracts.benchmark import (
     BenchmarkDataset,
     BenchmarkQuestion,
     SegmentEvaluationOutcome,
-    SegmentEvaluationStage,
     SegmentEvaluationTrace,
 )
 from rag_eval.contracts.dataset import GoldEvidence, ObjectLocator, Question
-from rag_eval.contracts.observation import ObservationStatus
+from rag_eval.contracts.native import (
+    NativeQueryV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
+)
+from rag_eval.contracts.observation import AdapterCapabilitiesV2, ObservationStatus
 from rag_eval.contracts.research import (
     FailureAssessment,
     FailureLabel,
@@ -54,22 +58,21 @@ from rag_eval.contracts.run import (
     RunManifest,
     RunStatus,
 )
-from rag_eval.contracts.wire import HandshakeResponse
+from rag_eval.contracts.wire import WorkerIdentityV2
+from rag_eval.datasets.benchmark_contract import (
+    formal_release_benchmark_contract_path,
+    load_benchmark_dataset,
+    materialize_benchmark_segment_documents,  # noqa: F401 - removed in Phase 5
+)
 from rag_eval.datasets.bundle import (
     DatasetBundle,
     DatasetBundleStore,
     case_selection_id,
 )
 from rag_eval.datasets.canonical_segments import (
-    CANONICAL_SEGMENT_MANIFEST_NAME,
     CanonicalSegmentError,
     load_staged_canonical_segment_manifest,
     materialize_canonical_segment_documents,
-)
-from rag_eval.datasets.benchmark_contract import (
-    formal_release_benchmark_contract_path,
-    load_benchmark_dataset,
-    materialize_benchmark_segment_documents,
 )
 from rag_eval.datasets.formal import BundleProjectionStatus, DatasetReleaseStore
 from rag_eval.evaluation.answers import (
@@ -98,11 +101,11 @@ from rag_eval.evaluation.segment_answers import (
     answer_not_applicable_metrics,
     evaluate_segment_answer,
 )
-from rag_eval.evaluation.segment_metrics import evaluate_segment_retrieval
 from rag_eval.evaluation.segment_metrics import (
     SEGMENT_SCORER_DIGEST,
     SEGMENT_SCORER_ID,
     SEGMENT_SCORER_VERSION,
+    evaluate_segment_retrieval,
 )
 from rag_eval.evaluation.unified import EvaluationProfile
 from rag_eval.execution_provider import (
@@ -113,7 +116,6 @@ from rag_eval.execution_provider import (
 )
 from rag_eval.report import markdown_report
 from rag_eval.reproducibility import capture_reproducibility
-from rag_eval.runtime_admission import NATIVE_DOCUMENT_EXECUTION_CONTRACT
 from rag_eval.runs import (
     AdapterSession,
     ArtifactCaseErrorV2,
@@ -126,7 +128,6 @@ from rag_eval.runs import (
     TraceValidationResult,
     TraceValidator,
     benchmark_identity_from_release_metadata,
-    evaluation_profile_from_query_config,
 )
 from rag_eval.runs.plans import (
     ResolvedRunPlanReferenceV2,
@@ -134,9 +135,10 @@ from rag_eval.runs.plans import (
     formal_metric_descriptors,
 )
 from rag_eval.runs.records import RunRecordStoreV2
+from rag_eval.runtime_admission import NATIVE_DOCUMENT_EXECUTION_CONTRACT
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.runs import RunStore
-from rag_eval.worker.client import WorkerRemoteError
+from rag_eval.worker.client import WorkerProtocolError, WorkerRemoteError
 from rag_eval.worker.process import WorkerCommand
 
 
@@ -170,6 +172,10 @@ class RunExecutor:
     ) -> RunManifest:
         run_id = run_id or uuid.uuid4().hex
         cancelled = cancelled or (lambda: False)
+        if resolved_plan is None or resolved_plan_reference is None:
+            raise ValueError(
+                "RunExecutor accepts only an admitted Native v2 resolved plan"
+            )
         bundle = self.dataset_store.get(experiment.bundle_id)
         if resolved_plan is not None:
             if not resolved_plan.matches_experiment(experiment):
@@ -250,7 +256,7 @@ class RunExecutor:
             )
         manifest: RunManifest | None = None
         documents: list[DocumentInput] | None = None
-        corpus: CorpusEvidenceIndex | None = None
+        original_docx: OriginalDocumentV2 | None = None
         results: list[CaseResult] = []
         artifact_v2_cases: list[RunArtifactCaseV2] = []
         artifact_v2_profile = (
@@ -259,7 +265,7 @@ class RunExecutor:
         artifact_v2_profile_resolved = resolved_plan is not None
         index_fingerprints: list[str] = []
         index_artifact_digests: list[str] = []
-        first_handshake = None
+        first_worker_identity: WorkerIdentityV2 | None = None
         # The raw worker response is kept only in memory for repetition
         # validation. Persisted artifacts must not contain resolved endpoints.
         validation_effective_config: dict[str, object] | None = None
@@ -303,23 +309,27 @@ class RunExecutor:
                         daemon=True,
                     )
                     watcher.start()
-                    handshake = client.handshake()
-                    validate_handshake(handshake, experiment, first_handshake)
-                    if first_handshake is None:
-                        first_handshake = handshake
+                    worker_health = client.health()
+                    worker_identity = worker_health.identity
+                    validate_worker_identity(
+                        worker_identity,
+                        experiment,
+                        first_worker_identity,
+                    )
+                    if first_worker_identity is None:
+                        first_worker_identity = worker_identity
                         manifest = initial_manifest(
                             run_id,
                             experiment,
                             bundle,
-                            handshake,
+                            worker_identity,
                             repetition_seeds,
                             replay_of_run_id,
                         )
-                        if resolved_plan is not None:
-                            assert self.run_record_store is not None
-                            self.run_record_store.mark_running(
-                                run_id, started_at=manifest.started_at
-                            )
+                        assert self.run_record_store is not None
+                        self.run_record_store.mark_running(
+                            run_id, started_at=manifest.started_at
+                        )
                         self.run_store.create(manifest, experiment)
                         provider_metadata = {
                             **handle.launch_metadata,
@@ -340,50 +350,20 @@ class RunExecutor:
                             )
                             self.run_store.write_manifest(manifest)
                         source_dir = run_dir / "source"
-                        documents = (
-                            materialize_benchmark_segment_documents(
-                                benchmark_dataset,
-                                source_dir,
-                            )
-                            if benchmark_dataset is not None
-                            else source_only_documents(
-                                bundle,
-                                source_dir,
-                                primary_corpus=primary_corpus,
-                                canonical_segment_max_batch_characters=(
-                                    canonical_segment_batch_limit(resolved_adapter_config)
-                                ),
-                            )
+                        documents = source_only_documents(
+                            bundle,
+                            source_dir,
+                            primary_corpus="source_document",
                         )
-                        if primary_corpus == "canonical_segments":
-                            manifest = manifest.model_copy(
-                                update={
-                                    "artifacts": {
-                                        **manifest.artifacts,
-                                        "canonical_segment_manifest": (
-                                            f"source/{CANONICAL_SEGMENT_MANIFEST_NAME}"
-                                        ),
-                                    }
-                                }
-                            )
-                            self.run_store.write_manifest(manifest)
-                        elif benchmark_dataset is not None:
-                            manifest = manifest.model_copy(
-                                update={
-                                    "artifacts": {
-                                        **manifest.artifacts,
-                                        "benchmark_contract_reference": (
-                                            "source/benchmark-contract-reference.json"
-                                        ),
-                                    }
-                                }
-                            )
-                            self.run_store.write_manifest(manifest)
+                        original_docx = direct_native_document(
+                            documents,
+                            resolved_plan,
+                        )
                     assert manifest is not None
-                    assert documents is not None
+                    assert original_docx is not None
                     source_dir = run_dir / "source"
-                    prepared = client.prepare(
-                        handle.prepare_context(PrepareContext(
+                    direct_config = handle.resolve_adapter_config(
+                        ResolvedAdapterConfigV2(
                             run_id=worker_run_id,
                             work_dir=str(
                                 run_dir / "work" / f"rep-{repetition:04d}"
@@ -392,19 +372,22 @@ class RunExecutor:
                             platform_version=__version__,
                             seed=repetition_seed,
                             repetition=repetition,
-                        )),
-                        resolved_adapter_config,
-                    )
-                    validate_prepared(
-                        prepared, experiment, validation_effective_config
-                    )
-                    current_artifact_v2_profile = (
-                        resolved_plan.evaluation_profile
-                        if resolved_plan is not None
-                        else evaluation_profile_from_query_config(
-                            experiment.query_config
+                            adapter_config=resolved_adapter_config,
+                            adapter_config_digest=resolved_plan.adapter_config_digest,
                         )
                     )
+                    prepared = client.prepare(
+                        original_docx,
+                        direct_config,
+                        timeout=ingestion_rpc_timeout(
+                            seeded_command,
+                            resolved_adapter_config,
+                        ),
+                    )
+                    validate_prepared_v2(
+                        prepared, experiment, validation_effective_config
+                    )
+                    current_artifact_v2_profile = resolved_plan.evaluation_profile
                     if not artifact_v2_profile_resolved:
                         artifact_v2_profile = current_artifact_v2_profile
                         artifact_v2_profile_resolved = True
@@ -429,10 +412,21 @@ class RunExecutor:
                         )
                         manifest = manifest.model_copy(
                             update={
-                                "status": RunStatus.INGESTING,
-                                "system_version": prepared.system_version,
+                                "status": RunStatus.RUNNING,
+                                "system_version": (
+                                    prepared.runtime_profile.system_version
+                                ),
                                 "effective_config": effective_config,
-                                "observed_capabilities": prepared.capabilities,
+                                "declared_capabilities": (
+                                    legacy_manifest_capabilities(
+                                        prepared.observation_profile.capabilities
+                                    )
+                                ),
+                                "observed_capabilities": (
+                                    legacy_manifest_capabilities(
+                                        prepared.observation_profile.capabilities
+                                    )
+                                ),
                                 "reproducibility": reproducibility,
                                 "model_artifacts": prepared_model_artifacts(
                                     prepared, experiment
@@ -444,62 +438,15 @@ class RunExecutor:
                             "effective configuration changed across repetitions"
                         )
                     self.run_store.write_manifest(manifest)
-                    ingestion = client.ingest(
-                        documents,
-                        timeout=ingestion_rpc_timeout(
-                            seeded_command, prepared.effective_config
-                        ),
-                    )
-                    if ingestion.index_fingerprint is None:
-                        raise ValueError("adapter did not return an index fingerprint")
-                    # The adapter writes its run-scoped provenance map during
-                    # ingest.  Load it once per repetition, after ingest, so
-                    # every case in that repetition shares one pinned
-                    # forward/reverse catalog.  A missing/unpinned map falls
-                    # back to the legacy quote-only index and therefore cannot
-                    # prove formal locator coverage or true misses.
-                    if benchmark_dataset is not None:
-                        validate_benchmark_ingestion_contract(
-                            ingestion.details,
-                            benchmark_dataset,
-                            strict_segment_ranking=prepared.capabilities.strict_segment_ranking,
-                        )
-                    else:
-                        corpus = corpus_evidence_index_after_ingest(
-                            bundle,
-                            documents,
-                            run_dir=run_dir,
-                            repetition=repetition,
-                            ingestion_details=ingestion.details,
-                        )
-                        # A source-only native document has no safe fallback from
-                        # a LightRAG-rendered chunk to a Word paragraph/table/cell.
-                        # Do this before the first query: otherwise a syntactically
-                        # valid but empty adapter map can turn an entire completed
-                        # run into misleading ``unverifiable`` result cards.
-                        validate_native_provenance_contract(
-                            bundle,
-                            questions,
-                            documents,
-                            corpus,
-                            ingestion_details=ingestion.details,
-                        )
-                        validate_canonical_segment_provenance_contract(
-                            bundle,
-                            questions,
-                            documents,
-                            corpus,
-                            source_dir=source_dir,
-                            ingestion_details=ingestion.details,
-                        )
+                    ingestion = prepared.ingestion_receipt
                     index_fingerprints.append(ingestion.index_fingerprint)
-                    artifact_digest = ingestion.details.get("index_artifact_digest")
+                    artifact_digest = ingestion.index_artifact_digest
                     if artifact_digest is not None:
-                        if not isinstance(artifact_digest, str) or not artifact_digest.startswith(
-                            "sha256:"
-                        ):
-                            raise ValueError("adapter returned malformed index artifact digest")
-                        index_artifact_digests.append(artifact_digest)
+                        index_artifact_digests.append(
+                            artifact_digest
+                            if artifact_digest.startswith("sha256:")
+                            else f"sha256:{artifact_digest}"
+                        )
                     manifest = manifest.model_copy(
                         update={
                             "status": RunStatus.RUNNING,
@@ -519,7 +466,7 @@ class RunExecutor:
                         )
                         run_latency_warmup(
                             client,
-                            prepared.capabilities,
+                            prepared,
                             experiment,
                         )
                     for question in question_orders[repetition_seed]:
@@ -528,39 +475,20 @@ class RunExecutor:
                                 update={"status": RunStatus.CANCELLED}
                             )
                             break
-                        case = (
-                            execute_benchmark_case(
-                                client,
-                                prepared.capabilities,
-                                question,
-                                benchmark_dataset,
-                                experiment,
-                                cancelled,
-                                repetition,
-                                repetition_seed,
-                            )
-                            if benchmark_dataset is not None
-                            else execute_case(
-                                client,
-                                prepared.capabilities,
-                                question,
-                                bundle,
-                                corpus,
-                                experiment,
-                                cancelled,
-                                repetition,
-                                repetition_seed,
-                                artifact_v2_profile=artifact_v2_profile,
-                                artifact_v2_cases=artifact_v2_cases,
-                                expected_adapter_id=handshake.adapter_id,
-                                expected_adapter_version=handshake.adapter_version,
-                                expected_system_id=handshake.system_id,
-                                expected_system_version=prepared.system_version,
-                            )
+                        artifact_case = execute_native_case(
+                            client,
+                            prepared,
+                            question,
+                            bundle,
+                            experiment,
+                            cancelled,
+                            repetition,
+                            repetition_seed,
+                            profile=current_artifact_v2_profile,
+                            expected_identity=worker_identity,
                         )
-                        self.run_store.write_case(run_id, case)
-                        results.append(case)
-                        if case.status == "cancelled":
+                        artifact_v2_cases.append(artifact_case)
+                        if artifact_case.status == "cancelled":
                             manifest = manifest.model_copy(
                                 update={"status": RunStatus.CANCELLED}
                             )
@@ -583,12 +511,23 @@ class RunExecutor:
             if manifest is None:
                 raise RuntimeError("run did not start")
             expected_cases = len(questions) * experiment.repetitions
-            counts = execution_counts(results, expected=expected_cases)
-            summary = aggregate_metrics(
-                results,
-                repetitions=experiment.repetitions,
+            counts = artifact_execution_counts(
+                artifact_v2_cases,
                 expected=expected_cases,
             )
+            summary = {
+                "metrics": {},
+                "execution": {
+                    **counts,
+                    "execution_failure_rate": (
+                        (counts["expected"] - counts["completed"])
+                        / counts["expected"]
+                        if counts["expected"]
+                        else 0.0
+                    ),
+                    "authority": "artifact-v2",
+                },
+            }
             atomic_write_json(run_dir / "summary.json", summary)
             atomic_write_json(
                 run_dir / "case-order.json",
@@ -782,7 +721,7 @@ def initial_manifest(
     run_id: str,
     experiment: ExperimentSpec,
     bundle: DatasetBundle,
-    handshake: HandshakeResponse,
+    worker_identity: WorkerIdentityV2,
     repetition_seeds: list[int],
     replay_of_run_id: str | None,
 ) -> RunManifest:
@@ -807,10 +746,10 @@ def initial_manifest(
         benchmark_contract_digest=experiment.benchmark_contract_digest,
         case_selection_id=experiment.case_selection_id,
         platform_version=__version__,
-        adapter_id=handshake.adapter_id,
-        adapter_version=handshake.adapter_version,
-        system_id=handshake.system_id,
-        system_version=handshake.system_version,
+        adapter_id=worker_identity.adapter_id,
+        adapter_version=worker_identity.adapter_version,
+        system_id=worker_identity.system_id,
+        system_version=worker_identity.system_version,
         declared_config={
             "adapter": experiment.adapter_config,
             "query": experiment.query_config,
@@ -861,8 +800,11 @@ def initial_manifest(
             },
         },
         model_artifacts=experiment.model_artifacts,
-        declared_capabilities=handshake.capabilities,
-        observed_capabilities=handshake.capabilities,
+        # RunManifest is a transitional, non-authoritative persistence model
+        # retired in Phase 6. Direct Worker capabilities are recorded after
+        # prepare and evaluation remains exclusively in Artifact 2.0.
+        declared_capabilities=AdapterCapabilities(),
+        observed_capabilities=AdapterCapabilities(),
         seed=experiment.seed,
         repetitions=experiment.repetitions,
         latency_protocol_digest=experiment.latency_protocol_digest,
@@ -907,17 +849,17 @@ def execution_view_identity(
     return "source-document", False
 
 
-def validate_handshake(
-    handshake: HandshakeResponse,
+def validate_worker_identity(
+    identity: WorkerIdentityV2,
     experiment: ExperimentSpec,
-    first: HandshakeResponse | None,
+    first: WorkerIdentityV2 | None,
 ) -> None:
-    if handshake.adapter_id != experiment.adapter_id:
+    if identity.adapter_id != experiment.adapter_id:
         raise ValueError("worker adapter_id does not match ExperimentSpec")
-    if handshake.system_id != experiment.system_id:
+    if identity.system_id != experiment.system_id:
         raise ValueError("worker system_id does not match ExperimentSpec")
-    if first is not None and handshake != first:
-        raise ValueError("worker handshake changed across repetitions")
+    if first is not None and identity != first:
+        raise ValueError("worker identity changed across repetitions")
 
 
 def validate_prepared(
@@ -925,9 +867,43 @@ def validate_prepared(
     experiment: ExperimentSpec,
     previous_effective: dict[str, object] | None,
 ) -> None:
+    """Validate the retained legacy model object outside the v2 runtime path."""
+
     if (
         experiment.query_config.get("generate_answer", True)
         and not prepared.capabilities.answer
+    ):
+        raise ValueError(
+            "experiment requests answer generation but adapter lacks answer capability"
+        )
+    if previous_effective is not None:
+        previous_adapter = previous_effective.get("adapter")
+        if prepared.effective_config != previous_adapter:
+            raise ValueError("adapter effective config changed across repetitions")
+    if experiment.formal:
+        raw_artifacts = prepared.effective_config.get("model_artifacts")
+        if not isinstance(raw_artifacts, dict) or not raw_artifacts:
+            raise ValueError("formal worker prepare response lacks model artifact identities")
+        actual = prepared_model_artifacts(prepared, experiment)
+        if set(actual) != set(experiment.model_artifacts):
+            raise ValueError("worker model identities do not match the frozen model lock")
+        for name, expected in experiment.model_artifacts.items():
+            observed = actual[name]
+            if not observed.verified or observed.identity != expected.identity:
+                raise ValueError(
+                    f"worker model identity drift for {name}: expected {expected.identity}, "
+                    f"observed {observed.identity}"
+                )
+
+
+def validate_prepared_v2(
+    prepared: PreparedSystemV2,
+    experiment: ExperimentSpec,
+    previous_effective: dict[str, object] | None,
+) -> None:
+    if (
+        experiment.query_config.get("generate_answer", True)
+        and not prepared.observation_profile.capabilities.answer
     ):
         raise ValueError(
             "experiment requests answer generation but adapter lacks answer capability"
@@ -973,28 +949,37 @@ def validate_latency_runtime(
 
 def run_latency_warmup(
     client,
-    capabilities: AdapterCapabilities,
+    prepared: PreparedSystemV2,
     experiment: ExperimentSpec,
 ) -> None:
     assert experiment.latency_protocol is not None
     protocol = experiment.latency_protocol
     for index in range(protocol.warmup_queries):
         result = client.query(
-            RAGQuery(
+            prepared,
+            NativeQueryV2(
                 case_id=f"__rag_eval_warmup_{index + 1}",
                 question=protocol.warmup_question,
                 generate_answer=False,
-                retrieval_candidate_k=experiment.query_config.get("retrieval_candidate_k"),
-                final_context_k=experiment.query_config.get("final_context_k"),
-                max_context_tokens=experiment.query_config.get("max_context_tokens"),
-                generation_options=experiment.query_config.get("generation_options", {}),
+                retrieval_candidate_k=experiment.query_config["retrieval_candidate_k"],
+                final_context_k=experiment.query_config["final_context_k"],
+                max_context_tokens=experiment.query_config["max_context_tokens"],
+                generation_options=experiment.query_config["generation_options"],
             )
         )
-        validate_result_capabilities(result, capabilities, generate_answer=False)
+        TraceValidator().validate(
+            result,
+            expected_case_id=f"__rag_eval_warmup_{index + 1}",
+            expected_adapter_id=prepared.observation_profile.adapter_id,
+            expected_adapter_version=prepared.observation_profile.adapter_version,
+            expected_system_id=prepared.runtime_profile.system_id,
+            expected_system_version=prepared.runtime_profile.system_version,
+        )
 
 
 def prepared_model_artifacts(
-    prepared: PreparedSystem, experiment: ExperimentSpec
+    prepared: PreparedSystem | PreparedSystemV2,
+    experiment: ExperimentSpec,
 ) -> dict[str, ModelArtifactIdentity]:
     raw = prepared.effective_config.get("model_artifacts", {})
     if not raw:
@@ -1040,6 +1025,89 @@ def redact_runtime_endpoints(value: object) -> object:
     if isinstance(value, list):
         return [redact_runtime_endpoints(item) for item in value]
     return value
+
+
+def execute_native_case(
+    client,
+    prepared: PreparedSystemV2,
+    question: Question,
+    bundle: DatasetBundle,
+    experiment: ExperimentSpec,
+    cancelled: Callable[[], bool],
+    repetition: int,
+    seed: int,
+    *,
+    profile: EvaluationProfile,
+    expected_identity: WorkerIdentityV2,
+) -> RunArtifactCaseV2:
+    """Execute one Direct Wire 2.0 query and persist only unified evaluation."""
+
+    started = datetime.now(UTC)
+    gold_answer = bundle.gold_answers[question.gold_answer_id]
+    evidence_set = bundle.gold_evidence_sets[question.gold_evidence_set_id]
+    resolver = BenchmarkResolver(
+        questions={question.case_id: question},
+        gold_answers={question.gold_answer_id: gold_answer},
+        gold_evidence_sets={question.gold_evidence_set_id: evidence_set},
+    )
+    query = NativeQueryV2(
+        case_id=question.case_id,
+        question=question.question,
+        generate_answer=experiment.query_config["generate_answer"],
+        retrieval_candidate_k=experiment.query_config["retrieval_candidate_k"],
+        final_context_k=experiment.query_config["final_context_k"],
+        max_context_tokens=experiment.query_config["max_context_tokens"],
+        generation_options=experiment.query_config["generation_options"],
+    )
+    flow = NativeCaseOrchestrator(
+        benchmark_resolver=resolver,
+        adapter_session=AdapterSession(client),
+        trace_validator=TraceValidator(),
+        evaluation_engine=EvaluationEngine(profile),
+        expected_adapter_id=expected_identity.adapter_id,
+        expected_adapter_version=expected_identity.adapter_version,
+        expected_system_id=expected_identity.system_id,
+        expected_system_version=expected_identity.system_version,
+    )
+    try:
+        return flow.execute(
+            case_id=question.case_id,
+            prepared_system=prepared,
+            query=query,
+            repetition=repetition,
+            seed=seed,
+            started_at=started,
+        ).artifact_case
+    except httpx.TimeoutException as exc:
+        was_cancelled = cancelled()
+        status = "cancelled" if was_cancelled else "timeout"
+        code = "cancelled" if was_cancelled else "timeout"
+        message = str(exc) or "adapter query timed out"
+    except (WorkerProtocolError, WorkerRemoteError, httpx.HTTPError) as exc:
+        was_cancelled = cancelled()
+        status = "cancelled" if was_cancelled else "system_error"
+        if was_cancelled:
+            code = "cancelled"
+        elif isinstance(exc, WorkerProtocolError):
+            code = "worker_protocol_error"
+        else:
+            code = getattr(exc, "code", "adapter_error")
+        message = str(exc)
+    return EvaluationEngine(profile).evaluate(
+        resolver.resolve(question.case_id),
+        TraceValidationResult(
+            record=TraceValidationRecordV2(
+                status=ObservationStatus.FAILED,
+                reason=message,
+            )
+        ),
+        started_at=started,
+        completed_at=datetime.now(UTC),
+        repetition=repetition,
+        seed=seed,
+        status=status,
+        error=ArtifactCaseErrorV2(code=code, message=message),
+    )
 
 
 def execute_case(
@@ -1102,35 +1170,12 @@ def execute_case(
 
     try:
         if artifact_v2_profile is not None:
-            flow = NativeCaseOrchestrator(
-                benchmark_resolver=resolver,
-                adapter_session=AdapterSession(
-                    client, validate_response=validate_adapter_response
-                ),
-                trace_validator=TraceValidator(),
-                evaluation_engine=EvaluationEngine(artifact_v2_profile),
-                expected_adapter_id=expected_adapter_id,
-                expected_adapter_version=expected_adapter_version,
-                expected_system_id=expected_system_id,
-                expected_system_version=expected_system_version,
+            raise ValueError(
+                "legacy execute_case cannot produce Native v2 evaluation; "
+                "use execute_native_case"
             )
-            outcome = flow.execute(
-                case_id=question.case_id,
-                query=query,
-                postprocess=postprocess_result,
-                repetition=repetition,
-                seed=seed,
-                started_at=started,
-            )
-            rag_result = outcome.rag_result
-            if artifact_v2_cases is not None:
-                artifact_v2_cases.append(outcome.artifact_case)
-        else:
-            rag_result = postprocess_result(
-                AdapterSession(
-                    client, validate_response=validate_adapter_response
-                ).query(query)
-            )
+        rag_result = postprocess_result(client.query(query))
+        validate_adapter_response(rag_result)
         metrics = evaluate_case(
             rag_result,
             gold_answer,
@@ -1753,6 +1798,61 @@ def source_only_documents(
             )
         )
     return inputs
+
+
+def direct_native_document(
+    documents: list[DocumentInput],
+    plan: ResolvedRunPlanV2,
+) -> OriginalDocumentV2:
+    """Bind the staged source sandbox to the admitted single-DOCX plan."""
+
+    if len(documents) != 1:
+        raise ValueError("Direct Wire 2.0 requires exactly one original DOCX")
+    document = documents[0]
+    if document.content is not None or document.source_path is None:
+        raise ValueError("Direct Wire 2.0 cannot ingest inline or missing content")
+    if (
+        document.document_id != plan.original_document.document_id
+        or document.sha256 != plan.original_document.source_sha256
+        or document.mime_type != plan.original_document.mime_type
+    ):
+        raise ValueError("staged DOCX identity differs from the resolved plan")
+    canonical_path = document.metadata.get("canonical_provenance_path")
+    canonical_digest = document.metadata.get("canonical_provenance_sha256")
+    original_name = document.metadata.get("original_name")
+    if not all(
+        isinstance(value, str) and value
+        for value in (canonical_path, canonical_digest, original_name)
+    ):
+        raise ValueError(
+            "Direct Wire 2.0 requires a pinned Canonical Catalog sidecar"
+        )
+    return OriginalDocumentV2(
+        document_id=document.document_id,
+        source_path=document.source_path,
+        source_sha256=document.sha256 or "",
+        media_type=document.mime_type,
+        original_name=original_name,
+        canonical_catalog_path=canonical_path,
+        canonical_catalog_sha256=canonical_digest,
+    )
+
+
+def legacy_manifest_capabilities(
+    capabilities: AdapterCapabilitiesV2,
+) -> AdapterCapabilities:
+    """Populate the non-authoritative RunManifest until Phase 6 removes it."""
+
+    return AdapterCapabilities(
+        answer=capabilities.answer,
+        raw_retrieval=capabilities.candidate_retrieval,
+        ranked_retrieval=capabilities.ranked_retrieval,
+        final_context=capabilities.final_context,
+        object_provenance=capabilities.provenance,
+        prompt_trace=capabilities.prompt_trace,
+        latency_breakdown=capabilities.latency_breakdown,
+        token_usage=capabilities.token_usage,
+    )
 
 
 class NativeProvenanceContractError(ValueError):
@@ -2439,6 +2539,25 @@ def execution_counts(
     }
     for result in results:
         counts[result.status] = counts.get(result.status, 0) + 1
+    return counts
+
+
+def artifact_execution_counts(
+    cases: list[RunArtifactCaseV2],
+    *,
+    expected: int,
+) -> dict[str, int]:
+    counts = {
+        "expected": expected,
+        "total": len(cases),
+        "not_run": max(0, expected - len(cases)),
+        "completed": 0,
+        "timeout": 0,
+        "system_error": 0,
+        "cancelled": 0,
+    }
+    for case in cases:
+        counts[case.status] = counts.get(case.status, 0) + 1
     return counts
 
 

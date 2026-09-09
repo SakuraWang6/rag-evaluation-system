@@ -47,7 +47,7 @@ class WorkerProcess:
         self._log_file: TextIO | None = None
         self._lock = threading.RLock()
 
-    def start(self, *, handshake_timeout: float = 10.0) -> WorkerClient:
+    def start(self, *, readiness_timeout: float = 10.0) -> WorkerClient:
         with self._lock:
             if self.process is not None:
                 raise RuntimeError("worker process already started")
@@ -90,7 +90,7 @@ class WorkerProcess:
                 timeout=self.command.request_timeout_seconds,
             )
             try:
-                self.client.wait_for_handshake(handshake_timeout)
+                self.client.wait_until_ready(readiness_timeout)
             except Exception:
                 self.stop()
                 raise

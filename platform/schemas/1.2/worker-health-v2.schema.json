@@ -1,0 +1,76 @@
+{
+  "$defs": {
+    "WorkerIdentityV2": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_version": {
+          "minLength": 1,
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "system_id": {
+          "minLength": 1,
+          "title": "System Id",
+          "type": "string"
+        },
+        "system_version": {
+          "minLength": 1,
+          "title": "System Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "adapter_version",
+        "system_id",
+        "system_version"
+      ],
+      "title": "WorkerIdentityV2",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "identity": {
+      "$ref": "#/$defs/WorkerIdentityV2"
+    },
+    "status": {
+      "minLength": 1,
+      "title": "Status",
+      "type": "string"
+    },
+    "ready": {
+      "title": "Ready",
+      "type": "boolean"
+    },
+    "details": {
+      "additionalProperties": true,
+      "title": "Details",
+      "type": "object"
+    }
+  },
+  "required": [
+    "identity",
+    "status",
+    "ready"
+  ],
+  "title": "WorkerHealthV2",
+  "type": "object"
+}

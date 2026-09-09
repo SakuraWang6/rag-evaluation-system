@@ -14,6 +14,12 @@ from rag_eval.contracts.adapter import (
     RAGResult,
 )
 from rag_eval.contracts.canonical import SourceSpan
+from rag_eval.contracts.native import (
+    NativeQueryV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
+)
 from rag_eval.contracts.observation import (
     AdapterCapabilitiesV2,
     AdapterRunResultV2,
@@ -43,6 +49,7 @@ from rag_eval.contracts.observation import (
 )
 from rag_eval.contracts.observation_compat import normalize_rag_result_v1
 from rag_eval.contracts.schema import PUBLIC_MODELS
+from rag_eval.contracts.wire import WireRequestV2, WireResponseV2, WorkerHealthV2
 
 SHA_A = "a" * 64
 SHA_B = "b" * 64
@@ -788,16 +795,29 @@ def test_v2_observation_contract_is_gold_and_rag_implementation_neutral() -> Non
         assert "GoldEvidence" not in path.read_text(encoding="utf-8")
 
 
-def test_wire_v2_public_schemas_are_exported_without_redefining_wire_v1() -> None:
+def test_direct_wire_v2_public_schemas_are_exported() -> None:
     assert PUBLIC_MODELS["unified-trace-v2"] is UnifiedTrace
     assert PUBLIC_MODELS["adapter-run-result-v2"] is AdapterRunResultV2
-    assert RAGResult.model_fields["segment_traces"]
+    assert PUBLIC_MODELS["original-document-v2"] is OriginalDocumentV2
+    assert PUBLIC_MODELS["resolved-adapter-config-v2"] is ResolvedAdapterConfigV2
+    assert PUBLIC_MODELS["prepared-system-v2"] is PreparedSystemV2
+    assert PUBLIC_MODELS["native-query-v2"] is NativeQueryV2
+    assert PUBLIC_MODELS["worker-health-v2"] is WorkerHealthV2
+    assert PUBLIC_MODELS["wire-request-v2"] is WireRequestV2
+    assert PUBLIC_MODELS["wire-response-v2"] is WireResponseV2
 
     schema_root = Path(__file__).resolve().parents[2] / "schemas" / "1.2"
     for name in (
         "adapter-capabilities-v2",
         "unified-trace-v2",
         "adapter-run-result-v2",
+        "original-document-v2",
+        "resolved-adapter-config-v2",
+        "prepared-system-v2",
+        "native-query-v2",
+        "worker-health-v2",
+        "wire-request-v2",
+        "wire-response-v2",
     ):
         expected = PUBLIC_MODELS[name].model_json_schema()
         observed = json.loads(

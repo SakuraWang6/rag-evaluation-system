@@ -8,11 +8,17 @@ from typing import ClassVar
 
 import pytest
 from rag_eval.adapters.observation_tck import assert_unified_observation_tck
-from rag_eval.contracts.adapter import DocumentInput, PrepareContext, RAGQuery
+from rag_eval.contracts.adapter import DocumentInput, PrepareContext
 from rag_eval.contracts.dataset import (
     GoldEvidence,
     GoldEvidenceSet,
     GoldSourceIdentity,
+)
+from rag_eval.contracts.native import (
+    NativeQueryV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
 )
 from rag_eval.contracts.observation import (
     AdapterRunResultV2,
@@ -22,6 +28,7 @@ from rag_eval.contracts.observation import (
 )
 from rag_eval.evaluation.unified.models import EvaluationProfile
 from rag_eval.evaluation.unified.scorer import evaluate_unified_trace
+from rag_eval.runs.plans import digest_json
 from rag_eval_rag_anything_adapter.adapter import (
     OfficialRAGAnythingRuntime,
     RAGAnythingAdapter,
@@ -159,6 +166,49 @@ def _write_native_inputs(tmp_path: Path, *, duplicate: bool = False) -> tuple[
         storage_identity="JsonKVStorage",
     )
     return context, document, capture
+
+
+async def _prepare_direct(
+    adapter: RAGAnythingAdapter,
+    context: PrepareContext,
+    document: DocumentInput,
+    config: dict[str, object],
+) -> PreparedSystemV2:
+    original_name = str(document.metadata["original_name"])
+    canonical_path = str(document.metadata["canonical_provenance_path"])
+    canonical_sha = str(document.metadata["canonical_provenance_sha256"])
+    return await adapter.prepare(
+        OriginalDocumentV2(
+            document_id=document.document_id,
+            source_path=document.source_path or "",
+            source_sha256=document.sha256 or "",
+            original_name=original_name,
+            canonical_catalog_path=canonical_path,
+            canonical_catalog_sha256=canonical_sha,
+        ),
+        ResolvedAdapterConfigV2(
+            run_id=context.run_id,
+            work_dir=context.work_dir,
+            source_dir=context.source_dir,
+            platform_version=context.platform_version,
+            seed=context.seed,
+            repetition=context.repetition,
+            adapter_config=config,
+            adapter_config_digest=digest_json(config),
+        ),
+    )
+
+
+def _query(case_id: str = "case-1") -> NativeQueryV2:
+    return NativeQueryV2(
+        case_id=case_id,
+        question="What is the latency?",
+        generate_answer=True,
+        retrieval_candidate_k=20,
+        final_context_k=5,
+        max_context_tokens=12000,
+        generation_options={},
+    )
 
 
 class ObservedRuntime:
@@ -394,24 +444,17 @@ async def test_adapter_emits_typed_native_trace_and_unions_split_evidence(
 
     monkeypatch.setattr(OfficialRAGAnythingRuntime, "create", create)
     adapter = RAGAnythingAdapter()
-    await adapter.prepare(context, {"query_mode": "naive"})
-    details = await adapter.ingest([document])
-    result = await adapter.query(
-        RAGQuery(
-            case_id="case-1",
-            question="What is the latency?",
-            retrieval_candidate_k=20,
-            final_context_k=5,
-        )
+    prepared = await _prepare_direct(
+        adapter, context, document, {"query_mode": "naive"}
     )
+    result = await adapter.query(prepared, _query())
 
-    assert details.details["wire_v2_native_observation"]["observation_status"] == "observed"
-    assert result.answer == "42 ms"
-    # Wire 1.0 remains the frozen answer-only compatibility surface.  The
-    # additive Wire 2.0 envelope is the execution authority for native metrics.
-    assert result.raw_retrieval is None
-    envelope = result.trace["wire_v2_native_observation"]
-    observed = AdapterRunResultV2.model_validate(envelope["adapter_run_result"])
+    assert prepared.ingestion_receipt.details["native_observation"][
+        "observation_status"
+    ] == "observed"
+    assert result.trace.answer.content == "42 ms"
+    assert result.normalization is None
+    observed = AdapterRunResultV2.model_validate(result)
     assert_unified_observation_tck(
         observed,
         adapter_id="rag-anything",
@@ -503,14 +546,10 @@ async def test_duplicate_parser_text_fails_closed_instead_of_guessing(
 
     monkeypatch.setattr(OfficialRAGAnythingRuntime, "create", create)
     adapter = RAGAnythingAdapter()
-    await adapter.prepare(context, {"query_mode": "naive"})
-    await adapter.ingest([document])
-    result = await adapter.query(
-        RAGQuery(case_id="case-1", question="What is the latency?", final_context_k=5)
+    prepared = await _prepare_direct(
+        adapter, context, document, {"query_mode": "naive"}
     )
-    observed = AdapterRunResultV2.model_validate(
-        result.trace["wire_v2_native_observation"]["adapter_run_result"]
-    )
+    observed = await adapter.query(prepared, _query())
     record = next(
         item
         for item in observed.trace.canonical_mapping_records
@@ -526,30 +565,44 @@ async def test_duplicate_parser_text_fails_closed_instead_of_guessing(
 
 
 @pytest.mark.asyncio
-async def test_non_naive_profile_keeps_answer_but_marks_stages_unobserved(
+async def test_non_naive_profile_keeps_answer_but_marks_stages_unsupported(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     context, document, ingestion = _write_native_inputs(tmp_path)
-    runtime = ObservedRuntime(ingestion)
+
+    class NonNaiveRuntime(ObservedRuntime):
+        async def query(self, *_args, **_kwargs) -> str:
+            self.query_calls += 1
+            return "42 ms"
+
+    runtime = NonNaiveRuntime(ingestion)
 
     async def create(*_args, **_kwargs):
         return runtime
 
     monkeypatch.setattr(OfficialRAGAnythingRuntime, "create", create)
     adapter = RAGAnythingAdapter()
-    await adapter.prepare(context, {"query_mode": "mix"})
-    await adapter.ingest([document])
-    result = await adapter.query(
-        RAGQuery(case_id="case-1", question="What is the latency?", final_context_k=5)
+    prepared = await _prepare_direct(
+        adapter, context, document, {"query_mode": "mix"}
     )
-    observed = AdapterRunResultV2.model_validate(
-        result.trace["wire_v2_native_observation"]["adapter_run_result"]
-    )
-    assert result.answer == "42 ms"
+    observed = await adapter.query(prepared, _query())
+    assert observed.trace.answer.content == "42 ms"
     assert observed.trace.answer.observation_status == ObservationStatus.OBSERVED
-    assert observed.trace.raw_retrieval.observation_status == ObservationStatus.UNOBSERVED
-    assert observed.trace.ranked_retrieval.observation_status == ObservationStatus.UNOBSERVED
-    assert observed.trace.final_context.observation_status == ObservationStatus.UNOBSERVED
+    assert (
+        observed.trace.raw_retrieval.observation_status
+        == ObservationStatus.UNSUPPORTED
+    )
+    assert (
+        observed.trace.ranked_retrieval.observation_status
+        == ObservationStatus.UNSUPPORTED
+    )
+    assert (
+        observed.trace.final_context.observation_status
+        == ObservationStatus.UNSUPPORTED
+    )
+    assert not prepared.observation_profile.capabilities.candidate_retrieval
+    assert prepared.observation_profile.capabilities.ingestion_catalog
+    assert runtime.query_calls == 1
 
 
 @pytest.mark.asyncio
@@ -588,19 +641,75 @@ async def test_native_wire_v2_answer_only_fallback_remains_typed_and_usable(
 
     monkeypatch.setattr(OfficialRAGAnythingRuntime, "create", create)
     adapter = RAGAnythingAdapter()
-    await adapter.prepare(context, {"query_mode": "naive"})
-    await adapter.ingest([document])
-    result = await adapter.query(
-        RAGQuery(case_id="case-1", question="What is the latency?", final_context_k=5)
+    prepared = await _prepare_direct(
+        adapter, context, document, {"query_mode": "naive"}
     )
-    observed = AdapterRunResultV2.model_validate(
-        result.trace["wire_v2_native_observation"]["adapter_run_result"]
-    )
+    observed = await adapter.query(prepared, _query())
 
-    assert result.answer == "42 ms"
+    assert observed.trace.answer.content == "42 ms"
     assert observed.trace.answer.observation_status == ObservationStatus.OBSERVED
-    assert observed.trace.raw_retrieval.observation_status == ObservationStatus.UNOBSERVED
+    assert (
+        observed.trace.raw_retrieval.observation_status
+        == ObservationStatus.UNSUPPORTED
+    )
     assert "same-execution" in observed.trace.raw_retrieval.reason
+    assert prepared.observation_profile.capabilities.ingestion_catalog
+    assert not prepared.observation_profile.capabilities.candidate_retrieval
+
+    class AnswerOnlyRuntime:
+        system_version = "1.3.1"
+        core_version = "1.4.16"
+        model_digests: ClassVar[dict[str, str]] = {"llm": "sha256:model"}
+        prompt_digests: ClassVar[dict[str, str]] = {
+            "raganything_prompt_sources": "sha256:prompt"
+        }
+        query_calls = 0
+
+        async def process_document(self, _path: Path, **_kwargs) -> None:
+            return None
+
+        async def insert_text(self, _content: str, **_kwargs) -> None:
+            return None
+
+        async def query(self, *_args, **_kwargs) -> str:
+            self.query_calls += 1
+            return "answer without observation hooks"
+
+        async def close(self) -> None:
+            return None
+
+    answer_only_runtime = AnswerOnlyRuntime()
+
+    async def create_answer_only(*_args, **_kwargs):
+        return answer_only_runtime
+
+    monkeypatch.setattr(OfficialRAGAnythingRuntime, "create", create_answer_only)
+    answer_only_adapter = RAGAnythingAdapter()
+    answer_only_context = context.model_copy(
+        update={
+            "run_id": "run-answer-only",
+            "work_dir": str(tmp_path / "answer-only-work"),
+        }
+    )
+    answer_only_prepared = await _prepare_direct(
+        answer_only_adapter, answer_only_context, document, {"query_mode": "naive"}
+    )
+    answer_only = await answer_only_adapter.query(answer_only_prepared, _query())
+
+    assert answer_only.trace.answer.content == "answer without observation hooks"
+    assert answer_only.trace.answer.observation_status == ObservationStatus.OBSERVED
+    assert (
+        answer_only.trace.ingestion_catalog.observation_status
+        == ObservationStatus.UNSUPPORTED
+    )
+    assert (
+        answer_only.trace.raw_retrieval.observation_status
+        == ObservationStatus.UNSUPPORTED
+    )
+    assert not answer_only_prepared.observation_profile.capabilities.ingestion_catalog
+    assert not answer_only_prepared.observation_profile.capabilities.ranked_retrieval
+    assert answer_only.telemetry["native_query_executions"] == 1
+    assert answer_only_runtime.query_calls == 1
 
 
 def test_corrupted_context_cannot_receive_verified_stage_lineage(

@@ -18,6 +18,7 @@ from typing import Any
 
 from rag_eval.contracts.adapter import DocumentInput
 from rag_eval.contracts.canonical import SourceSpan, canonical_json
+from rag_eval.contracts.native import OriginalDocumentV2
 from rag_eval.contracts.observation import (
     AdapterCapabilitiesV2,
     AdapterRunResultV2,
@@ -167,6 +168,51 @@ class NativeObservationSnapshot:
     validation_receipts: tuple[ValidationReceipt, ...]
     runtime_chunks: Mapping[str, RuntimeChunkRecord]
     provenance_edge_ids_by_chunk: Mapping[str, tuple[str, ...]]
+
+
+def build_prepared_identities(
+    *,
+    document: OriginalDocumentV2,
+    runtime_config: Mapping[str, Any],
+    system_version: str,
+    core_version: str,
+    adapter_version: str,
+    ingestion_observation_supported: bool = True,
+    query_observation_supported: bool = True,
+) -> tuple[SourceIdentity, RuntimeProfileIdentity, ObservationProfileIdentity]:
+    """Build prepare-time identities independently of observation success."""
+
+    source_identity = SourceIdentity(
+        document_id=document.document_id,
+        source_sha256=document.source_sha256,
+        media_type=document.media_type,
+        source_coordinate_schema=SOURCE_COORDINATE_SYSTEM,
+        canonical_catalog_sha256=document.canonical_catalog_sha256,
+    )
+    runtime_profile = RuntimeProfileIdentity(
+        profile_id=(
+            f"rag-anything:{runtime_config.get('query_mode', 'unknown')}:native-docx"
+        ),
+        system_id=ADAPTER_ID,
+        system_version=system_version,
+        configuration_digest=_digest(
+            {
+                "runtime_config": dict(runtime_config),
+                "system_version": system_version,
+                "core_version": core_version,
+            }
+        ),
+    )
+    observation_profile = ObservationProfileIdentity.build(
+        profile_id="rag-anything-native-docx-observation/2.0",
+        adapter_id=ADAPTER_ID,
+        adapter_version=adapter_version,
+        capabilities=_capabilities(
+            ingestion_observation_supported=ingestion_observation_supported,
+            query_observation_supported=query_observation_supported,
+        ),
+    )
+    return source_identity, runtime_profile, observation_profile
 
 
 def _occurrences(value: str, needle: str) -> tuple[int, ...]:
@@ -486,15 +532,27 @@ def _validation_receipt(
     )
 
 
-def _capabilities() -> AdapterCapabilitiesV2:
+def _capabilities(
+    *,
+    ingestion_observation_supported: bool = True,
+    query_observation_supported: bool = True,
+) -> AdapterCapabilitiesV2:
+    query_stages_supported = (
+        ingestion_observation_supported and query_observation_supported
+    )
+    transition_mode = (
+        StageTransitionMode.IDENTITY_SUBSET
+        if query_stages_supported
+        else StageTransitionMode.UNOBSERVABLE
+    )
     return AdapterCapabilitiesV2(
-        ingestion_catalog=True,
-        candidate_retrieval=True,
-        ranked_retrieval=True,
-        final_context=True,
+        ingestion_catalog=ingestion_observation_supported,
+        candidate_retrieval=query_stages_supported,
+        ranked_retrieval=query_stages_supported,
+        final_context=query_stages_supported,
         prompt_trace=False,
         answer=True,
-        provenance=True,
+        provenance=ingestion_observation_supported,
         transformation_lineage=False,
         latency_breakdown=True,
         token_usage=False,
@@ -502,12 +560,12 @@ def _capabilities() -> AdapterCapabilitiesV2:
             StageTransitionDeclaration(
                 source_stage=StageName.CANDIDATE,
                 target_stage=StageName.RANKED,
-                mode=StageTransitionMode.IDENTITY_SUBSET,
+                mode=transition_mode,
             ),
             StageTransitionDeclaration(
                 source_stage=StageName.RANKED,
                 target_stage=StageName.CONTEXT,
-                mode=StageTransitionMode.IDENTITY_SUBSET,
+                mode=transition_mode,
             ),
         ),
     )
@@ -522,6 +580,7 @@ def build_native_observation_snapshot(
     system_version: str,
     core_version: str,
     adapter_version: str,
+    query_observation_supported: bool = True,
 ) -> NativeObservationSnapshot:
     """Build the immutable catalog/crosswalk without consulting Benchmark Gold."""
 
@@ -687,7 +746,9 @@ def build_native_observation_snapshot(
         profile_id="rag-anything-native-docx-observation/2.0",
         adapter_id=ADAPTER_ID,
         adapter_version=adapter_version,
-        capabilities=_capabilities(),
+        capabilities=_capabilities(
+            query_observation_supported=query_observation_supported
+        ),
     )
     ingestion_catalog = IngestionCatalogObservation(
         observation_status=ObservationStatus.OBSERVED,
@@ -1029,4 +1090,5 @@ __all__ = [
     "RuntimeQueryCapture",
     "build_native_observation_snapshot",
     "build_native_run_result_v2",
+    "build_prepared_identities",
 ]

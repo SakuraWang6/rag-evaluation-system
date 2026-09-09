@@ -1,4 +1,4 @@
-"""Honest, run-scoped LightRAG adapter behind Wire Protocol 1.0."""
+"""Honest, run-scoped LightRAG Adapter behind direct Worker Wire 2.0."""
 
 from __future__ import annotations
 
@@ -21,16 +21,14 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
+from rag_eval.adapters.native_observation import unavailable_native_result
 from rag_eval.contracts.adapter import (
     AdapterCapabilities,
     DocumentInput,
-    HealthReport,
     IngestionResult,
     PrepareContext,
     PreparedSystem,
     RAGEvidenceItem,
-    RAGQuery,
-    RAGResult,
     ResetResult,
     SegmentTraceItem,
     SegmentTraceSet,
@@ -42,7 +40,16 @@ from rag_eval.contracts.benchmark import (
     segment_mapping_receipt,
 )
 from rag_eval.contracts.dataset import ObjectLocator, TableCellLocator
-from rag_eval.contracts.wire import HandshakeResponse
+from rag_eval.contracts.native import (
+    IngestionReceiptV2,
+    NativeHealthReportV2,
+    NativeQueryV2,
+    OriginalDocumentV2,
+    PreparedSystemV2,
+    ResolvedAdapterConfigV2,
+)
+from rag_eval.contracts.observation import AdapterRunResultV2, ObservationStatus
+from rag_eval.contracts.wire import WorkerIdentityV2
 from rag_eval.datasets.canonical_segments import (
     CanonicalSegmentError,
     CanonicalSegmentManifest,
@@ -68,7 +75,7 @@ from rag_eval_lightrag_adapter.native_observation import (
     NativeObservationSnapshot,
     build_native_observation_snapshot,
     build_native_run_result_v2,
-    verify_wire_v1_shadow,
+    build_prepared_identities,
 )
 
 ADAPTER_VERSION = "0.1.0"
@@ -257,11 +264,84 @@ class LightRAGAdapter:
         self._runtime_chunk_store: dict[str, dict[str, Any]] = {}
         self._native_provenance_manifest: dict[str, Any] | None = None
         self._native_observation_snapshot: NativeObservationSnapshot | None = None
+        self._native_observation_status = ObservationStatus.UNOBSERVED
         self._native_observation_reason = "native DOCX ingestion has not run"
         self._index_fingerprint: str | None = None
         self._work_dir: Path | None = None
+        self._prepared_system: PreparedSystemV2 | None = None
 
     async def prepare(
+        self,
+        original_docx: OriginalDocumentV2,
+        resolved_config: ResolvedAdapterConfigV2,
+    ) -> PreparedSystemV2:
+        if "evaluation_corpus" in resolved_config.adapter_config:
+            raise ValueError(
+                "Direct Wire 2.0 owns the native source route; "
+                "evaluation_corpus is not accepted"
+            )
+        context = PrepareContext(
+            run_id=resolved_config.run_id,
+            work_dir=resolved_config.work_dir,
+            source_dir=resolved_config.source_dir,
+            platform_version=resolved_config.platform_version,
+            seed=resolved_config.seed,
+            repetition=resolved_config.repetition,
+        )
+        prepared = await self._prepare_runtime(
+            context,
+            dict(resolved_config.adapter_config),
+        )
+        document = DocumentInput(
+            document_id=original_docx.document_id,
+            source_path=original_docx.source_path,
+            sha256=original_docx.source_sha256,
+            mime_type=original_docx.media_type,
+            metadata={
+                "original_name": original_docx.original_name,
+                "canonical_provenance_path": original_docx.canonical_catalog_path,
+                "canonical_provenance_sha256": (
+                    original_docx.canonical_catalog_sha256
+                ),
+            },
+        )
+        ingestion = await self._ingest_documents([document])
+        if ingestion.index_fingerprint is None:
+            raise RuntimeError("LightRAG did not return an index fingerprint")
+        source, runtime, observation = build_prepared_identities(
+            document=original_docx,
+            runtime_config=self._require_prepared().model_dump(mode="json"),
+            system_version=prepared.system_version,
+            adapter_version=ADAPTER_VERSION,
+        )
+        if self._native_observation_snapshot is not None:
+            snapshot = self._native_observation_snapshot
+            if (source, runtime, observation) != (
+                snapshot.source_identity,
+                snapshot.runtime_profile,
+                snapshot.observation_profile,
+            ):
+                raise RuntimeError("LightRAG prepared identities drifted after ingest")
+        artifact_digest = ingestion.details.get("index_artifact_digest")
+        receipt = IngestionReceiptV2.build(
+            document_id=original_docx.document_id,
+            source_sha256=original_docx.source_sha256,
+            index_fingerprint=ingestion.index_fingerprint,
+            index_artifact_digest=(
+                str(artifact_digest) if artifact_digest is not None else None
+            ),
+            details=dict(ingestion.details),
+        )
+        self._prepared_system = PreparedSystemV2.build(
+            effective_config=prepared.effective_config,
+            source_identity=source,
+            runtime_profile=runtime,
+            observation_profile=observation,
+            ingestion_receipt=receipt,
+        )
+        return self._prepared_system
+
+    async def _prepare_runtime(
         self, context: PrepareContext, config: dict[str, Any]
     ) -> PreparedSystem:
         if self._closed:
@@ -308,15 +388,15 @@ class LightRAGAdapter:
             system_version=system_version(),
         )
 
-    async def health(self) -> HealthReport:
+    async def health(self) -> NativeHealthReportV2:
         if self._closed:
-            return HealthReport(status="closed", ready=False)
+            return NativeHealthReportV2(status="closed", ready=False)
         if self._server is None:
-            return HealthReport(
+            return NativeHealthReportV2(
                 status="initialized", ready=True, details={"prepared": False}
             )
         if self._server.poll() is not None:
-            return HealthReport(
+            return NativeHealthReportV2(
                 status="failed",
                 ready=False,
                 details={"server_exit_code": self._server.returncode},
@@ -324,20 +404,23 @@ class LightRAGAdapter:
         try:
             payload = await self._get_json("/health", timeout=2.0)
         except Exception as exc:  # noqa: BLE001
-            return HealthReport(
+            return NativeHealthReportV2(
                 status="starting", ready=False, details={"reason": str(exc)}
             )
-        return HealthReport(
+        return NativeHealthReportV2(
             status=str(payload.get("status") or "ready"),
             ready=True,
             details={"endpoint": "loopback", "prepared": True},
         )
 
-    async def ingest(self, documents: list[DocumentInput]) -> IngestionResult:
+    async def _ingest_documents(
+        self, documents: list[DocumentInput]
+    ) -> IngestionResult:
         config = self._require_prepared()
         self._runtime_chunk_store = {}
         self._native_provenance_manifest = None
         self._native_observation_snapshot = None
+        self._native_observation_status = ObservationStatus.UNOBSERVED
         self._native_observation_reason = "native DOCX observation was not admitted"
         self._benchmark_segment_inputs = self._load_benchmark_segment_contract(
             documents, config
@@ -454,11 +537,13 @@ class LightRAGAdapter:
                             adapter_version=ADAPTER_VERSION,
                         )
                     )
+                    self._native_observation_status = ObservationStatus.OBSERVED
                     self._native_observation_reason = "observed"
                 except Exception as exc:  # noqa: BLE001
-                    # Wire 2.0 is additive during Phase 4.  An observation
-                    # failure must remain visible, but cannot turn a completed
-                    # native ingestion into different runtime behavior.
+                    # Observation is fail-closed independently of native
+                    # ingestion: the indexed system is unchanged, while an
+                    # invalid proof remains explicit in the returned trace.
+                    self._native_observation_status = ObservationStatus.CORRUPTED
                     self._native_observation_reason = exception_diagnostic(exc)
             elif config.evaluation_corpus != "source_document":
                 self._native_observation_reason = (
@@ -489,12 +574,8 @@ class LightRAGAdapter:
                 self._native_docx_provenance_by_document
             ),
             "runtime_chunk_provenance": provenance_statuses,
-            "wire_v2_native_observation": {
-                "observation_status": (
-                    "observed"
-                    if self._native_observation_snapshot is not None
-                    else "unobserved"
-                ),
+            "native_observation": {
+                "observation_status": self._native_observation_status.value,
                 "reason": self._native_observation_reason,
             },
             "native_source_pins": {
@@ -542,11 +623,17 @@ class LightRAGAdapter:
             details=details,
         )
 
-    async def query(self, request: RAGQuery) -> RAGResult:
+    async def query(
+        self,
+        prepared_system: PreparedSystemV2,
+        request: NativeQueryV2,
+    ) -> AdapterRunResultV2:
+        if self._prepared_system is None or prepared_system != self._prepared_system:
+            raise ValueError("query references a different prepared system")
         config = self._require_prepared()
-        candidate_k = request.retrieval_candidate_k or config.retrieval_candidate_k
-        context_k = request.final_context_k or config.final_context_k
-        max_tokens = request.max_context_tokens or config.max_context_tokens
+        candidate_k = request.retrieval_candidate_k
+        context_k = request.final_context_k
+        max_tokens = request.max_context_tokens
         payload = {
             "query": request.question,
             "mode": config.query_mode,
@@ -566,163 +653,88 @@ class LightRAGAdapter:
         elapsed = monotonic() - started
         trace = response.get("evaluation_trace")
         if not isinstance(trace, dict):
-            raise RuntimeError("LightRAG did not return the requested evaluation trace")
-        stages = trace.get("retrieval_stages")
-        if not isinstance(stages, dict) and self._benchmark_segment_inputs is None:
-            raise RuntimeError("LightRAG evaluation trace lacks retrieval stages")
-        segment_traces = (
-            self._benchmark_segment_traces(stages)
-            if self._benchmark_segment_inputs is not None
-            else None
-        )
-        # Keep legacy evidence items additive for compatibility, but do not
-        # turn an unobservable vNext trace into a worker exception.  The typed
-        # SegmentTraceStage records the actual runtime error instead.
-        raw_items = (
-            self._evidence_items(stages.get("raw_retrieval"), "raw")
-            if isinstance(stages, dict) and isinstance(stages.get("raw_retrieval"), list)
-            else None
-        )
-        ranked_items = (
-            self._evidence_items(stages.get("ranked_retrieval"), "ranked")
-            if isinstance(stages, dict) and isinstance(stages.get("ranked_retrieval"), list)
-            else None
-        )
-        final_items = (
-            self._evidence_items(stages.get("final_context"), "context")
-            if isinstance(stages, dict) and isinstance(stages.get("final_context"), list)
-            else None
-        )
-        answer = response.get("response") if request.generate_answer else None
-        if request.generate_answer and not isinstance(answer, str):
-            raise RuntimeError("LightRAG answer response is malformed")
-        wire_v2 = self._native_wire_v2_query_observation(
-            request=request,
-            retrieval_stages=stages,
-            final_prompt=trace.get("final_prompt"),
-            answer=answer,
-            candidate_cutoff=candidate_k,
-            ranked_cutoff=context_k if config.enable_rerank else candidate_k,
-            context_cutoff=context_k,
-            raw_items=raw_items,
-            ranked_items=ranked_items,
-            final_items=final_items,
-        )
-        return RAGResult(
-            answer=answer,
-            raw_retrieval=raw_items,
-            ranked_retrieval=ranked_items,
-            final_context=final_items,
-            segment_traces=segment_traces,
-            latency={"native_query_latency": elapsed},
-            trace={
-                "schema_version": "rag-eval-lightrag-adapter-trace/1.0",
-                "query": {
-                    "case_id": request.case_id,
-                    "question": request.question,
-                    "endpoint": endpoint,
-                    "payload": payload,
-                },
-                "light_rag_evaluation_trace": trace,
-                "wire_v2_native_observation": wire_v2,
-                "answer_prompt": {
-                    "status": "available",
-                    "value": trace.get("final_prompt"),
-                }
-                if isinstance(trace.get("final_prompt"), str)
-                and trace.get("final_prompt", "").strip()
-                else {
-                    "status": "unavailable",
-                    "reason": "lightrag_evaluation_trace_has_no_rendered_answer_prompt",
-                },
-                "query_rewrite": trace.get("query_rewrite")
-                if "query_rewrite" in trace
-                else {
-                    "status": "unavailable",
-                    "reason": "lightrag_evaluation_trace_has_no_query_rewrite",
-                },
-                "token_usage": response.get("token_usage")
-                if isinstance(response.get("token_usage"), dict)
-                else {
-                    "status": "unavailable",
-                    "reason": "lightrag_response_has_no_token_usage",
-                },
-            },
-            native_metadata={
-                "query_mode": config.query_mode,
-                "index_fingerprint": self._index_fingerprint,
-                "core_trace_schema": trace.get("schema_version"),
-                "canonical_provenance_map_digest": self._provenance_map_digest,
-                "benchmark_contract_digest": (
-                    self._benchmark_segment_inputs.contract_digest
-                    if self._benchmark_segment_inputs is not None
+            return unavailable_native_result(
+                prepared=prepared_system,
+                query=request,
+                status=ObservationStatus.CORRUPTED,
+                reason="LightRAG did not return the requested evaluation trace",
+                answer=(
+                    response.get("response")
+                    if isinstance(response.get("response"), str)
                     else None
                 ),
-                "benchmark_segment_mapping_file_digest": self._benchmark_mapping_file_digest,
-            },
-        )
-
-    def _native_wire_v2_query_observation(
-        self,
-        *,
-        request: RAGQuery,
-        retrieval_stages: Any,
-        final_prompt: Any,
-        answer: Any,
-        candidate_cutoff: int,
-        ranked_cutoff: int,
-        context_cutoff: int,
-        raw_items: list[RAGEvidenceItem] | None,
-        ranked_items: list[RAGEvidenceItem] | None,
-        final_items: list[RAGEvidenceItem] | None,
-    ) -> dict[str, Any]:
+                telemetry={
+                    "latency": {"native_query_latency": elapsed},
+                    "native_query_executions": 1,
+                },
+            )
+        stages = trace.get("retrieval_stages")
+        answer = response.get("response") if request.generate_answer else None
+        if request.generate_answer and not isinstance(answer, str):
+            return unavailable_native_result(
+                prepared=prepared_system,
+                query=request,
+                status=ObservationStatus.FAILED,
+                reason="LightRAG answer response is malformed",
+                answer=None,
+                telemetry={
+                    "latency": {"native_query_latency": elapsed},
+                    "native_query_executions": 1,
+                },
+            )
+        telemetry = {
+            "latency": {"native_query_latency": elapsed},
+            "native_query_executions": 1,
+            "query_mode": config.query_mode,
+            "index_fingerprint": self._index_fingerprint,
+            "core_trace_schema": trace.get("schema_version"),
+            "token_usage": (
+                response.get("token_usage")
+                if isinstance(response.get("token_usage"), dict)
+                else None
+            ),
+        }
         snapshot = self._native_observation_snapshot
         if snapshot is None:
-            return {
-                "observation_status": "unobserved",
-                "reason": self._native_observation_reason,
-            }
-        if not isinstance(retrieval_stages, dict):
-            return {
-                "observation_status": "corrupted",
-                "reason": "LightRAG evaluation trace lacks retrieval stages",
-            }
+            return unavailable_native_result(
+                prepared=prepared_system,
+                query=request,
+                status=self._native_observation_status,
+                reason=self._native_observation_reason,
+                answer=answer,
+                telemetry=telemetry,
+            )
+        if not isinstance(stages, dict):
+            return unavailable_native_result(
+                prepared=prepared_system,
+                query=request,
+                status=ObservationStatus.CORRUPTED,
+                reason="LightRAG evaluation trace lacks retrieval stages",
+                answer=answer,
+                telemetry=telemetry,
+            )
         try:
             result = build_native_run_result_v2(
                 snapshot=snapshot,
                 case_id=request.case_id,
-                retrieval_stages=retrieval_stages,
-                final_prompt=final_prompt,
+                retrieval_stages=stages,
+                final_prompt=trace.get("final_prompt"),
                 answer=answer,
-                candidate_cutoff=candidate_cutoff,
-                ranked_cutoff=ranked_cutoff,
-                context_cutoff=context_cutoff,
+                candidate_cutoff=candidate_k,
+                ranked_cutoff=context_k if config.enable_rerank else candidate_k,
+                context_cutoff=context_k,
                 generate_answer=request.generate_answer,
             )
-            shadow = verify_wire_v1_shadow(
-                result,
-                raw_retrieval=raw_items,
-                ranked_retrieval=ranked_items,
-                final_context=final_items,
-            )
         except (TypeError, ValueError) as exc:
-            return {
-                "observation_status": "corrupted",
-                "reason": exception_diagnostic(exc),
-            }
-        except Exception as exc:  # noqa: BLE001
-            # This is a shadow path until Phase 6.  Persist the failed
-            # observation without changing the Wire 1.0 result produced from
-            # the same native response.
-            return {
-                "observation_status": "failed",
-                "reason": exception_diagnostic(exc),
-            }
-        return {
-            "observation_status": "observed",
-            "adapter_run_result": result.model_dump(mode="json", exclude_none=True),
-            "wire_comparison": shadow,
-        }
+            return unavailable_native_result(
+                prepared=prepared_system,
+                query=request,
+                status=ObservationStatus.CORRUPTED,
+                reason=exception_diagnostic(exc),
+                answer=answer,
+                telemetry=telemetry,
+            )
+        return result.model_copy(update={"telemetry": telemetry})
 
     async def reset(self) -> ResetResult:
         return ResetResult(
@@ -2264,11 +2276,10 @@ def system_version() -> str:
 def create_worker_definition() -> WorkerDefinition:
     return WorkerDefinition(
         adapter=LightRAGAdapter(),
-        handshake=HandshakeResponse(
+        identity=WorkerIdentityV2(
             adapter_id="lightrag",
             adapter_version=ADAPTER_VERSION,
             system_id="lightrag",
             system_version=system_version(),
-            capabilities=CAPABILITIES,
         ),
     )

@@ -1326,6 +1326,7 @@ class AdapterRunResultV2(ObservationModel):
     system_id: str = Field(min_length=1)
     system_version: str = Field(min_length=1)
     trace: UnifiedTrace
+    telemetry: dict[str, Any] = Field(default_factory=dict)
     normalization: CompatibilityNormalization | None = None
 
     @model_validator(mode="after")

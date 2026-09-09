@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import monotonic
 from typing import Any, Protocol
 
-from pydantic import ValidationError
-
 from rag_eval.artifact_contract import artifact_digest
-from rag_eval.contracts.adapter import RAGEvidenceItem, RAGQuery, RAGResult
 from rag_eval.contracts.dataset import GoldAnswer, GoldEvidenceSet, Question
+from rag_eval.contracts.native import NativeQueryV2, PreparedSystemV2
 from rag_eval.contracts.observation import (
     AdapterRunResultV2,
     ObservationStatus,
@@ -48,11 +46,13 @@ from rag_eval.runs.models import (
     TraceValidationRecordV2,
 )
 
-WIRE_V2_OBSERVATION_KEY = "wire_v2_native_observation"
-
 
 class AdapterQueryClient(Protocol):
-    def query(self, query: RAGQuery) -> RAGResult: ...
+    def query(
+        self,
+        prepared_system: PreparedSystemV2,
+        query: NativeQueryV2,
+    ) -> AdapterRunResultV2: ...
 
 
 class BenchmarkResolver:
@@ -87,20 +87,21 @@ class AdapterSession:
     def __init__(
         self,
         client: AdapterQueryClient,
-        *,
-        validate_response: Callable[[RAGResult], None] | None = None,
     ) -> None:
         self._client = client
-        self._validate_response = validate_response
 
-    def query(self, query: RAGQuery) -> RAGResult:
+    def query(
+        self,
+        prepared_system: PreparedSystemV2,
+        query: NativeQueryV2,
+    ) -> AdapterRunResultV2:
         started = monotonic()
-        result = self._client.query(query)
-        if self._validate_response is not None:
-            self._validate_response(result)
-        latency = dict(result.latency or {})
+        result = self._client.query(prepared_system, query)
+        telemetry = dict(result.telemetry)
+        latency = dict(telemetry.get("latency") or {})
         latency["end_to_end_query_latency"] = monotonic() - started
-        return result.model_copy(update={"latency": latency})
+        telemetry["latency"] = latency
+        return result.model_copy(update={"telemetry": telemetry})
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,11 +115,11 @@ class TraceValidationResult:
 
 
 class TraceValidator:
-    """Validate the additive Wire 2.0 envelope and its Wire 1.0 shadow."""
+    """Validate one direct AdapterRunResultV2 and its frozen identities."""
 
     def validate(
         self,
-        result: RAGResult,
+        result: AdapterRunResultV2,
         *,
         expected_case_id: str,
         expected_adapter_id: str | None = None,
@@ -126,42 +127,13 @@ class TraceValidator:
         expected_system_id: str | None = None,
         expected_system_version: str | None = None,
     ) -> TraceValidationResult:
-        trace = result.trace
-        if not isinstance(trace, Mapping):
-            return self._unavailable(
-                ObservationStatus.UNOBSERVED,
-                "Adapter response contains no Wire 2.0 observation envelope",
-            )
-        envelope = trace.get(WIRE_V2_OBSERVATION_KEY)
-        if not isinstance(envelope, Mapping):
-            return self._unavailable(
-                ObservationStatus.UNOBSERVED,
-                "Adapter response did not publish a Wire 2.0 observation",
-            )
-        raw_status = envelope.get("observation_status")
-        try:
-            status = ObservationStatus(str(raw_status))
-        except ValueError:
+        if result.normalization is not None:
             return self._unavailable(
                 ObservationStatus.CORRUPTED,
-                "Wire 2.0 envelope has an invalid observation status",
-            )
-        if status != ObservationStatus.OBSERVED:
-            reason = envelope.get("reason")
-            return self._unavailable(
-                status,
-                str(reason or f"Adapter reported {status.value} observation"),
-            )
-        payload = envelope.get("adapter_run_result")
-        try:
-            adapter_result = AdapterRunResultV2.model_validate(payload)
-        except (TypeError, ValidationError, ValueError) as exc:
-            return self._unavailable(
-                ObservationStatus.CORRUPTED,
-                f"Wire 2.0 Adapter result failed contract validation: {exc}",
+                "Direct Wire 2.0 result contains legacy normalization",
             )
         identity_error = self._identity_error(
-            adapter_result,
+            result,
             expected_case_id=expected_case_id,
             expected_adapter_id=expected_adapter_id,
             expected_adapter_version=expected_adapter_version,
@@ -170,29 +142,12 @@ class TraceValidator:
         )
         if identity_error:
             return self._unavailable(ObservationStatus.CORRUPTED, identity_error)
-        comparison = envelope.get("wire_comparison")
-        wire_shadow_verified = False
-        if comparison is not None:
-            if not isinstance(comparison, Mapping) or comparison.get("status") != "verified":
-                return self._unavailable(
-                    ObservationStatus.CORRUPTED,
-                    "Wire 1.0/Wire 2.0 comparison is not verified",
-                )
-            wire_shadow_verified = True
-        mismatch = self._wire_shadow_mismatch(
-            result,
-            adapter_result,
-            require_shadow=wire_shadow_verified,
-        )
-        if mismatch:
-            return self._unavailable(ObservationStatus.CORRUPTED, mismatch)
         return TraceValidationResult(
             record=TraceValidationRecordV2(
                 status=ObservationStatus.OBSERVED,
-                adapter_result_digest=artifact_digest(adapter_result),
-                wire_shadow_verified=wire_shadow_verified,
+                adapter_result_digest=artifact_digest(result),
             ),
-            adapter_result=adapter_result,
+            adapter_result=result,
         )
 
     @staticmethod
@@ -216,64 +171,6 @@ class TraceValidator:
             if wanted is not None and wanted != actual:
                 return f"Wire 2.0 {label} identity differs from the Run"
         return None
-
-    @classmethod
-    def _wire_shadow_mismatch(
-        cls,
-        legacy: RAGResult,
-        observed: AdapterRunResultV2,
-        *,
-        require_shadow: bool,
-    ) -> str | None:
-        pairs = (
-            ("candidate", legacy.raw_retrieval, observed.trace.raw_retrieval),
-            ("ranked", legacy.ranked_retrieval, observed.trace.ranked_retrieval),
-            ("context", legacy.final_context, observed.trace.final_context),
-        )
-        for label, legacy_items, observation in pairs:
-            if observation.observation_status != ObservationStatus.OBSERVED:
-                continue
-            if legacy_items is None:
-                if require_shadow:
-                    return f"Wire 1.0 {label} items are absent from a verified shadow"
-                continue
-            left = tuple(cls._legacy_item_identity(item) for item in legacy_items)
-            right = tuple(
-                (
-                    item.native_chunk_id,
-                    item.native_rank,
-                    item.content,
-                    item.runtime_score,
-                )
-                for item in observation.items
-            )
-            if left != right:
-                return f"Wire 1.0 and Wire 2.0 {label} items differ"
-        answer = observed.trace.answer
-        if (
-            answer.observation_status == ObservationStatus.OBSERVED
-            and legacy.answer is None
-            and require_shadow
-        ):
-            return "Wire 1.0 answer is absent from a verified shadow"
-        if (
-            answer.observation_status == ObservationStatus.OBSERVED
-            and legacy.answer is not None
-            and answer.content != legacy.answer
-        ):
-            return "Wire 1.0 and Wire 2.0 answers differ"
-        return None
-
-    @staticmethod
-    def _legacy_item_identity(
-        item: RAGEvidenceItem,
-    ) -> tuple[str, int, str, float | None]:
-        return (
-            item.native_id or item.item_id,
-            item.rank,
-            item.content,
-            item.score,
-        )
 
     @staticmethod
     def _unavailable(
@@ -443,13 +340,13 @@ class EvaluationEngine:
 
 @dataclass(frozen=True, slots=True)
 class NativeCaseOutcome:
-    rag_result: RAGResult
+    adapter_result: AdapterRunResultV2
     artifact_case: RunArtifactCaseV2
     validation: TraceValidationResult
 
 
 class NativeCaseOrchestrator:
-    """Compose the five Phase 6 boundaries for one native case."""
+    """Compose the five Native v2 boundaries for one case."""
 
     def __init__(
         self,
@@ -476,17 +373,15 @@ class NativeCaseOrchestrator:
         self,
         *,
         case_id: str,
-        query: RAGQuery,
-        postprocess: Callable[[RAGResult], RAGResult] | None = None,
+        prepared_system: PreparedSystemV2,
+        query: NativeQueryV2,
         repetition: int,
         seed: int,
         started_at: datetime | None = None,
     ) -> NativeCaseOutcome:
         started = started_at or datetime.now(UTC)
         benchmark = self.benchmark_resolver.resolve(case_id)
-        result = self.adapter_session.query(query)
-        if postprocess is not None:
-            result = postprocess(result)
+        result = self.adapter_session.query(prepared_system, query)
         validation = self.trace_validator.validate(
             result,
             expected_case_id=case_id,
@@ -504,7 +399,7 @@ class NativeCaseOrchestrator:
             seed=seed,
         )
         return NativeCaseOutcome(
-            rag_result=result,
+            adapter_result=result,
             artifact_case=artifact_case,
             validation=validation,
         )

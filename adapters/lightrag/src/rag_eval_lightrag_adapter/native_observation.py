@@ -18,6 +18,7 @@ from typing import Any
 
 from rag_eval.contracts.adapter import RAGEvidenceItem
 from rag_eval.contracts.canonical import SourceSpan, canonical_json
+from rag_eval.contracts.native import OriginalDocumentV2
 from rag_eval.contracts.observation import (
     AdapterCapabilitiesV2,
     AdapterRunResultV2,
@@ -311,6 +312,45 @@ def _runtime_capabilities(runtime_config: Mapping[str, Any]) -> AdapterCapabilit
             ),
         ),
     )
+
+
+def build_prepared_identities(
+    *,
+    document: OriginalDocumentV2,
+    runtime_config: Mapping[str, Any],
+    system_version: str,
+    adapter_version: str,
+) -> tuple[SourceIdentity, RuntimeProfileIdentity, ObservationProfileIdentity]:
+    """Build prepare-time identities independently of observation success."""
+
+    source_identity = SourceIdentity(
+        document_id=document.document_id,
+        source_sha256=document.source_sha256,
+        media_type=document.media_type,
+        source_coordinate_schema=SOURCE_COORDINATE_SYSTEM,
+        canonical_catalog_sha256=document.canonical_catalog_sha256,
+    )
+    runtime_profile = RuntimeProfileIdentity(
+        profile_id=(
+            f"lightrag:{runtime_config.get('query_mode', 'naive')}:"
+            f"{runtime_config.get('profile', 'legacy')}:native-docx"
+        ),
+        system_id=ADAPTER_ID,
+        system_version=system_version,
+        configuration_digest=_digest(
+            {
+                "runtime_config": dict(runtime_config),
+                "system_version": system_version,
+            }
+        ),
+    )
+    observation_profile = ObservationProfileIdentity.build(
+        profile_id="lightrag-native-docx-observation/2.0",
+        adapter_id=ADAPTER_ID,
+        adapter_version=adapter_version,
+        capabilities=_runtime_capabilities(runtime_config),
+    )
+    return source_identity, runtime_profile, observation_profile
 
 
 @dataclass(frozen=True, slots=True)
@@ -1142,5 +1182,6 @@ __all__ = [
     "NativeObservationSnapshot",
     "build_native_observation_snapshot",
     "build_native_run_result_v2",
+    "build_prepared_identities",
     "verify_wire_v1_shadow",
 ]

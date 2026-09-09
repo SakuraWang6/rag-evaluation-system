@@ -319,6 +319,7 @@ def test_executor_rejects_a_worker_command_that_does_not_match_the_plan(
             mismatched,
             run_id="must-not-start",
             resolved_plan=plan,
+            resolved_plan_reference=reference,
         )
 
     assert not (service.paths.runs / "must-not-start").exists()

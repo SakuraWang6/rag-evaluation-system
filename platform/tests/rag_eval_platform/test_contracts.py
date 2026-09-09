@@ -36,6 +36,10 @@ from rag_eval.execution import (
     validate_latency_runtime,
     validate_prepared,
 )
+from tests.rag_eval_platform.test_run_artifact_v2 import (
+    _observed_fixture,
+    _prepared_fixture,
+)
 
 
 def test_none_and_empty_retrieval_round_trip_have_distinct_meanings() -> None:
@@ -281,33 +285,30 @@ def test_latency_protocol_requires_observed_cache_policy_and_warms_once() -> Non
         def __init__(self) -> None:
             self.requests = []
 
-        def query(self, request):
+        def query(self, prepared, request):
+            assert prepared == prepared_system
             self.requests.append(request)
-            return RAGResult(
-                raw_retrieval=[],
-                ranked_retrieval=[],
-                final_context=[],
-                latency={"native_query_latency": 0.0},
-            )
+            return _observed_fixture(request.case_id)[3]
 
     client = WarmupClient()
+    prepared_system = _prepared_fixture(_observed_fixture()[3])
     experiment = ExperimentSpec(
         experiment_id="latency",
         bundle_id="bundle",
         system_id="system",
         adapter_id="adapter",
         case_selection_id="selection",
+        query_config={
+            "retrieval_candidate_k": 5,
+            "final_context_k": 1,
+            "max_context_tokens": 4096,
+            "generation_options": {},
+        },
         latency_protocol=protocol,
     )
     run_latency_warmup(
         client,
-        AdapterCapabilities(
-            answer=True,
-            raw_retrieval=True,
-            ranked_retrieval=True,
-            final_context=True,
-            latency_breakdown=True,
-        ),
+        prepared_system,
         experiment,
     )
     assert len(client.requests) == 1

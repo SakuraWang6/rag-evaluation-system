@@ -4,7 +4,7 @@ import importlib.util
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 import pytest
 import yaml
@@ -42,40 +42,41 @@ class FakeDocker:
 
 
 class FakeClient:
-    capabilities: ClassVar[dict[str, bool]] = {"answer": True}
-
     def __init__(
         self,
         spec: Any,
         *,
-        prepared_capabilities: Mapping[str, Any] | None = None,
+        identity_override: Mapping[str, Any] | None = None,
     ) -> None:
         self.spec = spec
-        self.prepared_capabilities = prepared_capabilities or self.capabilities
+        self.identity_override = dict(identity_override or {})
         self.calls: list[str] = []
 
-    def wait_for_handshake(self, timeout: float) -> Mapping[str, Any]:
-        self.calls.append("handshake")
-        return {
-            "protocol_version": "1.0",
+    def wait_until_ready(self, timeout: float) -> Mapping[str, Any]:
+        del timeout
+        self.calls.append("health")
+        identity = {
+            "protocol_version": "2.0",
             "adapter_id": self.spec.adapter_id,
-            "adapter_version": "0.1.0",
+            "adapter_version": "0.2.0",
             "system_id": self.spec.system_id,
             "system_version": self.spec.system_version,
-            "capabilities": dict(self.capabilities),
+            **self.identity_override,
         }
-
-    def prepare(self, config: Mapping[str, Any], timeout: float) -> Mapping[str, Any]:
-        self.calls.append("prepare")
         return {
-            "effective_config": dict(config),
-            "capabilities": dict(self.prepared_capabilities),
-            "system_version": self.spec.system_version,
+            "protocol_version": "2.0",
+            "identity": identity,
+            "status": "initialized",
+            "ready": True,
+            "details": {"prepared": False},
         }
 
     def health(self, timeout: float = 5.0) -> Mapping[str, Any]:
-        self.calls.append("health")
-        return {"status": "ready", "ready": True, "details": {"prepared": True}}
+        return self.wait_until_ready(timeout)
+
+    def assert_retired_routes_absent(self, timeout: float = 5.0) -> None:
+        del timeout
+        self.calls.append("retired-routes")
 
     def close(self, timeout: float = 10.0) -> Mapping[str, Any]:
         self.calls.append("close")
@@ -134,15 +135,15 @@ def test_lifecycle_passes_and_always_removes_container(lock_path: Path) -> None:
         client_factory=lambda *_: client,
     )
     assert result["result"] == "PASS"
-    assert client.calls == ["handshake", "prepare", "health", "close"]
+    assert client.calls == ["health", "retired-routes", "close"]
     assert docker.calls[-1] == ("remove", "container-id")
 
 
-def test_capability_mismatch_fails_with_stage_and_cleanup(lock_path: Path) -> None:
+def test_identity_mismatch_fails_with_stage_and_cleanup(lock_path: Path) -> None:
     spec = MODULE.load_worker_spec(lock_path, "lightrag")
     docker = FakeDocker()
-    client = FakeClient(spec, prepared_capabilities={"answer": False})
-    with pytest.raises(MODULE.SmokeError, match="during prepare"):
+    client = FakeClient(spec, identity_override={"system_version": "drifted"})
+    with pytest.raises(MODULE.SmokeError, match="during health"):
         MODULE.run_smoke(
             spec,
             image="candidate:local",
@@ -159,7 +160,8 @@ def test_failure_log_redacts_token(lock_path: Path) -> None:
     docker = FakeDocker()
 
     class FailingClient(FakeClient):
-        def wait_for_handshake(self, timeout: float) -> Mapping[str, Any]:
+        def wait_until_ready(self, timeout: float) -> Mapping[str, Any]:
+            del timeout
             token = next(call[3] for call in docker.calls if call[0] == "start")
             docker.log_output = f"Authorization: Bearer {token}"
             raise MODULE.SmokeError("unavailable")

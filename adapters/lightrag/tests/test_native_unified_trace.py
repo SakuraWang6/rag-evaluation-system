@@ -5,7 +5,11 @@ import hashlib
 import json
 
 from rag_eval.adapters.observation_tck import assert_unified_observation_tck
-from rag_eval.contracts.adapter import RAGQuery
+from rag_eval.contracts.native import (
+    IngestionReceiptV2,
+    NativeQueryV2,
+    PreparedSystemV2,
+)
 from rag_eval.contracts.observation import (
     AdapterRunResultV2,
     ObservationCompleteness,
@@ -704,6 +708,18 @@ def test_run_result_v2_observes_same_native_stage_items_without_second_execution
     adapter._native_observation_reason = "observed"
     adapter._runtime_provenance_by_chunk = dict(manifest["runtime_chunks"])
     adapter._source_by_file = {"source.docx": document_id}
+    prepared = PreparedSystemV2.build(
+        effective_config=_runtime_config(),
+        source_identity=snapshot.source_identity,
+        runtime_profile=snapshot.runtime_profile,
+        observation_profile=snapshot.observation_profile,
+        ingestion_receipt=IngestionReceiptV2.build(
+            document_id=document_id,
+            source_sha256=source_sha,
+            index_fingerprint="index-fixture",
+        ),
+    )
+    adapter._prepared_system = prepared
     calls: list[tuple[str, dict[str, object]]] = []
 
     async def post_json(path: str, payload: dict[str, object]) -> dict[str, object]:
@@ -718,22 +734,26 @@ def test_run_result_v2_observes_same_native_stage_items_without_second_execution
         }
 
     adapter._post_json = post_json  # type: ignore[method-assign]
-    legacy = asyncio.run(adapter.query(RAGQuery(case_id="case-1", question="question")))
+    observed = asyncio.run(
+        adapter.query(
+            prepared,
+            NativeQueryV2(
+                case_id="case-1",
+                question="question",
+                generate_answer=True,
+                retrieval_candidate_k=20,
+                final_context_k=5,
+                max_context_tokens=4096,
+                generation_options={},
+            ),
+        )
+    )
 
     assert len(calls) == 1
     assert calls[0][1]["evaluation_trace"] is True
-    assert legacy.raw_retrieval is not None
-    assert legacy.raw_retrieval[0].native_id == "chunk-1"
-    assert legacy.trace is not None
-    observed = legacy.trace["wire_v2_native_observation"]
-    assert observed["observation_status"] == "observed"
-    AdapterRunResultV2.model_validate(observed["adapter_run_result"])
-    assert observed["wire_comparison"] == {
-        "status": "verified",
-        "comparison": "native_id+rank+content+score",
-        "stage_item_counts": {
-            "raw_retrieval": 1,
-            "ranked_retrieval": 1,
-            "final_context": 1,
-        },
-    }
+    assert isinstance(observed, AdapterRunResultV2)
+    assert observed.normalization is None
+    assert observed.trace.raw_retrieval.items[0].native_chunk_id == "chunk-1"
+    assert observed.trace.ranked_retrieval.items[0].native_rank == 1
+    assert observed.trace.final_context.items[0].content == value
+    assert observed.telemetry["native_query_executions"] == 1

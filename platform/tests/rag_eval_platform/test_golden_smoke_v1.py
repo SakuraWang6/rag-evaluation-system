@@ -10,9 +10,7 @@ import pytest
 from rag_eval.adapters.fake import FakeAdapter
 from rag_eval.contracts.adapter import (
     AdapterCapabilities,
-    PrepareContext,
     RAGEvidenceItem,
-    RAGQuery,
     RAGResult,
 )
 from rag_eval.contracts.dataset import (
@@ -23,6 +21,7 @@ from rag_eval.contracts.dataset import (
     Question,
     TextSpanLocator,
 )
+from rag_eval.contracts.observation import AdapterCapabilitiesV2, ObservationStatus
 from rag_eval.contracts.research import FailureLabel
 from rag_eval.contracts.run import ExperimentSpec, RunManifest, RunStatus
 from rag_eval.datasets.bundle import load_bundle
@@ -31,6 +30,8 @@ from rag_eval.evaluation.evidence import CorpusEvidenceIndex
 from rag_eval.evaluation.failures import assess_failure
 from rag_eval.execution import aggregate_metrics, failed_case
 from rag_eval.report import markdown_report
+
+from .native_worker_fixtures import native_query, stage_native_worker_input
 
 GOLDEN_ROOT = Path(__file__).resolve().parents[2] / "examples" / "golden-smoke-v1"
 
@@ -121,35 +122,46 @@ async def test_fake_adapter_preserves_empty_and_unavailable_stage_semantics(
     tmp_path: Path,
 ) -> None:
     observable = FakeAdapter(
-        capabilities=AdapterCapabilities(
+        capabilities=AdapterCapabilitiesV2(
+            ingestion_catalog=True,
             answer=True,
-            raw_retrieval=True,
+            candidate_retrieval=True,
             ranked_retrieval=True,
             final_context=True,
         )
     )
-    context = PrepareContext(
+    original, resolved = stage_native_worker_input(
+        tmp_path / "observable",
         run_id="golden-fake-observable",
-        work_dir=str(tmp_path / "observable-work"),
-        source_dir=str(tmp_path / "observable-source"),
-        platform_version="0.1.0",
     )
-    await observable.prepare(context, {})
-    await observable.ingest([])
-    observed = await observable.query(RAGQuery(case_id="empty", question="missing"))
-    assert observed.raw_retrieval == []
-    assert observed.ranked_retrieval == []
-    assert observed.final_context == []
+    prepared = await observable.prepare(original, resolved)
+    observed = await observable.query(prepared, native_query(case_id="observed"))
+    assert observed.trace.raw_retrieval.observation_status == ObservationStatus.OBSERVED
+    assert observed.trace.ranked_retrieval.observation_status == ObservationStatus.OBSERVED
+    assert observed.trace.final_context.observation_status == ObservationStatus.OBSERVED
 
-    partial = FakeAdapter(capabilities=AdapterCapabilities(ranked_retrieval=True))
-    await partial.prepare(
-        context.model_copy(update={"run_id": "golden-fake-unavailable"}), {}
+    partial = FakeAdapter(
+        capabilities=AdapterCapabilitiesV2(ranked_retrieval=True)
     )
-    await partial.ingest([])
-    unavailable = await partial.query(RAGQuery(case_id="unavailable", question="missing"))
-    assert unavailable.raw_retrieval is None
-    assert unavailable.ranked_retrieval == []
-    assert unavailable.final_context is None
+    original, resolved = stage_native_worker_input(
+        tmp_path / "partial",
+        run_id="golden-fake-unavailable",
+    )
+    prepared = await partial.prepare(original, resolved)
+    unavailable = await partial.query(
+        prepared,
+        native_query(case_id="unavailable"),
+    )
+    assert unavailable.trace.raw_retrieval.observation_status == (
+        ObservationStatus.UNSUPPORTED
+    )
+    assert unavailable.trace.raw_retrieval.items == ()
+    assert unavailable.trace.ranked_retrieval.observation_status == (
+        ObservationStatus.OBSERVED
+    )
+    assert unavailable.trace.final_context.observation_status == (
+        ObservationStatus.UNSUPPORTED
+    )
 
 
 def test_golden_smoke_adversarial_evaluation_semantics() -> None:
