@@ -79,7 +79,7 @@ platform_pytest:
   pytest: "9.1.1"
   test_paths:
     - platform/tests
-  expected_collected: 320
+  expected_collected: 325
   required_passed_node_ids:
     - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_verified_derivation_and_truncated_prefix
     - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_observed_partial_stages_with_rank_gaps
@@ -111,6 +111,9 @@ platform_pytest:
     - platform/tests/rag_eval_platform/test_native_v2_contract_cutover.py::test_local_launcher_does_not_enable_retired_run_or_host_profiles
     - platform/tests/rag_eval_platform/test_native_v2_contract_cutover.py::test_one_off_audit_recipes_are_not_supported_operator_scripts
     - platform/tests/rag_eval_platform/test_native_v2_contract_cutover.py::test_webui_authoring_catalog_has_no_retired_presegmented_actions
+    - platform/tests/rag_eval_platform/test_worker_process.py::test_worker_start_closes_log_when_popen_fails
+    - platform/tests/rag_eval_platform/test_worker_process.py::test_worker_start_terminates_process_when_client_construction_fails
+    - platform/tests/rag_eval_platform/test_worker_process.py::test_worker_start_cleans_process_client_and_log_when_readiness_fails
   required_passed_node_ids_ci:
     - platform/tests/rag_eval_platform/test_worker_process.py::test_fake_adapter_runs_over_real_loopback_process
     - platform/tests/rag_eval_platform/test_worker_process.py::test_process_group_cancellation_ends_parser_descendants

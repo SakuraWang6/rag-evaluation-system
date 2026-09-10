@@ -49,66 +49,64 @@ class WorkerProcess:
 
     def start(self, *, readiness_timeout: float = 10.0) -> WorkerClient:
         with self._lock:
-            if self.process is not None:
-                raise RuntimeError("worker process already started")
-            self.log_path.parent.mkdir(parents=True, exist_ok=True)
-            self._log_file = self.log_path.open("a", encoding="utf-8")
-            environment = os.environ.copy()
-            environment.update(self.command.environment)
-            executable_bin = str(Path(self.command.python_executable).parent)
-            inherited_path = environment.get("PATH", "")
-            environment["PATH"] = os.pathsep.join(
-                value for value in (executable_bin, inherited_path) if value
-            )
-            environment["RAG_EVAL_WORKER_TOKEN"] = self.token
-            argv = [
-                self.command.python_executable,
-                "-m",
-                "rag_eval.worker.main",
-                "--adapter-factory",
-                self.command.adapter_factory,
-                "--run-id",
-                self.run_id,
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(self.port),
-            ]
-            self.process = subprocess.Popen(
-                argv,
-                stdin=subprocess.DEVNULL,
-                stdout=self._log_file,
-                stderr=subprocess.STDOUT,
-                env=environment,
-                text=True,
-                start_new_session=True,
-            )
-            self.client = WorkerClient(
-                f"http://127.0.0.1:{self.port}",
-                token=self.token,
-                run_id=self.run_id,
-                timeout=self.command.request_timeout_seconds,
-            )
+            if any(
+                resource is not None
+                for resource in (self.process, self.client, self._log_file)
+            ):
+                raise RuntimeError("worker process already owns resources")
             try:
+                self.log_path.parent.mkdir(parents=True, exist_ok=True)
+                self._log_file = self.log_path.open("a", encoding="utf-8")
+                environment = os.environ.copy()
+                environment.update(self.command.environment)
+                executable_bin = str(Path(self.command.python_executable).parent)
+                inherited_path = environment.get("PATH", "")
+                environment["PATH"] = os.pathsep.join(
+                    value for value in (executable_bin, inherited_path) if value
+                )
+                environment["RAG_EVAL_WORKER_TOKEN"] = self.token
+                argv = [
+                    self.command.python_executable,
+                    "-m",
+                    "rag_eval.worker.main",
+                    "--adapter-factory",
+                    self.command.adapter_factory,
+                    "--run-id",
+                    self.run_id,
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(self.port),
+                ]
+                self.process = subprocess.Popen(
+                    argv,
+                    stdin=subprocess.DEVNULL,
+                    stdout=self._log_file,
+                    stderr=subprocess.STDOUT,
+                    env=environment,
+                    text=True,
+                    start_new_session=True,
+                )
+                self.client = WorkerClient(
+                    f"http://127.0.0.1:{self.port}",
+                    token=self.token,
+                    run_id=self.run_id,
+                    timeout=self.command.request_timeout_seconds,
+                )
                 self.client.wait_until_ready(readiness_timeout)
-            except Exception:
-                self.stop()
+            except BaseException:
+                # A worker that never became ready must not receive a graceful
+                # HTTP close: that request can wait for the full runtime
+                # timeout. Terminate the isolated group first, then release
+                # the local Client and log resources without masking the
+                # startup error.
+                self._cleanup(graceful=False, grace_seconds=3.0)
                 raise
             return self.client
 
     def stop(self, *, grace_seconds: float = 3.0) -> None:
         with self._lock:
-            process = self.process
-            if process is None:
-                return
-            if self.client is not None:
-                try:
-                    self.client.close_adapter()
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug("best-effort worker close failed: %s", exc)
-                self.client.close()
-            terminate_process_group(process.pid, process=process, grace_seconds=grace_seconds)
-            self._clear()
+            self._cleanup(graceful=True, grace_seconds=grace_seconds)
 
     def cancel(self, *, grace_seconds: float = 3.0) -> bool:
         """Cancel immediately without waiting on an adapter `/close` request.
@@ -119,23 +117,52 @@ class WorkerProcess:
         """
 
         with self._lock:
-            process = self.process
-            if process is None:
-                return True
-            confirmed = terminate_process_group(
-                process.pid, process=process, grace_seconds=grace_seconds
-            )
-            if self.client is not None:
-                self.client.close()
-            self._clear()
-            return confirmed
+            return self._cleanup(graceful=False, grace_seconds=grace_seconds)
 
-    def _clear(self) -> None:
-        if self._log_file is not None:
-            self._log_file.close()
+    def _cleanup(self, *, graceful: bool, grace_seconds: float) -> bool:
+        """Release every owned resource exactly once, including partial starts."""
+
+        process = self.process
+        client = self.client
+        log_file = self._log_file
+
+        # Detach first so re-entrant or repeated cleanup cannot close the same
+        # resource twice. Local references keep every cleanup action possible.
         self.process = None
         self.client = None
         self._log_file = None
+
+        if graceful and process is not None and client is not None:
+            try:
+                client.close_adapter()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("best-effort worker adapter close failed: %s", exc)
+
+        confirmed = True
+        if process is not None:
+            try:
+                confirmed = terminate_process_group(
+                    process.pid,
+                    process=process,
+                    grace_seconds=grace_seconds,
+                )
+            except Exception as exc:  # noqa: BLE001
+                confirmed = False
+                logger.warning("worker process cleanup failed: %s", exc)
+
+        if client is not None:
+            try:
+                client.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("best-effort worker client close failed: %s", exc)
+
+        if log_file is not None:
+            try:
+                log_file.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("worker log cleanup failed: %s", exc)
+                confirmed = False
+        return confirmed
 
     def __enter__(self) -> WorkerClient:
         return self.start()
