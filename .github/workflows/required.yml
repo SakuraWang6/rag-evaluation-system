@@ -16,22 +16,13 @@ concurrency:
 
 env:
   UV_VERSION: "0.9.18"
-  PYTHON_BASELINE: "3.12.12"
+  PYTHON_BASELINE: "3.11.15"
+  NODE_BASELINE: "24.12.0"
 
 jobs:
   platform:
-    name: platform / Python ${{ matrix.python }}
+    name: platform / Python 3.11.15
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - python: "3.11"
-            exact_baseline: false
-          - python: "3.12.12"
-            exact_baseline: true
-          - python: "3.13"
-            exact_baseline: false
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,29 +31,22 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: ${{ matrix.python }}
+          python-version: ${{ env.PYTHON_BASELINE }}
       - name: Set up uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
       - name: Run exact Platform baseline
-        if: matrix.exact_baseline
         run: >-
           uv run --project platform --extra test --frozen
-          --python "${{ matrix.python }}"
+          --python "${PYTHON_BASELINE}"
           --with pytest==9.1.1 --with pyyaml==6.0.3
           python ci/pytest_signal_gate.py --section platform_pytest --profile ci
-      - name: Run compatibility Platform suite
-        if: ${{ !matrix.exact_baseline }}
-        run: >-
-          uv run --project platform --extra test --frozen
-          --python "${{ matrix.python }}"
-          pytest -q platform/tests
       - name: Verify exported schemas
         shell: bash
         run: |
-          uv run --project platform --frozen --python "${{ matrix.python }}" \
+          uv run --project platform --frozen --python "${PYTHON_BASELINE}" \
             rag-eval --home "${RUNNER_TEMP}/rag-eval" export-schemas "${RUNNER_TEMP}/schemas"
           diff -ru platform/schemas/2.0 "${RUNNER_TEMP}/schemas"
 
@@ -205,7 +189,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: ${{ env.NODE_BASELINE }}
           cache: npm
           cache-dependency-path: webui/package-lock.json
       - name: Install dependencies

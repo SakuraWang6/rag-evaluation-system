@@ -2,7 +2,7 @@ schema_version: 2
 captured_at: "2026-09-10T00:00:00+08:00"
 
 adapter_pytest:
-  python: "3.12.12"
+  python: "3.11.15"
   pytest: "9.1.1"
   pytest_asyncio: "1.4.0"
   command: >-
@@ -25,7 +25,7 @@ adapter_pytest:
 
 lightrag_native_pytest:
   gate_kind: adapter_pytest
-  python: "3.12.12"
+  python: "3.11.15"
   pytest: "9.1.1"
   pytest_asyncio: "1.4.0"
   command: >-
@@ -48,7 +48,7 @@ lightrag_native_pytest:
 
 rag_anything_pytest:
   gate_kind: adapter_pytest
-  python: "3.12.12"
+  python: "3.11.15"
   pytest: "9.1.1"
   pytest_asyncio: "1.4.0"
   command: >-
@@ -75,11 +75,11 @@ rag_anything_pytest:
     additional_failure: forbidden
 
 platform_pytest:
-  python: "3.12.12"
+  python: "3.11.15"
   pytest: "9.1.1"
   test_paths:
     - platform/tests
-  expected_collected: 325
+  expected_collected: 330
   required_passed_node_ids:
     - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_verified_derivation_and_truncated_prefix
     - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_observed_partial_stages_with_rank_gaps
@@ -95,16 +95,21 @@ platform_pytest:
     - platform/tests/rag_eval_platform/test_run_record_v2.py::test_native_executor_persists_no_legacy_evaluation_authority
     - platform/tests/rag_eval_platform/test_supervisor.py::test_supervisor_can_start_stop_and_start_again
     - platform/tests/rag_eval_platform/test_webui_api_contract.py::test_critical_webui_operations_match_platform_openapi
-    - platform/tests/rag_eval_platform/test_jobs_and_api.py::test_api_keeps_system_registration_local_and_legacy_out
+    - platform/tests/rag_eval_platform/test_jobs_and_api.py::test_api_keeps_system_registration_local_and_retired_routes_out
     - platform/tests/rag_eval_platform/test_authoring.py::test_authoring_api_publishes_and_removes_formal_catalog_version_without_erasing_history
     - platform/tests/rag_eval_platform/test_formal_release_lineage.py::test_release_resolves_a_pinned_native_benchmark_without_a_runtime_bundle
     - platform/tests/rag_eval_platform/test_native_benchmark_release.py::test_native_benchmark_resolves_stably_without_editable_ledger
     - platform/tests/rag_eval_platform/test_native_benchmark_release.py::test_native_benchmark_preserves_exact_case_answer_and_mses_without_projection
     - platform/tests/rag_eval_platform/test_native_benchmark_release.py::test_native_benchmark_preserves_every_abstention_scope_as_an_and_clause
+    - platform/tests/rag_eval_platform/test_native_benchmark_release.py::test_native_benchmark_digest_covers_source_case_and_gold_content
     - platform/tests/rag_eval_platform/test_product_layer.py::test_wizard_draft_uses_a_lossless_formal_release_without_an_authoring_workspace
     - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_formal_release_preview_and_staging_use_only_the_original_docx
-    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_public_experiment_create_and_queue_reject_presegmented_routes
-    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_release_bound_public_experiment_rejects_modified_benchmark_content
+    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_public_experiment_rejects_presegmented_configuration_without_persisting
+    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_invalid_release_state_cannot_create_a_job[missing_payload]
+    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_invalid_release_state_cannot_create_a_job[payload_digest_mismatch]
+    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_invalid_release_state_cannot_create_a_job[removed]
+    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_invalid_release_state_cannot_create_a_job[validation_error]
+    - platform/tests/rag_eval_platform/test_run_artifact_v2.py::test_artifact_v2_preserves_all_abstention_scopes_and_partial_union
     - platform/tests/rag_eval_platform/test_comparison.py::test_artifact_v2_runs_compare_without_any_legacy_route_projection
     - platform/tests/rag_eval_platform/test_documentation_authority.py::test_long_term_documentation_has_one_native_v2_authority
     - platform/tests/rag_eval_platform/test_documentation_authority.py::test_maintained_documentation_links_are_portable_and_resolve
@@ -118,10 +123,12 @@ platform_pytest:
     - platform/tests/rag_eval_platform/test_worker_process.py::test_fake_adapter_runs_over_real_loopback_process
     - platform/tests/rag_eval_platform/test_worker_process.py::test_process_group_cancellation_ends_parser_descendants
     - platform/tests/rag_eval_platform/test_executor_integration.py::test_standalone_fake_adapter_run_is_reproducible_and_source_only
+    - platform/tests/rag_eval_platform/test_executor_integration.py::test_query_protocol_error_is_persisted_as_unavailable_artifact_case
   allowed_local_skipped_node_ids:
     - platform/tests/rag_eval_platform/test_worker_process.py::test_fake_adapter_runs_over_real_loopback_process
     - platform/tests/rag_eval_platform/test_worker_process.py::test_process_group_cancellation_ends_parser_descendants
     - platform/tests/rag_eval_platform/test_executor_integration.py::test_standalone_fake_adapter_run_is_reproducible_and_source_only
+    - platform/tests/rag_eval_platform/test_executor_integration.py::test_query_protocol_error_is_persisted_as_unavailable_artifact_case
 
 platform_ruff:
   tool: "ruff 0.16.1"

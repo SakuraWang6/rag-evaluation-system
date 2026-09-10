@@ -279,6 +279,9 @@ def test_native_benchmark_digest_covers_source_case_and_gold_content(
     changed_source = benchmark.source_identity.model_copy(
         update={"source_sha256": "f" * 64}
     )
+    changed_canonical = benchmark.source_identity.model_copy(
+        update={"canonical_digest": "e" * 64}
+    )
     changed_case = benchmark.cases[0].model_copy(
         update={"question": benchmark.cases[0].question + " changed"}
     )
@@ -294,6 +297,9 @@ def test_native_benchmark_digest_covers_source_case_and_gold_content(
 
     assert native_benchmark_snapshot_digest(
         **{**values, "source_identity": changed_source}
+    ) != benchmark.snapshot_digest
+    assert native_benchmark_snapshot_digest(
+        **{**values, "source_identity": changed_canonical}
     ) != benchmark.snapshot_digest
     assert native_benchmark_snapshot_digest(
         **{**values, "cases": (changed_case,)}

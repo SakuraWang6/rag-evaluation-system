@@ -20,6 +20,8 @@ from rag_eval.contracts.native import (
 from rag_eval.contracts.observation import (
     AdapterRunResultV2,
     ObservationStatus,
+    ObservedStageItem,
+    ReverseMappingStatus,
     UnifiedTrace,
 )
 from rag_eval.evaluation.unified import EvaluationMetricStatus, FailureKind
@@ -39,6 +41,7 @@ from tests.rag_eval_platform.test_unified_evaluation_v2 import (
     SHA_A,
     SHA_B,
     SHA_C,
+    _abstention_gold,
     _chunk,
     _edge,
     _gold,
@@ -305,6 +308,98 @@ def test_artifact_v2_persists_an_unobservable_direct_v2_result(
     assert retrieval_only.trace.answer.observation_status == (
         ObservationStatus.UNOBSERVED
     )
+
+
+def test_artifact_v2_preserves_all_abstention_scopes_and_partial_union(
+    tmp_path: Path,
+) -> None:
+    gold = _abstention_gold("scope-object-a", "scope-object-b")
+    benchmark_case = BenchmarkCaseV2(
+        case_id="case-1",
+        case_revision_id="case-revision-1",
+        target_id="target-case-1",
+        question="Is the requested value supported in the bounded scope?",
+        language="en",
+        source_object_ids=("scope-object-a", "scope-object-b"),
+        gold=gold,
+    )
+    chunks = (_chunk("scope-a"), _chunk("scope-b"))
+    extent_a = _text_extent("scope-object-a")
+    extent_b = _text_extent("scope-object-b")
+    edge_a = _edge(chunks[0], "scope-object-a", extent_a, extent_a)
+    edge_b = _edge(chunks[1], "scope-object-b", extent_b, extent_b)
+    item_a = _item(chunks[0], 1, (edge_a,))
+    item_b = _item(chunks[1], 2, (edge_b,))
+
+    def result(
+        items: tuple[ObservedStageItem, ...],
+    ) -> AdapterRunResultV2:
+        trace = _trace_for_case(
+            _trace(
+                chunks=chunks,
+                edges=(edge_a, edge_b),
+                mapping_statuses={
+                    "scope-object-a": ReverseMappingStatus.COMPLETE,
+                    "scope-object-b": ReverseMappingStatus.COMPLETE,
+                },
+                candidate=items,
+                ranked=items,
+                context=items,
+                answer="abstain",
+            ),
+            "case-1",
+        )
+        return AdapterRunResultV2(
+            adapter_id=trace.observation_profile.adapter_id,
+            adapter_version=trace.observation_profile.adapter_version,
+            system_id=trace.runtime_profile.system_id,
+            system_version=trace.runtime_profile.system_version,
+            trace=trace,
+        )
+
+    resolved = BenchmarkResolver(cases={"case-1": benchmark_case}).resolve("case-1")
+    started = datetime(2026, 9, 8, tzinfo=UTC)
+    engine = EvaluationEngine(_profile(2))
+    partial_result = result((item_a,))
+    complete_result = result((item_a, item_b))
+    cases = tuple(
+        engine.evaluate(
+            resolved,
+            TraceValidator().validate(value, expected_case_id="case-1"),
+            started_at=started,
+            completed_at=started + timedelta(seconds=repetition),
+            repetition=repetition,
+            seed=7,
+        )
+        for repetition, value in enumerate(
+            (partial_result, complete_result), start=1
+        )
+    )
+    ArtifactWriter(tmp_path).publish(
+        run_id="run-abstention",
+        experiment_id="experiment-abstention",
+        benchmark_identity=_benchmark_identity(resolved),
+        cases=cases,
+        started_at=started,
+        completed_at=started + timedelta(seconds=3),
+    )
+    reader = ArtifactV2Reader(tmp_path / "artifact-v2")
+    partial = reader.case("case-1", repetition=1)
+    complete = reader.case("case-1", repetition=2)
+
+    assert reader.verify().valid
+    assert partial.gold.negative_scope_object_ids == (
+        "scope-object-a",
+        "scope-object-b",
+    )
+    assert (
+        complete.gold.negative_scope_object_ids
+        == partial.gold.negative_scope_object_ids
+    )
+    assert partial.evidence_judgment.value == "partial"
+    assert complete.evidence_judgment.value == "complete"
+    assert partial.evaluation.metric("ranked_evidence_coverage@1").value == 0.5
+    assert complete.evaluation.metric("ranked_evidence_coverage@3").value == 1
 
 
 def test_leaderboard_eligibility_uses_persisted_metric_availability_and_descriptors() -> None:

@@ -194,3 +194,30 @@ def test_known_baseline_contains_only_active_required_gates() -> None:
         assert f"--section {section}" in workflow
     assert "ci/check_ruff_differential.py" in workflow
     assert "lightrag_collection" not in workflow
+
+
+def test_required_workflow_pins_one_local_toolchain_baseline() -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    baseline = yaml.safe_load(BASELINE.read_text(encoding="utf-8"))
+
+    assert workflow["env"]["PYTHON_BASELINE"] == "3.11.15"
+    assert workflow["env"]["NODE_BASELINE"] == "24.12.0"
+    assert "strategy" not in workflow["jobs"]["platform"]
+    platform_text = str(workflow["jobs"]["platform"])
+    assert "matrix.python" not in platform_text
+    assert "compatibility Platform suite" not in platform_text
+
+    node_step = next(
+        step
+        for step in workflow["jobs"]["webui"]["steps"]
+        if step.get("name") == "Set up Node.js"
+    )
+    assert node_step["with"]["node-version"] == "${{ env.NODE_BASELINE }}"
+
+    for section in (
+        "adapter_pytest",
+        "lightrag_native_pytest",
+        "rag_anything_pytest",
+        "platform_pytest",
+    ):
+        assert baseline[section]["python"] == "3.11.15"

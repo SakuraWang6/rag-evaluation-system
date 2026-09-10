@@ -9,6 +9,13 @@ from fastapi.testclient import TestClient
 
 from rag_eval.api import create_app
 from rag_eval.contracts.run import ExperimentSpec
+from rag_eval.datasets.formal import (
+    DatasetRelease,
+    RuleResult,
+    RuleSeverity,
+    ValidationFinding,
+    ValidationReport,
+)
 from rag_eval.execution import RunExecutor, stage_original_document
 from rag_eval.products import SystemConnection
 from rag_eval.runtime_admission import NewRunAdmissionError
@@ -246,6 +253,82 @@ def test_invalid_release_is_rejected_before_experiment_or_job_persistence(
         metric_config={"k_values": [1, 3, 5]},
         case_selection_id="0" * 64,
     )
+
+    with pytest.raises(NewRunAdmissionError, match="verified native snapshot"):
+        service.queue_new_public_experiment(experiment)
+
+    assert service.experiments.list() == []
+    assert service.jobs.list() == []
+    assert service.resolved_run_plans.list() == []
+
+
+@pytest.mark.parametrize(
+    "failure_mode",
+    ("missing_payload", "payload_digest_mismatch", "removed", "validation_error"),
+)
+def test_invalid_release_state_cannot_create_a_job(
+    tmp_path: Path,
+    failure_mode: str,
+) -> None:
+    service, client, release_id = _native_product_service(tmp_path)
+    experiment = _preview_native_experiment(client, release_id)
+    assert service.formal_datasets is not None
+    formal = service.formal_datasets
+    release = formal.releases.get(release_id)
+
+    if failure_mode == "missing_payload":
+        (
+            formal.releases.root
+            / "payload-snapshots"
+            / f"{release_id}.json"
+        ).unlink()
+    elif failure_mode == "payload_digest_mismatch":
+        path = (
+            formal.releases.root
+            / "payload-snapshots"
+            / f"{release_id}.json"
+        )
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["cases"][0]["draft"]["question"] = "tampered after preview"
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            encoding="utf-8",
+        )
+    elif failure_mode == "removed":
+        formal.remove_from_catalog(release_id, actor="fixture-user")
+    else:
+        report = formal.releases.reports.get(release.validation_report_digest)
+        invalid_report = ValidationReport.build(
+            dataset_id=report.dataset_id,
+            document_revision_id=report.document_revision_id,
+            case_revision_ids=report.case_revision_ids,
+            gold_revision_ids=report.gold_revision_ids,
+            input_digests=report.input_digests,
+            findings=report.findings
+            + (
+                ValidationFinding(
+                    rule_id="fixture.injected_validation_error",
+                    severity=RuleSeverity.ERROR,
+                    result=RuleResult.FAIL,
+                    message="fixture release must fail admission",
+                ),
+            ),
+        )
+        formal.releases.reports.put(invalid_report)
+        release_values = {
+            field: getattr(release, field)
+            for field in DatasetRelease.model_fields
+            if field not in {"release_id", "release_digest"}
+        }
+        release_values.update(
+            release_version="invalid-validation-report",
+            validation_report_digest=invalid_report.report_digest,
+        )
+        invalid_release = DatasetRelease.build(**release_values)
+        formal.releases.put(invalid_release)
+        experiment = experiment.model_copy(
+            update={"dataset_release_id": invalid_release.release_id}
+        )
 
     with pytest.raises(NewRunAdmissionError, match="verified native snapshot"):
         service.queue_new_public_experiment(experiment)

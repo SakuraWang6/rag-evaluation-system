@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -149,6 +150,13 @@ def test_bundle_v3_build_is_deterministic_and_offline_only(tmp_path: Path) -> No
 
 
 def test_production_composition_root_does_not_import_offline_bundle_v3() -> None:
+    env = dict(os.environ)
+    platform_src = Path(__file__).resolve().parents[2] / "src"
+    env["PYTHONPATH"] = os.pathsep.join(
+        value
+        for value in (str(platform_src), env.get("PYTHONPATH"))
+        if value
+    )
     completed = subprocess.run(
         [
             sys.executable,
@@ -161,6 +169,7 @@ def test_production_composition_root_does_not_import_offline_bundle_v3() -> None
         check=False,
         capture_output=True,
         text=True,
+        env=env,
     )
 
     assert completed.returncode == 0, completed.stderr
