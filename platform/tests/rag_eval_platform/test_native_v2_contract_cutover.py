@@ -39,11 +39,14 @@ def test_retired_runtime_contracts_are_not_public() -> None:
     assert "wire_shadow_verified" not in TraceValidationRecordV2.model_fields
 
 
-def test_retired_contract_owners_are_removed() -> None:
+def test_contract_owners_match_native_v2_authorities() -> None:
     contracts_root = REPOSITORY_ROOT / "platform" / "src" / "rag_eval" / "contracts"
     assert not (contracts_root / "adapter.py").exists()
-    assert not (contracts_root / "benchmark.py").exists()
+    assert (contracts_root / "benchmark.py").is_file()
     assert not (contracts_root / "observation_compat.py").exists()
+    assert contracts.NativeBenchmarkReleaseV2.__module__ == (
+        "rag_eval.contracts.benchmark"
+    )
 
 
 def test_checked_in_public_schemas_are_v2_only() -> None:

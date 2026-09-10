@@ -67,7 +67,7 @@ def test_release_reader_accepts_previously_shipped_canonical_schema_v11() -> Non
             "canonical_schema_version": "1.1",
             "ledger_schema_version": "authoring-ledger/1.0",
             "validator_version": "formal-dataset-validator/1.0",
-            "release_schema_version": "formal-dataset-release/1.0",
+            "release_schema_version": "formal-dataset-release/2.0",
         }
     )
     assert versions.canonical_schema_version == "1.1"

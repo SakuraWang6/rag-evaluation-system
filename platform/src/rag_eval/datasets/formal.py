@@ -32,13 +32,25 @@ from rag_eval.authoring.ledger import (
     CaseRevision,
     EvidenceRole,
     GoldRevision,
-    LifecycleState,
     LedgerError,
+    LifecycleState,
     Review,
 )
 from rag_eval.authoring.models import AuthoringDataset, CanonicalView
 from rag_eval.authoring.storage import AuthoringWorkspaceStore
-from rag_eval.datasets.bundle import DatasetBundle, DatasetBundleStore
+from rag_eval.contracts.benchmark import (
+    BenchmarkAnswerV2,
+    BenchmarkCaseV2,
+    BenchmarkEvidenceDependencyV2,
+    BenchmarkEvidenceV2,
+    BenchmarkGoldV2,
+    BenchmarkMsesClauseV2,
+    BenchmarkMsesPathV2,
+    BenchmarkSourceIdentityV2,
+    NativeBenchmarkReleaseV2,
+    benchmark_case_selection_id,
+    native_benchmark_snapshot_digest,
+)
 from rag_eval.contracts.canonical import (
     CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY,
     CANONICAL_SCHEMA_VERSION,
@@ -50,13 +62,14 @@ from rag_eval.contracts.canonical import (
     CanonicalRelation,
     RepresentationStatus,
 )
+from rag_eval.datasets.bundle import DatasetBundle, DatasetBundleStore
 from rag_eval.storage.atomic import atomic_write_bytes, atomic_write_json
 from rag_eval.storage.ids import safe_id
 
 
 FORMAL_VALIDATOR_VERSION = "formal-dataset-validator/1.0"
 FORMAL_REPORT_SCHEMA_VERSION = "formal-validation-report/1.0"
-FORMAL_RELEASE_SCHEMA_VERSION = "formal-dataset-release/1.0"
+FORMAL_RELEASE_SCHEMA_VERSION = "formal-dataset-release/2.0"
 FORMAL_READ_MODEL_SCHEMA_VERSION = "formal-release-read-model/1"
 _WORDPROCESSINGML = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
@@ -300,6 +313,7 @@ class DatasetRelease(FormalModel):
     cases: tuple[ReleaseCasePin, ...] = Field(min_length=1)
     gold: tuple[ReleaseGoldPin, ...] = Field(min_length=1)
     validation_report_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    payload_snapshot_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     validation_report_version: Literal[FORMAL_VALIDATOR_VERSION] = FORMAL_VALIDATOR_VERSION
     schema_versions: ReleaseSchemaVersions
     ledger_state: ReleaseLedgerState
@@ -317,6 +331,12 @@ class DatasetRelease(FormalModel):
             raise ValueError("release Case pins must be sorted")
         if tuple(sorted(self.gold, key=lambda item: item.gold_id)) != self.gold:
             raise ValueError("release Gold pins must be sorted")
+        case_ids = [item.case_id for item in self.cases]
+        gold_case_ids = [item.case_id for item in self.gold]
+        if len(case_ids) != len(set(case_ids)):
+            raise ValueError("release Case pins must have unique Case IDs")
+        if len(gold_case_ids) != len(set(gold_case_ids)):
+            raise ValueError("release Gold pins must have unique Case IDs")
         if {item.case_id for item in self.cases} != {item.case_id for item in self.gold}:
             raise ValueError("every released Case needs exactly one released Gold")
         if any(item.case_revision_id not in {case.case_revision_id for case in self.cases} for item in self.gold):
@@ -585,12 +605,50 @@ class DatasetReleaseStore:
         already-frozen Case/Gold payloads and their audit lineage.
         """
 
+        content = self.payload_snapshot_content(
+            cases=cases,
+            gold=gold,
+            case_history=case_history,
+            gold_history=gold_history,
+            reviews=reviews,
+            approvals=approvals,
+            adjudications=adjudications,
+        )
+        payload_digest = _canonical_digest(content)
+        if payload_digest != release.payload_snapshot_digest:
+            raise FormalDatasetError(
+                "release payload snapshot digest does not match its immutable pin"
+            )
         root = self.root / "payload-snapshots"
         root.mkdir(exist_ok=True)
         path = root / f"{safe_id(release.release_id)}.json"
         value = {
             "release_id": release.release_id,
             "release_digest": release.release_digest,
+            "payload_snapshot_digest": payload_digest,
+            **content,
+        }
+        if path.is_file():
+            existing = json.loads(path.read_text(encoding="utf-8"))
+            if existing != value:
+                raise FormalDatasetError("release payload snapshot is immutable")
+            return
+        atomic_write_json(path, value)
+
+    @staticmethod
+    def payload_snapshot_content(
+        *,
+        cases: tuple[CaseRevision, ...],
+        gold: tuple[GoldRevision, ...],
+        case_history: dict[str, tuple[CaseRevision, ...]],
+        gold_history: dict[str, tuple[GoldRevision, ...]],
+        reviews: tuple[Review, ...],
+        approvals: tuple[Approval, ...],
+        adjudications: tuple[Adjudication, ...],
+    ) -> dict[str, object]:
+        """Canonical content protected by ``DatasetRelease`` identity."""
+
+        return {
             "cases": [item.model_dump(mode="json") for item in sorted(cases, key=lambda item: item.case_revision_id)],
             "gold": [item.model_dump(mode="json") for item in sorted(gold, key=lambda item: item.gold_revision_id)],
             "case_history": {
@@ -605,12 +663,30 @@ class DatasetReleaseStore:
             "approvals": [item.model_dump(mode="json") for item in sorted(approvals, key=lambda item: item.approval_id)],
             "adjudications": [item.model_dump(mode="json") for item in sorted(adjudications, key=lambda item: item.adjudication_id)],
         }
-        if path.is_file():
-            existing = json.loads(path.read_text(encoding="utf-8"))
-            if existing.get("release_id") != release.release_id or existing.get("release_digest") != release.release_digest:
-                raise FormalDatasetError("release payload snapshot identity mismatch")
-            return
-        atomic_write_json(path, value)
+
+    @classmethod
+    def payload_snapshot_digest(
+        cls,
+        *,
+        cases: tuple[CaseRevision, ...],
+        gold: tuple[GoldRevision, ...],
+        case_history: dict[str, tuple[CaseRevision, ...]],
+        gold_history: dict[str, tuple[GoldRevision, ...]],
+        reviews: tuple[Review, ...],
+        approvals: tuple[Approval, ...],
+        adjudications: tuple[Adjudication, ...],
+    ) -> str:
+        return _canonical_digest(
+            cls.payload_snapshot_content(
+                cases=cases,
+                gold=gold,
+                case_history=case_history,
+                gold_history=gold_history,
+                reviews=reviews,
+                approvals=approvals,
+                adjudications=adjudications,
+            )
+        )
 
     def payload_snapshots(self, release_id: str) -> dict[str, object]:
         path = self.root / "payload-snapshots" / f"{safe_id(release_id)}.json"
@@ -1350,28 +1426,13 @@ class FormalDatasetReleaseService:
         projection = self._bundle_projection(freeze_marker.bundle_v2_projection, bundle_id)
         if projection.status == BundleProjectionStatus.LOSSY_NON_RUNNABLE and bundle_id is not None:
             raise FormalDatasetError("lossy/non-runnable Gold cannot claim a formal Bundle 2.0 release")
-        release = self._build_release(
-            dataset,
-            freeze_marker,
-            report,
-            display_name=display_name,
-            release_version=release_version.strip(),
-            actor=actor.strip(),
-            parent_release_id=parent_release_id,
-            projection=projection,
-        )
-        canonical = self.validator._load_canonical_document(dataset, self.authoring_store)
-        self.releases.put_canonical_snapshot(release, canonical)
-        self.releases.put_source_snapshot(
-            release, self.authoring_store.source_path(dataset.authoring_dataset_id)
-        )
         frozen_cases = tuple(
-            self.ledger.get_case_revision(dataset_id, item.case_revision_id)
-            for item in release.cases
+            self.ledger.get_case_revision(dataset_id, item)
+            for item in freeze_marker.case_revision_ids
         )
         frozen_gold = tuple(
-            self.ledger.get_gold_revision(dataset_id, item.gold_revision_id)
-            for item in release.gold
+            self.ledger.get_gold_revision(dataset_id, item)
+            for item in freeze_marker.gold_revision_ids
         )
         case_history = {
             item.case_id: tuple(self.ledger.case_history(dataset_id, item.case_id))
@@ -1390,27 +1451,55 @@ class FormalDatasetReleaseService:
             for history in gold_history.values()
             for revision in history
         }
+        payload_reviews = tuple(
+            item
+            for item in self.ledger.list_reviews(dataset_id)
+            if item.reviewed_revision_id in lineage_ids
+        )
+        payload_approvals = tuple(
+            item
+            for item in self.ledger.list_approvals(dataset_id)
+            if item.approved_revision_id in lineage_ids
+        )
+        payload_adjudications = tuple(
+            item
+            for item in self.ledger.list_adjudications(dataset_id)
+            if item.target_revision_id in lineage_ids
+        )
+        payload_snapshot_digest = self.releases.payload_snapshot_digest(
+            cases=frozen_cases,
+            gold=frozen_gold,
+            case_history=case_history,
+            gold_history=gold_history,
+            reviews=payload_reviews,
+            approvals=payload_approvals,
+            adjudications=payload_adjudications,
+        )
+        release = self._build_release(
+            dataset,
+            freeze_marker,
+            report,
+            display_name=display_name,
+            release_version=release_version.strip(),
+            actor=actor.strip(),
+            parent_release_id=parent_release_id,
+            projection=projection,
+            payload_snapshot_digest=payload_snapshot_digest,
+        )
+        canonical = self.validator._load_canonical_document(dataset, self.authoring_store)
+        self.releases.put_canonical_snapshot(release, canonical)
+        self.releases.put_source_snapshot(
+            release, self.authoring_store.source_path(dataset.authoring_dataset_id)
+        )
         self.releases.put_payload_snapshots(
             release,
             cases=frozen_cases,
             gold=frozen_gold,
             case_history=case_history,
             gold_history=gold_history,
-            reviews=tuple(
-                item
-                for item in self.ledger.list_reviews(dataset_id)
-                if item.reviewed_revision_id in lineage_ids
-            ),
-            approvals=tuple(
-                item
-                for item in self.ledger.list_approvals(dataset_id)
-                if item.approved_revision_id in lineage_ids
-            ),
-            adjudications=tuple(
-                item
-                for item in self.ledger.list_adjudications(dataset_id)
-                if item.target_revision_id in lineage_ids
-            ),
+            reviews=payload_reviews,
+            approvals=payload_approvals,
+            adjudications=payload_adjudications,
         )
         # Build the small product-facing projections once, when the immutable
         # release is published.  The full Canonical snapshot stays available
@@ -1436,6 +1525,305 @@ class FormalDatasetReleaseService:
             origins=release.origins,
             changes_from_parent=self._diff(parent, release),
         )
+
+    def resolve_native_benchmark(
+        self,
+        release_id: str,
+        *,
+        case_ids: tuple[str, ...] | None = None,
+        seed: int = 0,
+        expected_case_selection_id: str | None = None,
+    ) -> NativeBenchmarkReleaseV2:
+        """Resolve one Release directly into a verified Native v2 Benchmark.
+
+        This path intentionally requires every immutable Release sidecar.  It
+        never falls back to the editable Authoring Ledger or an exported
+        Bundle, so admission can fail closed without changing Benchmark Gold.
+        """
+
+        try:
+            release = self.releases.get(release_id)
+        except (OSError, ValueError) as exc:
+            raise FormalDatasetError(
+                "immutable Benchmark Release is unavailable or invalid"
+            ) from exc
+        if self.releases.is_removed(release.release_id):
+            raise FormalDatasetError("Benchmark Release was removed from the catalog")
+
+        try:
+            report = self.releases.reports.get(release.validation_report_digest)
+        except (OSError, ValueError) as exc:
+            raise FormalDatasetError(
+                "Benchmark Release validation report is unavailable or invalid"
+            ) from exc
+        expected_case_revisions = tuple(
+            sorted(item.case_revision_id for item in release.cases)
+        )
+        expected_gold_revisions = tuple(
+            sorted(item.gold_revision_id for item in release.gold)
+        )
+        if (
+            report.dataset_id != release.dataset_id
+            or report.report_digest != release.validation_report_digest
+            or report.case_revision_ids != expected_case_revisions
+            or report.gold_revision_ids != expected_gold_revisions
+            or report.has_errors
+        ):
+            raise FormalDatasetError(
+                "Benchmark Release validation report does not admit its exact payload"
+            )
+
+        try:
+            source_path = self.releases.source_snapshot(release.release_id)
+            canonical = self.releases.canonical_snapshot(release.release_id)
+            payload = self._load_pinned_payload_snapshot(release)
+        except (OSError, ValueError, LedgerError) as exc:
+            raise FormalDatasetError(
+                "immutable Benchmark Release sidecars are unavailable or invalid"
+            ) from exc
+
+        if hashlib.sha256(source_path.read_bytes()).hexdigest() != release.document.source_digest:
+            raise FormalDatasetError("Benchmark Release source snapshot digest mismatch")
+        manifest = canonical.manifest
+        if (
+            manifest.document_id != release.document.document_id
+            or manifest.source_sha256 != release.document.source_digest
+            or manifest.canonical_digest != release.document.canonical_digest
+            or manifest.parser_identity != release.document.parser_identity
+            or manifest.canonicalizer_identity != release.document.canonicalizer_identity
+            or manifest.configuration_digest != release.document.configuration_digest
+        ):
+            raise FormalDatasetError(
+                "Benchmark Release Canonical snapshot does not match its document pin"
+            )
+        report_inputs = {item.name: item.digest for item in report.input_digests}
+        if (
+            report_inputs.get("source") != release.document.source_digest
+            or report_inputs.get("canonical_document")
+            != release.document.canonical_digest
+            or report_inputs.get("canonical_objects") != manifest.objects_digest
+            or report_inputs.get("canonical_relations") != manifest.relations_digest
+            or report_inputs.get("authoring_config")
+            != release.document.configuration_digest
+        ):
+            raise FormalDatasetError(
+                "Benchmark Release validation inputs do not match its source pins"
+            )
+
+        case_revisions = payload["cases"]
+        gold_revisions = payload["gold"]
+        assert isinstance(case_revisions, dict)
+        assert isinstance(gold_revisions, dict)
+        if set(case_revisions) != set(expected_case_revisions) or set(
+            gold_revisions
+        ) != set(expected_gold_revisions):
+            raise FormalDatasetError(
+                "Benchmark Release payload contains unpinned or missing revisions"
+            )
+
+        objects = {item.object_id: item for item in canonical.objects}
+        source_identity = BenchmarkSourceIdentityV2(
+            document_id=release.document.document_id,
+            source_sha256=release.document.source_digest,
+            canonical_schema_version=manifest.schema_version,
+            canonical_digest=manifest.canonical_digest,
+            parser_identity=manifest.parser_identity,
+            canonicalizer_identity=manifest.canonicalizer_identity,
+            configuration_digest=manifest.configuration_digest,
+        )
+        gold_pin_by_case = {item.case_id: item for item in release.gold}
+        resolved_cases: dict[str, BenchmarkCaseV2] = {}
+        for case_pin in release.cases:
+            case = case_revisions[case_pin.case_revision_id]
+            if not isinstance(case, CaseRevision):
+                raise FormalDatasetError("release payload contains an invalid Case revision")
+            gold_pin = gold_pin_by_case[case_pin.case_id]
+            gold = gold_revisions[gold_pin.gold_revision_id]
+            if not isinstance(gold, GoldRevision):
+                raise FormalDatasetError("release payload contains an invalid Gold revision")
+            self._verify_release_case_and_gold_pins(
+                release=release,
+                case_pin=case_pin,
+                case=case,
+                gold_pin=gold_pin,
+                gold=gold,
+            )
+            unknown_source_objects = sorted(
+                set(case.draft.source_object_ids).difference(objects)
+            )
+            if unknown_source_objects:
+                raise FormalDatasetError(
+                    "released Case references unknown Canonical objects: "
+                    f"{unknown_source_objects}"
+                )
+            evidence: list[BenchmarkEvidenceV2] = []
+            for item in gold.payload.evidence:
+                canonical_object = objects.get(item.canonical_object_id)
+                if (
+                    canonical_object is None
+                    or not canonical_object.gold_evidence_eligible
+                    or canonical_object.representation_status
+                    != RepresentationStatus.COMPLETE
+                    or canonical_object.canonical_value is None
+                    or not canonical_object.provenance.source_spans
+                ):
+                    raise FormalDatasetError(
+                        f"Gold evidence {item.evidence_id!r} lacks a complete, "
+                        "eligible Canonical witness"
+                    )
+                evidence.append(
+                    BenchmarkEvidenceV2(
+                        evidence_id=item.evidence_id,
+                        document_id=canonical_object.document_id,
+                        canonical_object_id=canonical_object.object_id,
+                        role=item.role.value,
+                        rationale=item.rationale,
+                        canonical_object_type=canonical_object.object_type,
+                        source_spans=canonical_object.provenance.source_spans,
+                        canonical_value=canonical_object.canonical_value,
+                        canonical_witness_sha256=hashlib.sha256(
+                            canonical_object.canonical_value.encode("utf-8")
+                        ).hexdigest(),
+                    )
+                )
+            benchmark_gold = BenchmarkGoldV2(
+                gold_id=gold.gold_id,
+                gold_revision_id=gold.gold_revision_id,
+                case_id=gold.case_id,
+                case_revision_id=gold.case_revision_id,
+                source_identity=source_identity,
+                answer=BenchmarkAnswerV2(
+                    kind=gold.payload.answer.kind,
+                    canonical=gold.payload.answer.canonical,
+                    accepted_values=gold.payload.answer.accepted_values,
+                    locale=gold.payload.answer.locale,
+                    unit=gold.payload.answer.unit,
+                    tolerance=gold.payload.answer.tolerance,
+                ),
+                evidence=tuple(evidence),
+                mses_paths=tuple(
+                    BenchmarkMsesPathV2(
+                        path_id=path.path_id,
+                        clauses=tuple(
+                            BenchmarkMsesClauseV2(
+                                clause_id=clause.clause_id,
+                                alternatives=clause.alternatives,
+                            )
+                            for clause in path.clauses
+                        ),
+                    )
+                    for path in gold.payload.mses_paths
+                ),
+                dependencies=tuple(
+                    BenchmarkEvidenceDependencyV2(
+                        dependency_id=item.dependency_id,
+                        depends_on=item.depends_on,
+                        description=item.description,
+                    )
+                    for item in gold.payload.dependencies
+                ),
+                negative_scope_object_ids=gold.payload.negative_scope_object_ids,
+                negative_rationale=gold.payload.negative_rationale,
+            )
+            resolved_cases[case.case_id] = BenchmarkCaseV2(
+                case_id=case.case_id,
+                case_revision_id=case.case_revision_id,
+                target_id=case.draft.target_id,
+                question=case.draft.question,
+                language=case.draft.language,
+                source_object_ids=case.draft.source_object_ids,
+                gold=benchmark_gold,
+            )
+
+        available_case_ids = tuple(sorted(resolved_cases))
+        selection_policy = "all" if case_ids is None else "explicit"
+        selected_case_ids = (
+            available_case_ids if case_ids is None else tuple(sorted(case_ids))
+        )
+        if not selected_case_ids:
+            raise FormalDatasetError("Native Benchmark must select at least one Case")
+        if len(selected_case_ids) != len(set(selected_case_ids)):
+            raise FormalDatasetError("Native Benchmark Case selection contains duplicates")
+        unknown = sorted(set(selected_case_ids).difference(available_case_ids))
+        if unknown:
+            raise FormalDatasetError(
+                f"Native Benchmark references unknown Cases: {unknown}"
+            )
+        selection_id = benchmark_case_selection_id(
+            selected_case_ids,
+            policy=selection_policy,
+            seed=seed,
+        )
+        if (
+            expected_case_selection_id is not None
+            and expected_case_selection_id != selection_id
+        ):
+            raise FormalDatasetError(
+                "Native Benchmark case selection ID does not match its inputs"
+            )
+        selected_cases = tuple(resolved_cases[item] for item in selected_case_ids)
+        snapshot_digest = native_benchmark_snapshot_digest(
+            release_id=release.release_id,
+            release_digest=release.release_digest,
+            validation_report_digest=release.validation_report_digest,
+            payload_snapshot_digest=release.payload_snapshot_digest,
+            dataset_id=release.dataset_id,
+            release_version=release.release_version,
+            source_identity=source_identity,
+            cases=selected_cases,
+            case_selection_policy=selection_policy,
+            case_selection_seed=seed,
+            case_selection_id=selection_id,
+        )
+        return NativeBenchmarkReleaseV2(
+            release_id=release.release_id,
+            release_digest=release.release_digest,
+            validation_report_digest=release.validation_report_digest,
+            payload_snapshot_digest=release.payload_snapshot_digest,
+            dataset_id=release.dataset_id,
+            release_version=release.release_version,
+            source_identity=source_identity,
+            original_docx_path=source_path.resolve(),
+            canonical_snapshot=canonical,
+            cases=selected_cases,
+            case_ids=selected_case_ids,
+            case_selection_policy=selection_policy,
+            case_selection_seed=seed,
+            case_selection_id=selection_id,
+            snapshot_digest=snapshot_digest,
+        )
+
+    @staticmethod
+    def _verify_release_case_and_gold_pins(
+        *,
+        release: DatasetRelease,
+        case_pin: ReleaseCasePin,
+        case: CaseRevision,
+        gold_pin: ReleaseGoldPin,
+        gold: GoldRevision,
+    ) -> None:
+        if (
+            case.lifecycle != LifecycleState.FROZEN
+            or case.case_id != case_pin.case_id
+            or case.case_revision_id != case_pin.case_revision_id
+            or case.draft.source_digest != case_pin.source_digest
+            or case.draft.canonical_contract_digest != case_pin.canonical_digest
+            or case.draft.source_digest != release.document.source_digest
+            or case.draft.canonical_contract_digest
+            != release.document.canonical_digest
+        ):
+            raise FormalDatasetError("released Case does not match its immutable pin")
+        if (
+            gold.lifecycle != LifecycleState.FROZEN
+            or gold.gold_id != gold_pin.gold_id
+            or gold.gold_revision_id != gold_pin.gold_revision_id
+            or gold.case_id != case.case_id
+            or gold.case_revision_id != case.case_revision_id
+            or gold.origin.kind.value != gold_pin.origin_kind
+            or gold.origin.configuration_digest
+            != gold_pin.origin_configuration_digest
+        ):
+            raise FormalDatasetError("released Gold does not match its immutable pin")
 
     @staticmethod
     def _payload_from_json(value: dict[str, object]) -> dict[str, object]:
@@ -1652,22 +2040,50 @@ class FormalDatasetReleaseService:
             return self._validate_payload_for_release(release, payload)
         raise LedgerError("immutable release payload is unavailable")
 
+    def _load_pinned_payload_snapshot(
+        self, release: DatasetRelease
+    ) -> dict[str, object]:
+        """Load only the immutable, Release-digested payload sidecar."""
+
+        snapshot = self.releases.payload_snapshots(release.release_id)
+        content_keys = {
+            "cases",
+            "gold",
+            "case_history",
+            "gold_history",
+            "reviews",
+            "approvals",
+            "adjudications",
+        }
+        expected_keys = content_keys | {
+            "release_id",
+            "release_digest",
+            "payload_snapshot_digest",
+        }
+        if set(snapshot) != expected_keys:
+            raise FormalDatasetError(
+                "release payload snapshot has an unexpected contract shape"
+            )
+        content = {key: snapshot[key] for key in sorted(content_keys)}
+        payload_digest = _canonical_digest(content)
+        if (
+            snapshot.get("release_id") != release.release_id
+            or snapshot.get("release_digest") != release.release_digest
+            or snapshot.get("payload_snapshot_digest") != payload_digest
+            or payload_digest != release.payload_snapshot_digest
+        ):
+            raise FormalDatasetError("release payload snapshot identity mismatch")
+        return self._validate_payload_for_release(
+            release, self._payload_from_json(snapshot)
+        )
+
     def _load_release_payload(self, release: DatasetRelease) -> dict[str, object]:
         """Load release content without making the authoring workspace a dependency."""
 
         try:
-            snapshot = self.releases.payload_snapshots(release.release_id)
+            return self._load_pinned_payload_snapshot(release)
         except FileNotFoundError:
-            snapshot = None
-        if snapshot is not None:
-            if (
-                snapshot.get("release_id") != release.release_id
-                or snapshot.get("release_digest") != release.release_digest
-            ):
-                raise FormalDatasetError("release payload snapshot identity mismatch")
-            return self._validate_payload_for_release(
-                release, self._payload_from_json(snapshot)
-            )
+            pass
         try:
             return self._payload_from_ledger(release)
         except (LedgerError, FileNotFoundError, OSError, ValueError) as ledger_error:
@@ -2532,7 +2948,7 @@ class FormalDatasetReleaseService:
             reason=None if reproducible else "pinned input checksum, revision, or validation state changed",
         )
 
-    def _build_release(self, dataset: AuthoringDataset, marker: AuthoringRelease, report: ValidationReport, *, display_name: str, release_version: str, actor: str, parent_release_id: str | None, projection: ReleaseBundleProjection) -> DatasetRelease:
+    def _build_release(self, dataset: AuthoringDataset, marker: AuthoringRelease, report: ValidationReport, *, display_name: str, release_version: str, actor: str, parent_release_id: str | None, projection: ReleaseBundleProjection, payload_snapshot_digest: str) -> DatasetRelease:
         document = self.ledger.document_history(dataset.authoring_dataset_id)[-1]
         cases = tuple(self.ledger.get_case_revision(dataset.authoring_dataset_id, item) for item in marker.case_revision_ids)
         gold = tuple(self.ledger.get_gold_revision(dataset.authoring_dataset_id, item) for item in marker.gold_revision_ids)
@@ -2601,6 +3017,7 @@ class FormalDatasetReleaseService:
             cases=case_pins,
             gold=gold_pins,
             validation_report_digest=report.report_digest,
+            payload_snapshot_digest=payload_snapshot_digest,
             schema_versions=ReleaseSchemaVersions(),
             ledger_state=ReleaseLedgerState(ledger_selection_digest=_canonical_digest(selection), source_event_ids=tuple(sorted(events)), authoring_freeze_id=marker.ledger_release_id),
             reviews=tuple(sorted(reviews, key=lambda item: item.review_id)),
