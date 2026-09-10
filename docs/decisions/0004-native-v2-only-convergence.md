@@ -163,8 +163,10 @@ conformance gates. The maintained tests protect:
 
 The CI baseline pins exact collection plus named critical nodes, and rejects
 unlisted test removal. Adapter suites validate Direct Worker 2.0 and the shared
-observation TCK. Schema export, package installation, model-free Worker
-lifecycle and Node 22 WebUI checks are also required.
+observation TCK. Schema export, package installation and model-free Worker
+lifecycle checks are also required. The maintained implementation baseline is
+Python 3.11.15 and Node 24.12.0; additional runtime versions are not an implied
+compatibility commitment.
 
 ## Consequences
 

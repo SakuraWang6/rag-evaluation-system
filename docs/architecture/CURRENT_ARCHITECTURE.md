@@ -61,6 +61,14 @@ invalid cutoff ordering, modified Release material or a non-native execution
 declaration fail before a RunRecord is created. A native depth below five is
 legal; metrics requiring an unproved Top-5 become `UNAVAILABLE`.
 
+## Offline publication package
+
+Bundle 3 is retained only as a private, content-addressed offline package for
+transporting and verifying an already frozen Release, Canonical snapshot and
+Gold. It has no runtime manifest, runtime question export or runtime loader.
+Admission, execution, public schemas and Run summaries do not import or refer
+to Bundle 3; a formal Run always resolves the immutable Release directly.
+
 ## Worker execution
 
 The Platform invokes an isolated Worker through one direct protocol:
@@ -125,13 +133,15 @@ Artifact variant, result endpoint or WebUI component.
 
 The required CI workflow proves:
 
-- exact Platform collection and Native v2 invariants on Python 3.12.12;
-- Platform compatibility on Python 3.11 and 3.13;
+- exact Platform collection and Native v2 invariants on Python 3.11.15;
 - shared and implementation-specific Adapter conformance;
 - checked-in Schema 2.0 equality;
 - package build and clean installation;
 - model-free LightRAG and RAG-Anything Worker lifecycle;
-- persisted-only WebUI tests and production build on Node 22.
+- persisted-only WebUI tests and production build on Node 24.12.0.
+
+These are the maintained local/CI baselines, not an implicit compatibility
+promise for additional Python or Node releases.
 
 The [architecture index](README.md) links each contract that defines these
 boundaries.

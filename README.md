@@ -7,6 +7,7 @@ The only supported evaluation chain is:
 
 ```text
 Original DOCX
+  -> immutable Benchmark Release
   -> RAG-native parse / chunk / index / retrieve / rank / context / answer
   -> AdapterRunResultV2 / UnifiedTrace
   -> Unified Evaluation
@@ -38,8 +39,15 @@ pinned repositories and Worker images independently of this repository.
 
 ## Required checks
 
-The required workflow tests Platform on Python 3.11, 3.12.12 and 3.13,
+The maintained local baseline is Python 3.11.15 from the Conda environment
+`lightrag-memory-eval` and Node 24.12.0 selected through NVM. The required
+workflow pins those exact language-runtime versions and tests Platform,
 Adapter conformance, Schema 2.0 export, package installation, both model-free
-Worker lifecycles, Ruff differential policy, and the WebUI on Node 22.
+Worker lifecycles, Ruff differential policy, and the WebUI.
+
+```bash
+conda activate lightrag-memory-eval
+nvm use 24.12.0
+```
 
 Start with the [operator quick start](platform/docs/QUICK_START.md).

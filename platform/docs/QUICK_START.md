@@ -5,8 +5,13 @@
 Install the Platform and WebUI dependencies. From `platform/`, run:
 
 ```bash
+conda activate lightrag-memory-eval
+nvm use 24.12.0
 ./scripts/start-local.sh
 ```
+
+The maintained local baseline is Python 3.11.15 in that Conda environment and
+Node 24.12.0 through NVM.
 
 Open `http://127.0.0.1:4178`. The API defaults to
 `http://127.0.0.1:8765/api/v1`.

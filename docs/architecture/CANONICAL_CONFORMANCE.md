@@ -91,10 +91,10 @@ sufficiency and minimality. Unresolved review cannot be frozen into a Release.
 
 ## Runtime boundary
 
-The formal runtime projection contains the Original DOCX required by the RAG
-and observer-only Canonical material required to prove provenance. Canonical
-content is not inserted as a second corpus and does not control native
-chunking.
+The immutable Release resolves directly to the Original DOCX required by the
+RAG and observer-only Canonical material required to prove provenance. There
+is no executable runtime-bundle projection. Canonical content is not inserted
+as a second corpus and does not control native chunking.
 
 The [Benchmark Authoring Guide](../../platform/docs/BENCHMARK_AUTHORING.md)
 describes source admission, review, held-out isolation and blind operation.
