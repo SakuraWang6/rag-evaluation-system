@@ -4,26 +4,23 @@ import json
 import sys
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
-from rag_eval.api import create_app
 from rag_eval.contracts.run import ExperimentSpec
-from rag_eval.datasets.bundle import case_selection_id
 from rag_eval.jobs import JobStatus, JobStore
 from rag_eval.runs.plans import ResolvedRunPlanReferenceV2
-from rag_eval.service import PlatformService
-from rag_eval.storage.layout import PlatformPaths
 from rag_eval.systems import SystemRegistration
-from tests.rag_eval_platform.test_bundle_store import write_bundle
+from tests.rag_eval_platform.test_native_formal_cutover import (
+    _native_product_service,
+    _preview_native_experiment,
+)
 
 
-def experiment(bundle_id: str) -> ExperimentSpec:
+def experiment(release_id: str) -> ExperimentSpec:
     return ExperimentSpec(
         experiment_id="experiment-1",
-        bundle_id=bundle_id,
+        dataset_release_id=release_id,
         system_id="fake-rag",
         adapter_id="fake",
-        case_selection_id=case_selection_id(["case-1"], policy="all", seed=0),
+        case_selection_id="selection",
     )
 
 
@@ -34,14 +31,14 @@ def test_job_state_machine_cancel_and_restart_recovery(tmp_path: Path) -> None:
         digest="sha256:" + "a" * 64,
     )
     queued = store.create(
-        experiment("bundle"),
+        experiment("release"),
         resolved_plan=reference,
         execution_provider="local",
     )
     assert store.request_cancel(queued.job_id).status == JobStatus.CANCELLED
 
     active = store.create(
-        experiment("bundle").model_copy(update={"experiment_id": "experiment-2"}),
+        experiment("release").model_copy(update={"experiment_id": "experiment-2"}),
         resolved_plan=reference.model_copy(
             update={"path": "resolved-run-plans/experiment-2.json"}
         ),
@@ -55,12 +52,10 @@ def test_job_state_machine_cancel_and_restart_recovery(tmp_path: Path) -> None:
     assert "restarted" in (recovered[0].error or "")
 
 
-def test_api_keeps_system_registration_local_and_legacy_out(tmp_path: Path) -> None:
-    source = tmp_path / "bundle"
-    source.mkdir()
-    write_bundle(source)
-    service = PlatformService(PlatformPaths(tmp_path / "platform"))
-    bundle = service.datasets.register(source)
+def test_api_keeps_system_registration_local_and_retired_routes_out(
+    tmp_path: Path,
+) -> None:
+    service, client, release_id = _native_product_service(tmp_path)
     service.systems.register(
         SystemRegistration(
             system_id="fake-rag",
@@ -70,8 +65,6 @@ def test_api_keeps_system_registration_local_and_legacy_out(tmp_path: Path) -> N
             environment={"SECRET_TOKEN": "must-not-be-returned"},
         )
     )
-    client = TestClient(create_app(service, start_supervisor=False))
-
     preflight = client.options(
         "/api/v1/health",
         headers={
@@ -88,7 +81,12 @@ def test_api_keeps_system_registration_local_and_legacy_out(tmp_path: Path) -> N
     assert "must-not-be-returned" not in str(systems)
     assert client.post("/api/v1/systems", json={}).status_code == 405
 
-    spec = experiment(bundle.bundle_id)
+    spec = _preview_native_experiment(client, release_id).model_copy(
+        update={
+            "experiment_id": "missing-release",
+            "dataset_release_id": release_id + "-missing",
+        }
+    )
     created = client.post(
         "/api/v1/experiments", json=spec.model_dump(mode="json")
     )
@@ -96,6 +94,7 @@ def test_api_keeps_system_registration_local_and_legacy_out(tmp_path: Path) -> N
     assert "Benchmark Release" in created.text
     assert service.experiments.list() == []
     assert service.jobs.list() == []
+    assert client.get("/api/v1/datasets").status_code == 404
 
     liveness_dir = service.paths.runs / "native-active" / "work" / "rep-0001"
     liveness_dir.mkdir(parents=True)

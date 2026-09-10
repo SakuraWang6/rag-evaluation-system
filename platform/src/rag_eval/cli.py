@@ -36,9 +36,6 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("init")
 
-    dataset = subparsers.add_parser("register-dataset")
-    dataset.add_argument("path", type=Path)
-
     system = subparsers.add_parser("register-system")
     system.add_argument("system_id")
     system.add_argument("adapter_id")
@@ -100,8 +97,6 @@ def main(argv: list[str] | None = None) -> int:
     service = PlatformService(paths)
     if args.command == "init":
         print(paths.home)
-    elif args.command == "register-dataset":
-        print(service.datasets.register(args.path).bundle_id)
     elif args.command == "register-system":
         environment = json.loads(args.environment_json)
         registration = SystemRegistration(
@@ -129,16 +124,11 @@ def main(argv: list[str] | None = None) -> int:
         print(service.systems.register(registration))
     elif args.command == "create-experiment":
         experiment = ExperimentSpec.model_validate_json(args.spec.read_text(encoding="utf-8"))
-        service.admit_new_public_experiment(
-            experiment, service.datasets.get(experiment.bundle_id)
-        )
+        service.admit_new_public_experiment(experiment)
         print(service.experiments.create(experiment))
     elif args.command == "run":
         experiment = service.experiments.get(args.experiment_id)
-        job = service.queue_new_public_experiment(
-            experiment,
-            service.datasets.get(experiment.bundle_id),
-        )
+        job = service.queue_new_public_experiment(experiment)
         service.supervisor.run_once()
         print(service.jobs.get(job.job_id).model_dump_json(indent=2))
     elif args.command == "compare":

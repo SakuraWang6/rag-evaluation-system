@@ -1,8 +1,8 @@
 """The Platform's single formal Dataset validator and immutable release lineage.
 
 This contract sits above the versioned Canonical Data Model and the append-only
-Authoring Ledger. Runtime projection stages exactly one release-pinned original
-DOCX plus its Platform-owned benchmark and canonical sidecars.
+Authoring Ledger. Native execution resolves exactly one release-pinned original
+DOCX plus its Platform-owned Benchmark and Canonical snapshots.
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import shutil
 import zipfile
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -28,7 +27,6 @@ from rag_eval.authoring.ledger import (
     AuthoringLedger,
     AuthoringOrigin,
     AuthoringRelease,
-    BundleV2Projection,
     CaseRevision,
     EvidenceRole,
     GoldRevision,
@@ -49,6 +47,7 @@ from rag_eval.contracts.benchmark import (
     BenchmarkSourceIdentityV2,
     NativeBenchmarkReleaseV2,
     benchmark_case_selection_id,
+    native_canonical_catalog_bytes,
     native_benchmark_snapshot_digest,
 )
 from rag_eval.contracts.canonical import (
@@ -62,12 +61,11 @@ from rag_eval.contracts.canonical import (
     CanonicalRelation,
     RepresentationStatus,
 )
-from rag_eval.datasets.bundle import DatasetBundle, DatasetBundleStore
 from rag_eval.storage.atomic import atomic_write_bytes, atomic_write_json
 from rag_eval.storage.ids import safe_id
 
 
-FORMAL_VALIDATOR_VERSION = "formal-dataset-validator/1.0"
+FORMAL_VALIDATOR_VERSION = "formal-dataset-validator/2.0"
 FORMAL_REPORT_SCHEMA_VERSION = "formal-validation-report/1.0"
 FORMAL_RELEASE_SCHEMA_VERSION = "formal-dataset-release/2.0"
 FORMAL_READ_MODEL_SCHEMA_VERSION = "formal-release-read-model/1"
@@ -92,12 +90,6 @@ class RuleResult(StrEnum):
     PASS = "PASS"
     FAIL = "FAIL"
     NOT_APPLICABLE = "NOT_APPLICABLE"
-
-
-class BundleProjectionStatus(StrEnum):
-    NO_BUNDLE = "no_bundle"
-    LOSSLESS_RUNNABLE = "lossless_runnable"
-    LOSSY_NON_RUNNABLE = "lossy_non_runnable"
 
 
 def _canonical_digest(value: object) -> str:
@@ -284,22 +276,6 @@ class ReleaseLedgerState(FormalModel):
     authoring_freeze_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
 
 
-class ReleaseBundleProjection(FormalModel):
-    status: BundleProjectionStatus
-    bundle_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    projections: tuple[BundleV2Projection, ...]
-
-    @model_validator(mode="after")
-    def _prevent_false_bundle_claim(self) -> "ReleaseBundleProjection":
-        if self.status == BundleProjectionStatus.LOSSY_NON_RUNNABLE and self.bundle_id is not None:
-            raise ValueError("a lossy/non-runnable formal release cannot claim a Bundle 2.0 ID")
-        if self.status == BundleProjectionStatus.LOSSLESS_RUNNABLE and self.bundle_id is None:
-            raise ValueError("a runnable Bundle projection requires a Bundle ID")
-        if self.status == BundleProjectionStatus.NO_BUNDLE and self.bundle_id is not None:
-            raise ValueError("no_bundle projection cannot carry a Bundle ID")
-        return self
-
-
 class DatasetRelease(FormalModel):
     schema_version: Literal[FORMAL_RELEASE_SCHEMA_VERSION] = FORMAL_RELEASE_SCHEMA_VERSION
     release_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
@@ -320,7 +296,6 @@ class DatasetRelease(FormalModel):
     reviews: tuple[ReleaseReviewPin, ...]
     approvals: tuple[ReleaseApprovalPin, ...] = Field(min_length=1)
     origins: tuple[ReleaseOriginPin, ...]
-    bundle_projection: ReleaseBundleProjection
     created_by: str = Field(min_length=1)
     created_at: datetime
     release_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -894,8 +869,6 @@ class FormalDatasetValidator:
         findings.append(self._leakage(cases, gold))
         findings.append(self._ambiguity(gold))
         findings.append(self._review_approval(ledger, dataset.authoring_dataset_id, cases, gold))
-        findings.append(self._bundle_projection(gold))
-
         digests = self._input_digests(dataset, ledger, document_revision, cases, gold, canonical)
         return ValidationReport.build(
             dataset_id=dataset.authoring_dataset_id,
@@ -1269,13 +1242,6 @@ class FormalDatasetValidator:
                 errors.append(f"{self._revision_id(item)} has no review in its revision lineage")
         return self._fail_or_pass("ledger.review_approval_integrity", RuleSeverity.ERROR, errors, "Every released Case and Gold has independent review and approval lineage")
 
-    def _bundle_projection(self, gold: list[GoldRevision]) -> ValidationFinding:
-        projections = [AuthoringLedger.assess_bundle_v2(item) for item in gold]
-        reasons = sorted({reason for item in projections for reason in item.reasons})
-        if reasons:
-            return self._fail("bundle_v2.projection_lossiness", RuleSeverity.WARN, "Bundle 2.0 is lossy/non-runnable for this formal Gold selection", affected=tuple(reasons))
-        return self._pass("bundle_v2.projection_lossiness", RuleSeverity.INFO, "Bundle 2.0 projection is lossless for this selection")
-
     def _input_digests(self, dataset: AuthoringDataset, ledger: AuthoringLedger, document_revision, cases: list[CaseRevision], gold: list[GoldRevision], canonical: CanonicalDocument | None) -> tuple[InputDigest, ...]:
         lineage_ids = {
             *(revision.case_revision_id for item in cases for revision in ledger.case_history(dataset.authoring_dataset_id, item.case_id)),
@@ -1383,7 +1349,6 @@ class FormalDatasetReleaseService:
         actor: str,
         display_name: str | None = None,
         parent_release_id: str | None = None,
-        bundle_id: str | None = None,
     ) -> DatasetRelease:
         if not release_version.strip() or not actor.strip() or not case_ids:
             raise FormalDatasetError("release version, actor, and at least one Case are required")
@@ -1423,9 +1388,6 @@ class FormalDatasetReleaseService:
         self.releases.reports.put(report)
         if report.has_errors:
             raise FormalDatasetError(f"formal validation failed after freeze; report={report.report_digest}")
-        projection = self._bundle_projection(freeze_marker.bundle_v2_projection, bundle_id)
-        if projection.status == BundleProjectionStatus.LOSSY_NON_RUNNABLE and bundle_id is not None:
-            raise FormalDatasetError("lossy/non-runnable Gold cannot claim a formal Bundle 2.0 release")
         frozen_cases = tuple(
             self.ledger.get_case_revision(dataset_id, item)
             for item in freeze_marker.case_revision_ids
@@ -1483,7 +1445,6 @@ class FormalDatasetReleaseService:
             release_version=release_version.strip(),
             actor=actor.strip(),
             parent_release_id=parent_release_id,
-            projection=projection,
             payload_snapshot_digest=payload_snapshot_digest,
         )
         canonical = self.validator._load_canonical_document(dataset, self.authoring_store)
@@ -1627,6 +1588,9 @@ class FormalDatasetReleaseService:
             source_sha256=release.document.source_digest,
             canonical_schema_version=manifest.schema_version,
             canonical_digest=manifest.canonical_digest,
+            canonical_catalog_sha256=hashlib.sha256(
+                native_canonical_catalog_bytes(canonical)
+            ).hexdigest(),
             parser_identity=manifest.parser_identity,
             canonicalizer_identity=manifest.canonicalizer_identity,
             configuration_digest=manifest.configuration_digest,
@@ -1884,19 +1848,6 @@ class FormalDatasetReleaseService:
             "adjudications": adjudications,
         }
 
-    @staticmethod
-    def _read_jsonl(path: Path) -> list[dict[str, object]]:
-        if not path.is_file():
-            return []
-        values: list[dict[str, object]] = []
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            value = json.loads(line)
-            if isinstance(value, dict):
-                values.append(value)
-        return values
-
     def _validate_payload_for_release(
         self, release: DatasetRelease, payload: dict[str, object]
     ) -> dict[str, object]:
@@ -1920,125 +1871,6 @@ class FormalDatasetReleaseService:
                 f" (missing cases={missing_cases}, gold={missing_gold})"
             )
         return payload
-
-    def _payload_from_ledger(self, release: DatasetRelease) -> dict[str, object]:
-        """Read a release payload from the editable ledger when it is available."""
-
-        cases = tuple(
-            self.ledger.get_case_revision(release.dataset_id, item.case_revision_id)
-            for item in release.cases
-        )
-        gold = tuple(
-            self.ledger.get_gold_revision(release.dataset_id, item.gold_revision_id)
-            for item in release.gold
-        )
-        case_history = {
-            item.case_id: tuple(self.ledger.case_history(release.dataset_id, item.case_id))
-            for item in cases
-        }
-        gold_history = {
-            item.gold_id: tuple(self.ledger.gold_history(release.dataset_id, item.gold_id))
-            for item in gold
-        }
-        lineage_ids = {item.case_revision_id for item in cases} | {
-            item.gold_revision_id for item in gold
-        }
-        for history in case_history.values():
-            lineage_ids.update(item.case_revision_id for item in history)
-        for history in gold_history.values():
-            lineage_ids.update(item.gold_revision_id for item in history)
-        payload = {
-            "cases": {item.case_revision_id: item for item in cases},
-            "gold": {item.gold_revision_id: item for item in gold},
-            "case_history": case_history,
-            "gold_history": gold_history,
-            "reviews": tuple(
-                item
-                for item in self.ledger.list_reviews(release.dataset_id)
-                if item.reviewed_revision_id in lineage_ids
-            ),
-            "approvals": tuple(
-                item
-                for item in self.ledger.list_approvals(release.dataset_id)
-                if item.approved_revision_id in lineage_ids
-            ),
-            "adjudications": tuple(
-                item
-                for item in self.ledger.list_adjudications(release.dataset_id)
-                if item.target_revision_id in lineage_ids
-            ),
-        }
-        return self._validate_payload_for_release(release, payload)
-
-    def _payload_from_legacy_bundle(self, release: DatasetRelease) -> dict[str, object]:
-        """Recover old releases whose authoring workspace was not snapshotted.
-
-        Bundle V3 private lineage artifacts contain the full frozen Case/Gold
-        records.  They are used only as a read-only migration fallback for
-        releases created before payload sidecars were introduced.
-        """
-
-        bundle_root = self.authoring_store.root.parent.parent / "dataset-bundles-v3"
-        if not bundle_root.is_dir():
-            raise LedgerError("immutable release payload is unavailable")
-        for private in sorted(bundle_root.glob("*/private")):
-            lineage_release = next(
-                (
-                    item
-                    for item in self._read_jsonl(private / "lineage" / "releases.jsonl")
-                    if item.get("release_id") == release.release_id
-                    and item.get("release_digest") == release.release_digest
-                ),
-                None,
-            )
-            if lineage_release is None:
-                continue
-            case_records = self._read_jsonl(private / "cases.jsonl")
-            gold_records = self._read_jsonl(private / "gold.jsonl")
-            case_by_revision = {
-                item["case_revision_id"]: item
-                for record in case_records
-                if isinstance(item := record.get("case"), dict)
-                and isinstance(item.get("case_revision_id"), str)
-            }
-            gold_by_revision = {
-                item["gold_revision_id"]: item
-                for record in gold_records
-                if isinstance(item := record.get("gold"), dict)
-                and isinstance(item.get("gold_revision_id"), str)
-            }
-            selected_cases = [
-                case_by_revision[item.case_revision_id]
-                for item in release.cases
-                if item.case_revision_id in case_by_revision
-            ]
-            selected_gold = [
-                gold_by_revision[item.gold_revision_id]
-                for item in release.gold
-                if item.gold_revision_id in gold_by_revision
-            ]
-            payload = self._payload_from_json(
-                {
-                    "cases": selected_cases,
-                    "gold": selected_gold,
-                    # Bundle V3 stores the frozen projection, not every prior
-                    # editable revision.  A one-item history is still enough
-                    # to render immutable release lineage correctly.
-                    "case_history": {
-                        item["case_id"]: [item] for item in selected_cases
-                    },
-                    "gold_history": {
-                        item["gold_id"]: [item] for item in selected_gold
-                    },
-                    "reviews": self._read_jsonl(private / "lineage" / "reviews.jsonl"),
-                    "approvals": self._read_jsonl(private / "lineage" / "approvals.jsonl"),
-                    "adjudications": self._read_jsonl(
-                        private / "lineage" / "adjudications.jsonl"
-                    ),
-                }
-            )
-            return self._validate_payload_for_release(release, payload)
-        raise LedgerError("immutable release payload is unavailable")
 
     def _load_pinned_payload_snapshot(
         self, release: DatasetRelease
@@ -2077,276 +1909,6 @@ class FormalDatasetReleaseService:
             release, self._payload_from_json(snapshot)
         )
 
-    def _load_release_payload(self, release: DatasetRelease) -> dict[str, object]:
-        """Load release content without making the authoring workspace a dependency."""
-
-        try:
-            return self._load_pinned_payload_snapshot(release)
-        except FileNotFoundError:
-            pass
-        try:
-            return self._payload_from_ledger(release)
-        except (LedgerError, FileNotFoundError, OSError, ValueError) as ledger_error:
-            try:
-                return self._payload_from_legacy_bundle(release)
-            except (LedgerError, FileNotFoundError, OSError, ValueError) as bundle_error:
-                raise FormalDatasetError(
-                    "immutable release payload is unavailable"
-                    f" (ledger: {ledger_error}; bundle: {bundle_error})"
-                ) from bundle_error
-
-    def materialize_runtime_bundle(
-        self, release_id: str, bundles: DatasetBundleStore
-    ) -> DatasetBundle:
-        """Build a read-only Bundle 2.0 execution projection from a Release.
-
-        The selected formal release remains the only Dataset authority.  This
-        writes a deterministic, content-addressed runtime input beside normal
-        Bundles.  Legacy Bundle 2.0 representability is recorded separately:
-        this projection retains formal MSES alternatives rather than silently
-        flattening them into the legacy ``required_groups`` shape.
-        """
-
-        release = self.releases.get(release_id)
-        if not release.bundle_projection.projections:
-            raise FormalDatasetError("formal Dataset Release has no runtime projection assessment")
-
-        canonical = self.releases.canonical_snapshot(release.release_id)
-        objects = {item.object_id: item for item in canonical.objects}
-        payload = self._load_release_payload(release)
-        case_revisions = payload["cases"]
-        gold_revisions = payload["gold"]
-        assert isinstance(case_revisions, dict)
-        assert isinstance(gold_revisions, dict)
-        source = self.releases.source_snapshot(release.release_id)
-        if hashlib.sha256(source.read_bytes()).hexdigest() != release.document.source_digest:
-            raise FormalDatasetError("formal release source snapshot digest does not match its pin")
-
-        staging = bundles.root / f".formal-runtime-{safe_id(release.release_id)}"
-        shutil.rmtree(staging, ignore_errors=True)
-        documents = staging / "documents"
-        canonical_root = staging / "canonical"
-        documents.mkdir(parents=True)
-        canonical_root.mkdir()
-        try:
-            source_name = f"{release.document.document_id}.docx"
-            destination_source = documents / source_name
-            shutil.copyfile(source, destination_source)
-            canonical_records = [self._runtime_canonical_record(item) for item in canonical.objects]
-            canonical_catalog = "".join(
-                json.dumps(
-                    item,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                + "\n"
-                for item in canonical_records
-            )
-            (canonical_root / "evidence.jsonl").write_text(
-                canonical_catalog,
-                encoding="utf-8",
-            )
-            canonical_catalog_sha256 = hashlib.sha256(
-                canonical_catalog.encode("utf-8")
-            ).hexdigest()
-
-            questions: list[dict[str, object]] = []
-            answers: list[dict[str, object]] = []
-            evidence_sets: list[dict[str, object]] = []
-            gold_by_case = {item.case_id: item for item in release.gold}
-            for case_pin in release.cases:
-                case = case_revisions[case_pin.case_revision_id]
-                gold_pin = gold_by_case[case.case_id]
-                gold = gold_revisions[gold_pin.gold_revision_id]
-                answer_id = f"answer-{case.case_id}"
-                evidence_set_id = f"evidence-set-{case.case_id}"
-                questions.append(
-                    {
-                        "case_id": case.case_id,
-                        "question": case.draft.question,
-                        "gold_answer_id": answer_id,
-                        "gold_evidence_set_id": evidence_set_id,
-                        "tags": [case.draft.target_id],
-                        "metadata": {
-                            "dataset_release_id": release.release_id,
-                            "case_revision_id": case.case_revision_id,
-                            "gold_revision_id": gold.gold_revision_id,
-                        },
-                    }
-                )
-                answer = gold.payload.answer
-                answers.append(
-                    {
-                        "gold_answer_id": answer_id,
-                        "kind": answer.kind,
-                        "canonical": list(answer.canonical)
-                        if isinstance(answer.canonical, tuple)
-                        else answer.canonical,
-                        "accepted_values": list(answer.accepted_values),
-                        "locale": answer.locale,
-                        "unit": answer.unit,
-                        "tolerance": answer.tolerance,
-                    }
-                )
-                evidence_sets.append(
-                    self._runtime_evidence_set(
-                        case_id=case.case_id,
-                        gold=gold,
-                        objects=objects,
-                        source_sha256=release.document.source_digest,
-                        canonical_catalog_sha256=canonical_catalog_sha256,
-                    )
-                )
-
-            manifest = {
-                "schema_version": 2,
-                "name": f"formal-{release.dataset_id}",
-                "version": release.release_version,
-                "created_at": release.created_at.isoformat(),
-                "documents": [
-                    {
-                        "document_id": release.document.document_id,
-                        "path": f"documents/{source_name}",
-                        "canonical_path": "canonical/evidence.jsonl",
-                        "sha256": release.document.source_digest,
-                        "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        "metadata": {"execution_view": "native-document/v2"},
-                    }
-                ],
-                "metadata": {
-                    "validation_profile": "formal",
-                    "formal_runtime_projection": {
-                        "release_id": release.release_id,
-                        "release_digest": release.release_digest,
-                        "validation_report_digest": release.validation_report_digest,
-                        "projection_version": "4",
-                        # The original DOCX is the only ingestion input.  The
-                        # canonical catalog remains an adjacent Platform-owned
-                        # coordinate/proof artifact, never a replacement corpus.
-                        "execution_contract": "native-document/v2",
-                        "evidence_semantics": "OR(paths) of AND(clauses) of OR(evidence alternatives)",
-                    },
-                },
-            }
-            atomic_write_json(staging / "manifest.json", manifest)
-            (staging / "questions.jsonl").write_text(self._runtime_json_lines(questions), encoding="utf-8")
-            (staging / "gold_answers.jsonl").write_text(self._runtime_json_lines(answers), encoding="utf-8")
-            (staging / "gold_evidence.jsonl").write_text(self._runtime_json_lines(evidence_sets), encoding="utf-8")
-            return bundles.register(staging)
-        finally:
-            shutil.rmtree(staging, ignore_errors=True)
-
-    @staticmethod
-    def _runtime_json_lines(values: list[dict[str, object]]) -> str:
-        return "".join(
-            json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str) + "\n"
-            for item in values
-        )
-
-    @staticmethod
-    def _runtime_canonical_record(item: CanonicalObject) -> dict[str, object]:
-        """Keep the full canonical object plus top-level locator witness keys."""
-
-        record = item.model_dump(mode="json")
-        attributes = record.pop("attributes", {})
-        if isinstance(attributes, dict):
-            for key in ("table_id", "row", "column", "page", "x0", "y0", "x1", "y1"):
-                if key in attributes:
-                    record[key] = attributes[key]
-        if isinstance(record.get("canonical_value"), str):
-            record["canonical_value"] = FormalDatasetReleaseService._runtime_witness_value(record["canonical_value"])
-        return record
-
-    @staticmethod
-    def _runtime_witness_value(value: str) -> str:
-        """Use one-line JSON witnesses without changing text-match semantics."""
-
-        return " ".join(value.split())
-
-    @staticmethod
-    def _runtime_locator(item: CanonicalObject) -> dict[str, object]:
-        attributes = item.attributes
-        if item.object_type.value == "cell":
-            missing = [key for key in ("table_id", "row", "column") if key not in attributes]
-            if missing:
-                raise FormalDatasetError(
-                    f"canonical cell {item.object_id} lacks runtime locator fields: {', '.join(missing)}"
-                )
-            return {
-                "type": "table_cell",
-                "table_id": attributes["table_id"],
-                "row": attributes["row"],
-                "column": attributes["column"],
-            }
-        return {"type": "object", "object_type": item.object_type.value, "object_id": item.object_id}
-
-    def _runtime_evidence_set(
-        self,
-        *,
-        case_id: str,
-        gold: GoldRevision,
-        objects: dict[str, CanonicalObject],
-        source_sha256: str,
-        canonical_catalog_sha256: str,
-    ) -> dict[str, object]:
-        values: list[dict[str, object]] = []
-        rendered: dict[str, str] = {}
-
-        def append_evidence(evidence_id: str, object_id: str) -> str:
-            canonical = objects.get(object_id)
-            if canonical is None or canonical.canonical_value is None:
-                raise FormalDatasetError(
-                    f"released evidence {evidence_id} has no complete canonical witness"
-                )
-            runtime_id = f"evidence-{case_id}-{evidence_id}"
-            if runtime_id not in rendered:
-                values.append(
-                    {
-                        "evidence_id": runtime_id,
-                        "document_id": canonical.document_id,
-                        "locator": self._runtime_locator(canonical),
-                        "canonical_object_id": canonical.object_id,
-                        "canonical_value": self._runtime_witness_value(canonical.canonical_value),
-                        "quote_anchor": None,
-                    }
-                )
-                rendered[runtime_id] = runtime_id
-            return runtime_id
-
-        if gold.payload.answer.kind == "abstain":
-            object_id = gold.payload.negative_scope_object_ids[0]
-            required_groups = [[append_evidence("negative-scope", object_id)]]
-            mses_paths = None
-        else:
-            object_by_evidence = {item.evidence_id: item.canonical_object_id for item in gold.payload.evidence}
-            # Retain all evidence roles in the immutable runtime package; only
-            # REQUIRED evidence participates in the MSES score below.
-            for item in gold.payload.evidence:
-                append_evidence(item.evidence_id, item.canonical_object_id)
-            mses_paths = [
-                [
-                    [append_evidence(evidence_id, object_by_evidence[evidence_id]) for evidence_id in clause.alternatives]
-                    for clause in path.clauses
-                ]
-                for path in gold.payload.mses_paths
-            ]
-            required_groups = mses_paths[0]
-        return {
-            "gold_evidence_set_id": f"evidence-set-{case_id}",
-            "evidence": values,
-            "required_groups": required_groups,
-            "source_identities": [
-                {
-                    "document_id": next(iter(objects.values())).document_id,
-                    "source_sha256": source_sha256,
-                    "source_coordinate_schema": "ooxml-structural-v1",
-                    "canonical_catalog_sha256": canonical_catalog_sha256,
-                }
-            ],
-            **({} if mses_paths is None else {"mses_paths": mses_paths}),
-        }
-
     def _build_content_from_snapshot(self, release: DatasetRelease) -> FormalReleaseContent:
         """Join pinned Case/Gold revisions with Canonical evidence.
 
@@ -2362,7 +1924,7 @@ class FormalDatasetReleaseService:
             for item in canonical.relations
             if item.source_object_id in objects and item.target_object_id in objects
         )
-        payload = self._load_release_payload(release)
+        payload = self._load_pinned_payload_snapshot(release)
         case_revisions = payload["cases"]
         gold_revisions = payload["gold"]
         case_histories = payload["case_history"]
@@ -2537,7 +2099,7 @@ class FormalDatasetReleaseService:
     def content(self, release_id: str) -> FormalReleaseContent:
         """Return a complete local inspection view without parsing Canonical JSON.
 
-        Compatibility callers may still ask for all Cases at once.  The data is
+        The product reader may ask for all Cases at once.  The data is
         assembled from the per-Case read models, never from the full snapshot.
         """
 
@@ -2948,7 +2510,7 @@ class FormalDatasetReleaseService:
             reason=None if reproducible else "pinned input checksum, revision, or validation state changed",
         )
 
-    def _build_release(self, dataset: AuthoringDataset, marker: AuthoringRelease, report: ValidationReport, *, display_name: str, release_version: str, actor: str, parent_release_id: str | None, projection: ReleaseBundleProjection, payload_snapshot_digest: str) -> DatasetRelease:
+    def _build_release(self, dataset: AuthoringDataset, marker: AuthoringRelease, report: ValidationReport, *, display_name: str, release_version: str, actor: str, parent_release_id: str | None, payload_snapshot_digest: str) -> DatasetRelease:
         document = self.ledger.document_history(dataset.authoring_dataset_id)[-1]
         cases = tuple(self.ledger.get_case_revision(dataset.authoring_dataset_id, item) for item in marker.case_revision_ids)
         gold = tuple(self.ledger.get_gold_revision(dataset.authoring_dataset_id, item) for item in marker.gold_revision_ids)
@@ -3023,7 +2585,6 @@ class FormalDatasetReleaseService:
             reviews=tuple(sorted(reviews, key=lambda item: item.review_id)),
             approvals=tuple(sorted(approvals, key=lambda item: item.approval_id)),
             origins=origins,
-            bundle_projection=projection,
             created_by=actor,
             created_at=datetime.now(UTC),
         )
@@ -3039,14 +2600,6 @@ class FormalDatasetReleaseService:
             source_world=origin.source_world,
             source_document_ids=origin.source_document_ids,
         )
-
-    @staticmethod
-    def _bundle_projection(projections: tuple[BundleV2Projection, ...], bundle_id: str | None) -> ReleaseBundleProjection:
-        if any(item.lossy or not item.runnable for item in projections):
-            return ReleaseBundleProjection(status=BundleProjectionStatus.LOSSY_NON_RUNNABLE, projections=projections)
-        if bundle_id is not None:
-            return ReleaseBundleProjection(status=BundleProjectionStatus.LOSSLESS_RUNNABLE, bundle_id=bundle_id, projections=projections)
-        return ReleaseBundleProjection(status=BundleProjectionStatus.NO_BUNDLE, projections=projections)
 
     @staticmethod
     def _diff(parent: DatasetRelease | None, current: DatasetRelease) -> ReleaseChangeSet:

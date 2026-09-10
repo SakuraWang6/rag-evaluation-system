@@ -25,7 +25,6 @@ from rag_eval.runs.models import (
     ArtifactCaseReferenceV2,
     ArtifactChecksumGraphV2,
     ArtifactMemberV2,
-    BenchmarkCaseSnapshotV2,
     BenchmarkIdentityV2,
     RunArtifactCaseV2,
     RunArtifactManifestV2,
@@ -305,27 +304,18 @@ class ArtifactV2Reader:
             cases = self.cases()
             summary = self.summary()
             index = self.case_index()
-            snapshots: dict[str, BenchmarkCaseSnapshotV2] = {}
+            snapshots = {}
             for case in cases:
-                snapshot = BenchmarkCaseSnapshotV2(
-                    case_id=case.case_id,
-                    question=case.question,
-                    gold_answer=case.gold_answer,
-                    gold_evidence_set=case.gold_evidence_set,
-                )
+                snapshot = case.benchmark_case
                 previous = snapshots.setdefault(case.case_id, snapshot)
                 if previous != snapshot:
                     invalid_models.append(ARTIFACT_V2_MANIFEST)
-            expected_benchmark = BenchmarkIdentityV2.build(
-                dataset_release_id=manifest.benchmark_identity.dataset_release_id,
-                dataset_release_digest=(
-                    manifest.benchmark_identity.dataset_release_digest
-                ),
-                bundle_id=manifest.benchmark_identity.bundle_id,
-                case_selection_id=manifest.benchmark_identity.case_selection_id,
-                cases=tuple(snapshots[key] for key in sorted(snapshots)),
-            )
-            if expected_benchmark != manifest.benchmark_identity:
+                if (
+                    snapshot.gold.source_identity
+                    != manifest.benchmark_identity.source_identity
+                ):
+                    invalid_models.append(reference.path)
+            if set(snapshots) != {item.case_id for item in manifest.cases}:
                 invalid_models.append(ARTIFACT_V2_MANIFEST)
             expected_runtime_profiles, expected_observation_profiles = (
                 _profile_identities(cases)

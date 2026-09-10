@@ -78,6 +78,7 @@ class BenchmarkSourceIdentityV2(BenchmarkContractModel):
     )
     canonical_schema_version: str = Field(min_length=1)
     canonical_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    canonical_catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     parser_identity: str = Field(min_length=1)
     canonicalizer_identity: str = Field(min_length=1)
     configuration_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -329,6 +330,53 @@ def benchmark_case_selection_id(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def native_canonical_catalog_bytes(canonical: CanonicalDocument) -> bytes:
+    """Render the deterministic observation sidecar for one Canonical snapshot.
+
+    The sidecar is an adjacent coordinate/proof artifact supplied to an
+    Adapter.  It is never an ingestion corpus and contains no question or
+    Gold-selection information.
+    """
+
+    records: list[dict[str, object]] = []
+    for item in canonical.objects:
+        record = item.model_dump(mode="json")
+        # Preserve the full structural payload: physical/logical cell links,
+        # merge origins and spans are required to prove table coverage.  A
+        # few locator keys are also mirrored at the top level for adapters
+        # whose native provenance bridge consumes that compact shape.
+        attributes = record.get("attributes", {})
+        if isinstance(attributes, dict):
+            for key in (
+                "table_id",
+                "row",
+                "column",
+                "page",
+                "x0",
+                "y0",
+                "x1",
+                "y1",
+            ):
+                if key in attributes:
+                    record[key] = attributes[key]
+        value = record.get("canonical_value")
+        if isinstance(value, str):
+            record["canonical_value"] = " ".join(value.split())
+        records.append(record)
+    return b"".join(
+        (
+            json.dumps(
+                record,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+        for record in records
+    )
+
+
 def native_benchmark_snapshot_digest(
     *,
     release_id: str,
@@ -381,4 +429,5 @@ __all__ = [
     "NativeBenchmarkReleaseV2",
     "benchmark_case_selection_id",
     "native_benchmark_snapshot_digest",
+    "native_canonical_catalog_bytes",
 ]

@@ -79,7 +79,7 @@ platform_pytest:
   pytest: "9.1.1"
   test_paths:
     - platform/tests
-  expected_collected: 331
+  expected_collected: 320
   required_passed_node_ids:
     - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_verified_derivation_and_truncated_prefix
     - platform/tests/rag_eval_platform/test_adapter_observation_tck.py::test_shared_tck_accepts_observed_partial_stages_with_rank_gaps
@@ -97,12 +97,12 @@ platform_pytest:
     - platform/tests/rag_eval_platform/test_webui_api_contract.py::test_critical_webui_operations_match_platform_openapi
     - platform/tests/rag_eval_platform/test_jobs_and_api.py::test_api_keeps_system_registration_local_and_legacy_out
     - platform/tests/rag_eval_platform/test_authoring.py::test_authoring_api_publishes_and_removes_formal_catalog_version_without_erasing_history
-    - platform/tests/rag_eval_platform/test_formal_release_lineage.py::test_lossless_release_materializes_a_release_pinned_runtime_bundle
+    - platform/tests/rag_eval_platform/test_formal_release_lineage.py::test_release_resolves_a_pinned_native_benchmark_without_a_runtime_bundle
     - platform/tests/rag_eval_platform/test_native_benchmark_release.py::test_native_benchmark_resolves_stably_without_editable_ledger
-    - platform/tests/rag_eval_platform/test_native_benchmark_release.py::test_native_benchmark_matches_lossless_bundle_shadow_projection
+    - platform/tests/rag_eval_platform/test_native_benchmark_release.py::test_native_benchmark_preserves_exact_case_answer_and_mses_without_projection
     - platform/tests/rag_eval_platform/test_native_benchmark_release.py::test_native_benchmark_preserves_every_abstention_scope_as_an_and_clause
     - platform/tests/rag_eval_platform/test_product_layer.py::test_wizard_draft_uses_a_lossless_formal_release_without_an_authoring_workspace
-    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_formal_release_preview_materializes_only_the_original_docx_for_ingestion
+    - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_formal_release_preview_and_staging_use_only_the_original_docx
     - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_public_experiment_create_and_queue_reject_presegmented_routes
     - platform/tests/rag_eval_platform/test_native_formal_cutover.py::test_release_bound_public_experiment_rejects_modified_benchmark_content
     - platform/tests/rag_eval_platform/test_comparison.py::test_artifact_v2_runs_compare_without_any_legacy_route_projection

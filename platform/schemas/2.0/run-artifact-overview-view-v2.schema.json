@@ -290,62 +290,54 @@
     "BenchmarkIdentityV2": {
       "additionalProperties": false,
       "properties": {
-        "dataset_release_id": {
+        "release_id": {
           "pattern": "^[A-Za-z0-9_-]+$",
-          "title": "Dataset Release Id",
+          "title": "Release Id",
           "type": "string"
         },
-        "dataset_release_digest": {
+        "release_digest": {
           "pattern": "^[0-9a-f]{64}$",
-          "title": "Dataset Release Digest",
+          "title": "Release Digest",
           "type": "string"
         },
-        "bundle_id": {
+        "validation_report_digest": {
           "pattern": "^[0-9a-f]{64}$",
-          "title": "Bundle Id",
+          "title": "Validation Report Digest",
+          "type": "string"
+        },
+        "payload_snapshot_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Payload Snapshot Digest",
           "type": "string"
         },
         "case_selection_id": {
-          "minLength": 1,
+          "pattern": "^[0-9a-f]{64}$",
           "title": "Case Selection Id",
           "type": "string"
         },
         "benchmark_snapshot_digest": {
-          "pattern": "^sha256:[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$",
           "title": "Benchmark Snapshot Digest",
           "type": "string"
         },
-        "source_identities": {
-          "items": {
-            "$ref": "#/$defs/GoldSourceIdentity"
-          },
-          "minItems": 1,
-          "title": "Source Identities",
-          "type": "array"
+        "source_identity": {
+          "$ref": "#/$defs/BenchmarkSourceIdentityV2"
         }
       },
       "required": [
-        "dataset_release_id",
-        "dataset_release_digest",
-        "bundle_id",
+        "release_id",
+        "release_digest",
+        "validation_report_digest",
+        "payload_snapshot_digest",
         "case_selection_id",
         "benchmark_snapshot_digest",
-        "source_identities"
+        "source_identity"
       ],
       "title": "BenchmarkIdentityV2",
       "type": "object"
     },
-    "EvaluationMetricStatus": {
-      "enum": [
-        "observed",
-        "unavailable"
-      ],
-      "title": "EvaluationMetricStatus",
-      "type": "string"
-    },
-    "GoldSourceIdentity": {
+    "BenchmarkSourceIdentityV2": {
       "additionalProperties": false,
-      "description": "Canonical Benchmark source pin required by Unified Evaluation v2.",
       "properties": {
         "document_id": {
           "minLength": 1,
@@ -357,25 +349,69 @@
           "title": "Source Sha256",
           "type": "string"
         },
-        "source_coordinate_schema": {
+        "media_type": {
+          "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "default": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "coordinate_system_version": {
+          "const": "ooxml-structural-v1",
+          "default": "ooxml-structural-v1",
+          "title": "Coordinate System Version",
+          "type": "string"
+        },
+        "canonical_schema_version": {
           "minLength": 1,
-          "title": "Source Coordinate Schema",
+          "title": "Canonical Schema Version",
+          "type": "string"
+        },
+        "canonical_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Digest",
           "type": "string"
         },
         "canonical_catalog_sha256": {
           "pattern": "^[0-9a-f]{64}$",
           "title": "Canonical Catalog Sha256",
           "type": "string"
+        },
+        "parser_identity": {
+          "minLength": 1,
+          "title": "Parser Identity",
+          "type": "string"
+        },
+        "canonicalizer_identity": {
+          "minLength": 1,
+          "title": "Canonicalizer Identity",
+          "type": "string"
+        },
+        "configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
         }
       },
       "required": [
         "document_id",
         "source_sha256",
-        "source_coordinate_schema",
-        "canonical_catalog_sha256"
+        "canonical_schema_version",
+        "canonical_digest",
+        "canonical_catalog_sha256",
+        "parser_identity",
+        "canonicalizer_identity",
+        "configuration_digest"
       ],
-      "title": "GoldSourceIdentity",
+      "title": "BenchmarkSourceIdentityV2",
       "type": "object"
+    },
+    "EvaluationMetricStatus": {
+      "enum": [
+        "observed",
+        "unavailable"
+      ],
+      "title": "EvaluationMetricStatus",
+      "type": "string"
     },
     "LeaderboardEligibilityV2": {
       "additionalProperties": false,

@@ -114,7 +114,7 @@ def inspect_docx_package(payload: bytes) -> dict[str, Any]:
 
 
 class AuthoringWorkspaceStore:
-    """Owns workspace files; it never reads or writes Dataset Bundle storage."""
+    """Owns editable workspace files; it never reads or writes run inputs."""
 
     def __init__(self, root: Path) -> None:
         self.root = root

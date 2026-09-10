@@ -8,8 +8,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from rag_eval.api import create_app
+from rag_eval.contracts.benchmark import (
+    NativeBenchmarkReleaseV2,
+    benchmark_case_selection_id,
+)
 from rag_eval.contracts.run import ExperimentSpec
-from rag_eval.datasets.bundle import DatasetBundle, case_selection_id
 from rag_eval.execution import RunExecutor
 from rag_eval.jobs import JobStatus
 from rag_eval.products import SystemConnection
@@ -25,7 +28,7 @@ from tests.rag_eval_platform.test_native_formal_cutover import (
 
 def _native_experiment(
     tmp_path: Path,
-) -> tuple[PlatformService, ExperimentSpec, DatasetBundle]:
+) -> tuple[PlatformService, ExperimentSpec, NativeBenchmarkReleaseV2]:
     service, client, release_id = _native_product_service(tmp_path)
     created = client.post(
         "/api/v1/product/evaluation-drafts", json=_native_draft(release_id)
@@ -36,20 +39,27 @@ def _native_experiment(
     )
     assert preview.status_code == 200
     experiment = ExperimentSpec.model_validate(preview.json())
-    return service, experiment, service.datasets.get(experiment.bundle_id)
+    assert service.formal_datasets is not None
+    benchmark = service.formal_datasets.resolve_native_benchmark(
+        experiment.dataset_release_id,
+        case_ids=(None if experiment.case_ids is None else tuple(experiment.case_ids)),
+        seed=experiment.seed,
+        expected_case_selection_id=experiment.case_selection_id,
+    )
+    return service, experiment, benchmark
 
 
 def test_admission_freezes_a_complete_immutable_resolved_plan(tmp_path: Path) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
+    service, experiment, benchmark = _native_experiment(tmp_path)
 
-    reference = service.admit_new_public_experiment(experiment, bundle)
+    reference = service.admit_new_public_experiment(experiment)
     plan = service.resolved_run_plans.get(reference)
 
     assert plan.schema_version == "2.0"
     assert plan.experiment_id == experiment.experiment_id
     assert plan.benchmark_release.release_id == experiment.dataset_release_id
-    assert plan.benchmark_release.runtime_bundle_id == experiment.bundle_id
-    assert plan.original_document.runtime_path.endswith(".docx")
+    assert plan.benchmark_release.benchmark_snapshot_digest == benchmark.snapshot_digest
+    assert plan.original_document.source_sha256 == benchmark.source_identity.source_sha256
     assert plan.system.system_id == experiment.system_id
     assert plan.system.adapter_id == experiment.adapter_id
     assert plan.system.worker_profile_id == "lightrag"
@@ -69,14 +79,14 @@ def test_admission_freezes_a_complete_immutable_resolved_plan(tmp_path: Path) ->
         "ranked_complete_evidence_mrr@5",
     }
     assert plan.case_ids
-    assert reference == service.admit_new_public_experiment(experiment, bundle)
+    assert reference == service.admit_new_public_experiment(experiment)
 
 
 def test_plan_binding_checks_normalized_query_content_not_only_experiment_digest(
     tmp_path: Path,
 ) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
-    reference = service.admit_new_public_experiment(experiment, bundle)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
+    reference = service.admit_new_public_experiment(experiment)
     plan = service.resolved_run_plans.get(reference)
     inconsistent = plan.model_copy(
         update={
@@ -105,14 +115,14 @@ def test_plan_binding_checks_normalized_query_content_not_only_experiment_digest
 def test_admission_rejects_invalid_query_values_before_freezing(
     tmp_path: Path, query_update: dict[str, object], message: str
 ) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
     query = {**experiment.query_config, **query_update}
     invalid = experiment.model_copy(
         update={"experiment_id": "invalid-query", "query_config": query}
     )
 
     with pytest.raises(NewRunAdmissionError, match=message):
-        service.admit_new_public_experiment(invalid, bundle)
+        service.admit_new_public_experiment(invalid)
 
     assert service.resolved_run_plans.list() == []
 
@@ -120,7 +130,7 @@ def test_admission_rejects_invalid_query_values_before_freezing(
 def test_admission_rejects_missing_query_value_even_when_adapter_has_a_default(
     tmp_path: Path,
 ) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
     query = dict(experiment.query_config)
     query.pop("retrieval_candidate_k")
     invalid = experiment.model_copy(
@@ -135,7 +145,7 @@ def test_admission_rejects_missing_query_value_even_when_adapter_has_a_default(
     )
 
     with pytest.raises(NewRunAdmissionError, match="retrieval_candidate_k"):
-        service.admit_new_public_experiment(invalid, bundle)
+        service.admit_new_public_experiment(invalid)
 
 
 @pytest.mark.parametrize(
@@ -150,17 +160,17 @@ def test_admission_rejects_missing_query_value_even_when_adapter_has_a_default(
 def test_admission_rejects_an_incomplete_or_unknown_metric_descriptor(
     tmp_path: Path, metric_config: dict[str, object]
 ) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
     invalid = experiment.model_copy(
         update={"experiment_id": "invalid-metrics", "metric_config": metric_config}
     )
 
     with pytest.raises(NewRunAdmissionError, match="metric_config"):
-        service.admit_new_public_experiment(invalid, bundle)
+        service.admit_new_public_experiment(invalid)
 
 
 def test_low_native_depth_is_admitted_with_top_five_descriptors(tmp_path: Path) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
     low_depth = experiment.model_copy(
         update={
             "experiment_id": "low-depth",
@@ -172,7 +182,7 @@ def test_low_native_depth_is_admitted_with_top_five_descriptors(tmp_path: Path) 
         }
     )
 
-    reference = service.admit_new_public_experiment(low_depth, bundle)
+    reference = service.admit_new_public_experiment(low_depth)
     plan = service.resolved_run_plans.get(reference)
 
     assert plan.evaluation_profile.candidate_cutoff == 3
@@ -212,9 +222,7 @@ def test_builtin_rag_anything_low_depth_profile_is_a_valid_plan(
     assert created.status_code == 200
     assert preview.status_code == 200
     experiment = ExperimentSpec.model_validate(preview.json())
-    reference = service.admit_new_public_experiment(
-        experiment, service.datasets.get(experiment.bundle_id)
-    )
+    reference = service.admit_new_public_experiment(experiment)
     plan = service.resolved_run_plans.get(reference)
     assert plan.system.worker_profile_id == "rag-anything"
     assert plan.evaluation_profile.candidate_cutoff == 3
@@ -224,33 +232,35 @@ def test_builtin_rag_anything_low_depth_profile_is_a_valid_plan(
 def test_public_admission_rejects_a_run_without_a_benchmark_release(
     tmp_path: Path,
 ) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
     unpinned = experiment.model_copy(
         update={"experiment_id": "unpinned", "dataset_release_id": None}
     )
 
     with pytest.raises(NewRunAdmissionError, match="Benchmark Release"):
-        service.admit_new_public_experiment(unpinned, bundle)
+        service.admit_new_public_experiment(unpinned)
 
 
 def test_admission_rejects_an_explicit_empty_case_selection(tmp_path: Path) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
     empty = experiment.model_copy(
         update={
             "experiment_id": "empty-selection",
             "case_ids": [],
-            "case_selection_id": case_selection_id([], policy="explicit", seed=0),
+            "case_selection_id": benchmark_case_selection_id(
+                [], policy="explicit", seed=0
+            ),
         }
     )
 
-    with pytest.raises(NewRunAdmissionError, match="at least one case"):
-        service.admit_new_public_experiment(empty, bundle)
+    with pytest.raises(NewRunAdmissionError, match="verified native snapshot"):
+        service.admit_new_public_experiment(empty)
 
 
 def test_public_api_rejects_an_incomplete_plan_before_persisting(
     tmp_path: Path,
 ) -> None:
-    service, experiment, _bundle = _native_experiment(tmp_path)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
     invalid = experiment.model_copy(
         update={
             "experiment_id": "api-invalid-plan",
@@ -275,10 +285,10 @@ def test_public_api_rejects_an_incomplete_plan_before_persisting(
 def test_queue_requires_and_persists_the_exact_resolved_plan_reference(
     tmp_path: Path,
 ) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
-    reference = service.admit_new_public_experiment(experiment, bundle)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
+    reference = service.admit_new_public_experiment(experiment)
 
-    job = service.queue_new_public_experiment(experiment, bundle)
+    job = service.queue_new_public_experiment(experiment)
 
     assert job.resolved_plan_path == reference.path
     assert job.resolved_plan_digest == reference.digest
@@ -286,8 +296,8 @@ def test_queue_requires_and_persists_the_exact_resolved_plan_reference(
 
 
 def test_resolved_plan_digest_fails_closed_after_file_tampering(tmp_path: Path) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
-    reference = service.admit_new_public_experiment(experiment, bundle)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
+    reference = service.admit_new_public_experiment(experiment)
     path = service.paths.home / reference.path
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["system"]["system_config_digest"] = "sha256:" + "0" * 64
@@ -300,8 +310,8 @@ def test_resolved_plan_digest_fails_closed_after_file_tampering(tmp_path: Path) 
 def test_executor_rejects_a_worker_command_that_does_not_match_the_plan(
     tmp_path: Path,
 ) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
-    reference = service.admit_new_public_experiment(experiment, bundle)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
+    reference = service.admit_new_public_experiment(experiment)
     plan = service.resolved_run_plans.get(reference)
     mismatched = WorkerCommand(
         adapter_id=plan.system.adapter_id,
@@ -326,8 +336,8 @@ def test_executor_rejects_a_worker_command_that_does_not_match_the_plan(
 def test_one_experiment_id_cannot_be_rebound_to_a_different_plan(
     tmp_path: Path,
 ) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
-    service.admit_new_public_experiment(experiment, bundle)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
+    service.admit_new_public_experiment(experiment)
     changed = experiment.model_copy(
         update={
             "query_config": {
@@ -339,13 +349,13 @@ def test_one_experiment_id_cannot_be_rebound_to_a_different_plan(
     )
 
     with pytest.raises(ValueError, match="different immutable resolved plan"):
-        service.admit_new_public_experiment(changed, bundle)
+        service.admit_new_public_experiment(changed)
 
 
 def test_resolved_plan_persists_system_identity_without_secret_values(
     tmp_path: Path,
 ) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
     service.systems.register(
         SystemRegistration(
             system_id="secret-system",
@@ -363,7 +373,7 @@ def test_resolved_plan_persists_system_identity_without_secret_values(
         }
     )
 
-    reference = service.admit_new_public_experiment(registered, bundle)
+    reference = service.admit_new_public_experiment(registered)
     plan_bytes = (service.paths.home / reference.path).read_text(encoding="utf-8")
 
     assert "must-not-enter-the-plan" not in plan_bytes
@@ -376,8 +386,8 @@ def test_resolved_plan_persists_system_identity_without_secret_values(
 def test_queue_fails_when_the_worker_profile_drifted_after_admission(
     tmp_path: Path,
 ) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
-    service.admit_new_public_experiment(experiment, bundle)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
+    service.admit_new_public_experiment(experiment)
     assert service.products is not None
     connection = service.products.get_connection(experiment.system_id)
     service.products.save_connection(
@@ -389,7 +399,7 @@ def test_queue_fails_when_the_worker_profile_drifted_after_admission(
     )
 
     with pytest.raises(ValueError, match="different immutable resolved plan"):
-        service.queue_new_public_experiment(experiment, bundle)
+        service.queue_new_public_experiment(experiment)
 
     assert service.jobs.list() == []
 
@@ -397,8 +407,8 @@ def test_queue_fails_when_the_worker_profile_drifted_after_admission(
 def test_supervisor_rejects_worker_profile_drift_after_queue(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    service, experiment, bundle = _native_experiment(tmp_path)
-    job = service.queue_new_public_experiment(experiment, bundle)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
+    job = service.queue_new_public_experiment(experiment)
     assert service.products is not None
     connection = service.products.get_connection(experiment.system_id)
     service.products.save_connection(

@@ -1,0 +1,69 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "document_id": {
+      "minLength": 1,
+      "title": "Document Id",
+      "type": "string"
+    },
+    "source_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Sha256",
+      "type": "string"
+    },
+    "media_type": {
+      "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "default": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "title": "Media Type",
+      "type": "string"
+    },
+    "coordinate_system_version": {
+      "const": "ooxml-structural-v1",
+      "default": "ooxml-structural-v1",
+      "title": "Coordinate System Version",
+      "type": "string"
+    },
+    "canonical_schema_version": {
+      "minLength": 1,
+      "title": "Canonical Schema Version",
+      "type": "string"
+    },
+    "canonical_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Canonical Digest",
+      "type": "string"
+    },
+    "canonical_catalog_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Canonical Catalog Sha256",
+      "type": "string"
+    },
+    "parser_identity": {
+      "minLength": 1,
+      "title": "Parser Identity",
+      "type": "string"
+    },
+    "canonicalizer_identity": {
+      "minLength": 1,
+      "title": "Canonicalizer Identity",
+      "type": "string"
+    },
+    "configuration_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Configuration Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "document_id",
+    "source_sha256",
+    "canonical_schema_version",
+    "canonical_digest",
+    "canonical_catalog_sha256",
+    "parser_identity",
+    "canonicalizer_identity",
+    "configuration_digest"
+  ],
+  "title": "BenchmarkSourceIdentityV2",
+  "type": "object"
+}

@@ -21,7 +21,6 @@ from rag_eval.datasets.portfolio import (
     PortfolioSlotState,
     PortfolioUsage,
 )
-from rag_eval.datasets.registry import FROZEN_20_CASE_BUNDLE_ID
 from rag_eval.service import PlatformService
 from rag_eval.storage.layout import PlatformPaths
 from tests.rag_eval_platform.test_authoring import mini_docx
@@ -87,11 +86,7 @@ def test_coverage_deficits_are_deterministic_and_blocked_slots_do_not_complete(t
     # Includes long-distance/lexical slots and the negative slots whose
     # Blueprint constraint permits the same Hard-retrieval/Easy-reasoning pair.
     assert _bucket(first, axis="retrieval_reasoning", value="Hard|Easy").planned == 16
-    assert first.frozen_reference.bundle_id == FROZEN_20_CASE_BUNDLE_ID
-    assert first.frozen_reference.case_count == 20
-    assert not first.frozen_reference.held_out
-    assert not first.frozen_reference.generalization_claim_allowed
-    assert not first.frozen_reference.typed_case_axes_available
+    assert not hasattr(first, "frozen_reference")
 
     blocked = service.transition_slot(
         "benchmark-v0-dry-run-48",
@@ -304,9 +299,13 @@ def test_authoring_and_release_links_gate_completed_coverage_and_invalidation(tm
     assert _bucket(invalidated, axis="source_type", value="human").missing == 12
 
 
-def test_platform_bootstraps_planning_contract_without_touching_bundle_store(tmp_path: Path) -> None:
+def test_platform_bootstraps_planning_contract_without_a_runtime_bundle_store(
+    tmp_path: Path,
+) -> None:
     platform = PlatformService(PlatformPaths(tmp_path))
     assert platform.portfolios is not None
     portfolio = platform.portfolios.store.get("benchmark-v0-dry-run-48")
     assert len(portfolio.slots) == 48
-    assert list((tmp_path / "datasets").glob("*.json")) == []
+    assert not hasattr(platform, "datasets")
+    assert not hasattr(platform, "dataset_registry")
+    assert not (tmp_path / "datasets").exists()

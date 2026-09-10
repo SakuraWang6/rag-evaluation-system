@@ -296,16 +296,3 @@ class ApprovedCase(AuthoringModel):
     approved_at: datetime
     approved_by: str
     candidate: QuestionCandidate
-
-
-class AuthoringExport(AuthoringModel):
-    release_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
-    name: str = Field(min_length=1)
-    version: str = Field(min_length=1)
-    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    canonical_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    approved_case_ids: list[str] = Field(min_length=1)
-    views: dict[str, str] = Field(default_factory=dict)
-    blocked_cases: list[dict[str, Any]] = Field(default_factory=list)
-    registered_bundle_ids: dict[str, str] = Field(default_factory=dict)
-    ledger_release_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")

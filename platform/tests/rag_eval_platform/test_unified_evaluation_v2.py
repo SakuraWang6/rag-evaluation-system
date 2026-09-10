@@ -7,16 +7,17 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from rag_eval.contracts.canonical import SourceSpan
-from rag_eval.contracts.dataset import (
-    GoldAnswer,
-    GoldAnswerKind,
-    GoldEvidence,
-    GoldEvidenceSet,
-    GoldSourceIdentity,
-    ObjectLocator,
-    TableCellLocator,
+from rag_eval.contracts.benchmark import (
+    BenchmarkAnswerKindV2,
+    BenchmarkAnswerV2,
+    BenchmarkEvidenceRoleV2,
+    BenchmarkEvidenceV2,
+    BenchmarkGoldV2,
+    BenchmarkMsesClauseV2,
+    BenchmarkMsesPathV2,
+    BenchmarkSourceIdentityV2,
 )
+from rag_eval.contracts.canonical import CanonicalObjectType, SourceSpan
 from rag_eval.contracts.observation import (
     AdapterCapabilitiesV2,
     CanonicalExtent,
@@ -65,35 +66,101 @@ def _sha(value: str) -> str:
 def _gold(
     *clauses: tuple[str, ...],
     evidence_to_object: dict[str, str] | None = None,
-) -> GoldEvidenceSet:
+) -> BenchmarkGoldV2:
     mapping = evidence_to_object or {
         evidence_id: evidence_id for clause in clauses for evidence_id in clause
     }
     evidence = [
-        GoldEvidence(
+        BenchmarkEvidenceV2(
             evidence_id=evidence_id,
             document_id="doc-1",
-            locator=ObjectLocator(
-                object_type="paragraph", object_id=canonical_object_id
-            ),
             canonical_object_id=canonical_object_id,
+            role=BenchmarkEvidenceRoleV2.REQUIRED,
+            canonical_object_type=CanonicalObjectType.PARAGRAPH,
+            source_spans=(
+                SourceSpan(
+                    part="word/document.xml",
+                    coordinates={"object_id": canonical_object_id},
+                ),
+            ),
             canonical_value=evidence_id,
+            canonical_witness_sha256=_sha(evidence_id),
         )
         for evidence_id, canonical_object_id in mapping.items()
     ]
-    return GoldEvidenceSet(
-        gold_evidence_set_id="gold-1",
-        evidence=evidence,
-        required_groups=[list(clause) for clause in clauses],
-        source_identities=(
-            GoldSourceIdentity(
-                document_id="doc-1",
-                source_sha256=SHA_A,
-                source_coordinate_schema="ooxml-structural-v1",
-                canonical_catalog_sha256=SHA_B,
+    return BenchmarkGoldV2(
+        gold_id="gold-1",
+        gold_revision_id="gold-revision-1",
+        case_id="case-1",
+        case_revision_id="case-revision-1",
+        source_identity=BenchmarkSourceIdentityV2(
+            document_id="doc-1",
+            source_sha256=SHA_A,
+            canonical_schema_version="1.3",
+            canonical_digest=SHA_C,
+            canonical_catalog_sha256=SHA_B,
+            parser_identity="fixture-parser/1",
+            canonicalizer_identity="fixture-canonicalizer/1",
+            configuration_digest=SHA_C,
+        ),
+        answer=BenchmarkAnswerV2(
+            kind=BenchmarkAnswerKindV2.TEXT,
+            canonical="correct",
+        ),
+        evidence=tuple(evidence),
+        mses_paths=(
+            BenchmarkMsesPathV2(
+                path_id="path-1",
+                clauses=tuple(
+                    BenchmarkMsesClauseV2(
+                        clause_id=f"clause-{index}",
+                        alternatives=tuple(clause),
+                    )
+                    for index, clause in enumerate(clauses, start=1)
+                ),
             ),
         ),
-        mses_paths=[[list(clause) for clause in clauses]],
+    )
+
+
+def _abstention_gold(*scope_object_ids: str) -> BenchmarkGoldV2:
+    evidence = tuple(
+        BenchmarkEvidenceV2(
+            evidence_id=f"scope-{index}",
+            document_id="doc-1",
+            canonical_object_id=object_id,
+            role=BenchmarkEvidenceRoleV2.NEGATIVE_SCOPE,
+            canonical_object_type=CanonicalObjectType.PARAGRAPH,
+            source_spans=(
+                SourceSpan(
+                    part="word/document.xml",
+                    coordinates={"object_id": object_id},
+                ),
+            ),
+            canonical_value=object_id,
+            canonical_witness_sha256=_sha(object_id),
+        )
+        for index, object_id in enumerate(scope_object_ids, start=1)
+    )
+    return BenchmarkGoldV2(
+        gold_id="gold-abstention",
+        gold_revision_id="gold-revision-abstention",
+        case_id="case-1",
+        case_revision_id="case-revision-1",
+        source_identity=BenchmarkSourceIdentityV2(
+            document_id="doc-1",
+            source_sha256=SHA_A,
+            canonical_schema_version="1.3",
+            canonical_digest=SHA_C,
+            canonical_catalog_sha256=SHA_B,
+            parser_identity="fixture-parser/1",
+            canonicalizer_identity="fixture-canonicalizer/1",
+            configuration_digest=SHA_C,
+        ),
+        answer=BenchmarkAnswerV2(kind=BenchmarkAnswerKindV2.ABSTAIN),
+        evidence=evidence,
+        negative_scope_object_ids=tuple(scope_object_ids),
+        negative_rationale="the complete bounded scope contains no answer",
     )
 
 
@@ -338,22 +405,38 @@ def _metric(result: object, metric_id: str):
 
 
 def test_gold_carries_a_stable_canonical_identity_without_adapter_input() -> None:
-    cell = GoldEvidence(
+    cell = BenchmarkEvidenceV2(
         evidence_id="cell",
         document_id="doc-1",
-        locator=TableCellLocator(table_id="table-1", row=2, column=3),
         canonical_object_id="logical-cell-2-3",
+        role=BenchmarkEvidenceRoleV2.REQUIRED,
+        canonical_object_type=CanonicalObjectType.LOGICAL_CELL,
+        source_spans=(
+            SourceSpan(
+                part="word/document.xml",
+                coordinates={"table_id": "table-1", "row": 2, "column": 3},
+            ),
+        ),
         canonical_value="42",
+        canonical_witness_sha256=_sha("42"),
     )
 
     assert cell.canonical_object_id == "logical-cell-2-3"
-    with pytest.raises(ValidationError, match="canonical object identity"):
-        GoldEvidence(
+    with pytest.raises(ValidationError, match="witness digest"):
+        BenchmarkEvidenceV2(
             evidence_id="paragraph",
             document_id="doc-1",
-            locator=ObjectLocator(object_type="paragraph", object_id="p-1"),
             canonical_object_id="p-2",
+            role=BenchmarkEvidenceRoleV2.REQUIRED,
+            canonical_object_type=CanonicalObjectType.PARAGRAPH,
+            source_spans=(
+                SourceSpan(
+                    part="word/document.xml",
+                    coordinates={"object_id": "p-2"},
+                ),
+            ),
             canonical_value="text",
+            canonical_witness_sha256=SHA_A,
         )
 
 
@@ -370,15 +453,11 @@ def test_gold_snapshot_identity_must_match_the_trace_before_scoring() -> None:
         ranked=(item,),
         context=(item,),
     )
-    gold = _gold(("gold-a",)).model_copy(
+    original = _gold(("gold-a",))
+    gold = original.model_copy(
         update={
-            "source_identities": (
-                GoldSourceIdentity(
-                    document_id="doc-1",
-                    source_sha256=SHA_A,
-                    source_coordinate_schema="ooxml-structural-v1",
-                    canonical_catalog_sha256=SHA_C,
-                ),
+            "source_identity": original.source_identity.model_copy(
+                update={"canonical_catalog_sha256": SHA_C}
             )
         }
     )
@@ -392,30 +471,12 @@ def test_gold_snapshot_identity_must_match_the_trace_before_scoring() -> None:
     assert result.failure.kind == FailureKind.UNOBSERVABLE
 
 
-def test_legacy_gold_without_snapshot_pin_remains_readable_but_not_v2_scorable() -> None:
-    chunk = _chunk("gold")
-    extent = _text_extent("gold-a")
-    edge = _edge(chunk, "gold-a", extent, extent)
-    item = _item(chunk, 1, (edge,))
-    trace = _trace(
-        chunks=(chunk,),
-        edges=(edge,),
-        mapping_statuses={"gold-a": ReverseMappingStatus.COMPLETE},
-        candidate=(item,),
-        ranked=(item,),
-        context=(item,),
-    )
-    legacy_gold = _gold(("gold-a",)).model_copy(update={"source_identities": ()})
+def test_legacy_gold_shape_is_rejected_instead_of_compatibly_projected() -> None:
+    payload = _gold(("gold-a",)).model_dump(mode="json")
+    payload["source_identities"] = [payload.pop("source_identity")]
 
-    result = evaluate_unified_trace(legacy_gold, trace, profile=_profile(1))
-
-    assert (
-        _metric(result, "ranked_complete_evidence_recall@1").status
-        == EvaluationMetricStatus.UNAVAILABLE
-    )
-    assert "no pinned source identity" in (
-        _metric(result, "ranked_complete_evidence_recall@1").reason or ""
-    )
+    with pytest.raises(ValidationError):
+        BenchmarkGoldV2.model_validate(payload)
 
 
 def test_verified_top_five_computes_all_core_metrics_without_full_ranking() -> None:
@@ -452,9 +513,8 @@ def test_verified_top_five_computes_all_core_metrics_without_full_ranking() -> N
         _gold(("gold-a",), ("gold-b",)),
         trace,
         profile=_profile(),
-        gold_answer=GoldAnswer(
-            gold_answer_id="answer-1",
-            kind=GoldAnswerKind.TEXT,
+        gold_answer=BenchmarkAnswerV2(
+            kind=BenchmarkAnswerKindV2.TEXT,
             canonical="correct",
         ),
     )
@@ -552,6 +612,44 @@ def test_text_span_union_and_equal_weight_clauses_are_not_chunk_hit_counts() -> 
     assert _metric(result, "ranked_evidence_coverage@1").value == 0.25
     assert _metric(result, "ranked_complete_evidence_recall@1").value == 0
     assert _metric(result, "ranked_evidence_coverage@3").value == 1
+    assert _metric(result, "ranked_complete_evidence_mrr@5").value == pytest.approx(
+        1 / 3
+    )
+
+
+def test_multi_object_abstention_requires_every_negative_scope_clause() -> None:
+    chunks = (_chunk("scope-a"), _chunk("distractor"), _chunk("scope-b"))
+    extent_a = _text_extent("scope-object-a")
+    extent_b = _text_extent("scope-object-b")
+    edge_a = _edge(chunks[0], "scope-object-a", extent_a, extent_a)
+    edge_b = _edge(chunks[2], "scope-object-b", extent_b, extent_b)
+    items = (
+        _item(chunks[0], 1, (edge_a,)),
+        _item(chunks[1], 2, ()),
+        _item(chunks[2], 3, (edge_b,)),
+    )
+    trace = _trace(
+        chunks=chunks,
+        edges=(edge_a, edge_b),
+        mapping_statuses={
+            "scope-object-a": ReverseMappingStatus.COMPLETE,
+            "scope-object-b": ReverseMappingStatus.COMPLETE,
+        },
+        candidate=items,
+        ranked=items,
+        context=items,
+    )
+
+    result = evaluate_unified_trace(
+        _abstention_gold("scope-object-a", "scope-object-b"),
+        trace,
+        profile=_profile(3),
+    )
+
+    assert _metric(result, "ranked_evidence_coverage@1").value == 0.5
+    assert _metric(result, "ranked_complete_evidence_recall@1").value == 0.5
+    assert _metric(result, "ranked_evidence_coverage@3").value == 1
+    assert _metric(result, "ranked_complete_evidence_recall@3").value == 1
     assert _metric(result, "ranked_complete_evidence_mrr@5").value == pytest.approx(
         1 / 3
     )
@@ -849,9 +947,8 @@ def test_failure_attribution_is_proof_gated_through_generation() -> None:
     gold_item = _item(chunks[0], 1, (edge,))
     noise_item = _item(chunks[1], 1, ())
     gold = _gold(("gold-a",))
-    answer = GoldAnswer(
-        gold_answer_id="answer-1",
-        kind=GoldAnswerKind.NUMERIC,
+    answer = BenchmarkAnswerV2(
+        kind=BenchmarkAnswerKindV2.NUMERIC,
         canonical="42",
     )
 

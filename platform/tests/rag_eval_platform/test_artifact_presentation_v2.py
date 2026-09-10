@@ -26,7 +26,12 @@ from tests.rag_eval_platform.test_run_artifact_v2 import (
     _benchmark_identity,
     _evaluated_case,
 )
-from tests.rag_eval_platform.test_unified_evaluation_v2 import SHA_A, SHA_C, _profile
+from tests.rag_eval_platform.test_unified_evaluation_v2 import (
+    SHA_A,
+    SHA_B,
+    SHA_C,
+    _profile,
+)
 
 
 def _write_v2_run(
@@ -47,12 +52,14 @@ def _write_v2_run(
             release_id="dataset-release-1",
             release_digest=SHA_C,
             validation_report_digest=SHA_A,
-            runtime_bundle_id=SHA_A,
+            payload_snapshot_digest=SHA_B,
+            benchmark_snapshot_digest=SHA_C,
         ),
         original_document=OriginalDocumentIdentityV2(
             document_id="doc-1",
             source_sha256=SHA_A,
-            runtime_path="documents/source.docx",
+            canonical_digest=SHA_C,
+            canonical_catalog_sha256=SHA_B,
             mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ),
         system=ResolvedSystemIdentityV2(
@@ -79,7 +86,7 @@ def _write_v2_run(
         evaluation_profile=profile,
         metric_descriptors=formal_metric_descriptors(profile),
         case_ids=("case-1",),
-        case_selection_id="selection-1",
+        case_selection_id=SHA_A,
         seed=7,
         repetitions=1,
         resource_limits=ResolvedResourceLimitsV2(
@@ -258,7 +265,7 @@ def test_corrupted_artifact_v2_is_diagnostic_only(
     run_dir = _write_v2_run(service)
     case_path = run_dir / "artifact-v2" / "cases" / "rep-0001-case-1.json"
     payload = json.loads(case_path.read_text(encoding="utf-8"))
-    payload["question"] = "tampered"
+    payload["benchmark_case"]["question"] = "tampered"
     case_path.write_text(json.dumps(payload), encoding="utf-8")
     _forbid_runtime_projection(monkeypatch)
     client = TestClient(create_app(service, start_supervisor=False))

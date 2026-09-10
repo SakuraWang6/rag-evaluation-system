@@ -24,7 +24,7 @@ def artifact_v2_markdown_report(reader: ArtifactV2Reader) -> str:
         "- Artifact contract: `2.0`",
         f"- Artifact digest: `{manifest.artifact_digest}`",
         f"- Experiment: `{manifest.experiment_id}`",
-        f"- Benchmark Release: `{manifest.benchmark_identity.dataset_release_id}`",
+        f"- Benchmark Release: `{manifest.benchmark_identity.release_id}`",
         f"- Benchmark snapshot: `{manifest.benchmark_identity.benchmark_snapshot_digest}`",
         f"- Status: `{manifest.status}`",
         "",

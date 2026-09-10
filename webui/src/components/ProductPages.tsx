@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, BrainCircuit, CheckCircle2, ChevronRight, CircleAlert, Database, Eye, ExternalLink, FileText, FileUp, Gauge, ListTree, Play, Plus, RefreshCw, ServerCog, ShieldCheck, Sparkles, Trash2, Upload, WandSparkles } from 'lucide-react'
+import { Archive, ArrowLeft, BrainCircuit, CheckCircle2, ChevronRight, CircleAlert, Database, Eye, ExternalLink, FileText, Gauge, ListTree, Play, Plus, RefreshCw, ServerCog, ShieldCheck, Sparkles, Trash2, Upload, WandSparkles } from 'lucide-react'
 import { api } from '../api'
 import { generationJobProgress, latestResumableAuthoringDataset, visibleDiscoveryJob, visibleGenerationJob } from '../authoringGeneration'
-import type { AuthoringCandidate, AuthoringDataset, AuthoringDiscoveryJob, AuthoringGenerationJob, AuthoringTarget, AuthoringTargetPreview, DatasetDraft, DatasetSummary, EvaluationDraft, ExperimentSpec, FormalCaseContent, FormalCaseListItem, FormalDatasetsResponse, FormalDocumentView, FormalReleaseCaseIndexResponse, LLMConfigRevision, LLMProviderConfig, LLMProviderKind, LLMStage, LLMStageBinding, ProductSystemSummary, SystemConnectionPayload, SystemProfile } from '../types'
+import type { AuthoringCandidate, AuthoringDataset, AuthoringDiscoveryJob, AuthoringGenerationJob, AuthoringTarget, AuthoringTargetPreview, EvaluationDraft, ExperimentSpec, FormalCaseContent, FormalCaseListItem, FormalDatasetsResponse, FormalDocumentView, FormalReleaseCaseIndexResponse, LLMConfigRevision, LLMProviderConfig, LLMProviderKind, LLMStage, LLMStageBinding, ProductSystemSummary, SystemConnectionPayload, SystemProfile } from '../types'
 import { useLocale } from '../i18n/LocaleProvider'
 import type { MessageKey } from '../i18n'
 import { ErrorBanner } from '../components'
@@ -25,8 +25,7 @@ function yieldToBrowserPaint(): Promise<void> {
 
 export function OverviewPage({ formalDatasets, systems, runs, onNewEvaluation, onAddDataset, onAddSystem }: { formalDatasets: FormalDatasetsResponse; systems: ProductSystemSummary[]; runs: number; onNewEvaluation: () => void; onAddDataset: () => void; onAddSystem: () => void }) {
   const { t } = useLocale()
-  // Only an immutable, runnable Benchmark Release can start a formal native
-  // evaluation. Legacy Bundles remain visible under Resources for forensics.
+  // Only an immutable, runnable Benchmark Release can start a native evaluation.
   const datasetCount = formalDatasets.releases.length
   const datasetReady = formalDatasets.releases.some((release) => release.runnable)
   const systemReady = systems.length > 0
@@ -74,14 +73,12 @@ const authoringWorkspaceSnapshots = new Map<string, AuthoringWorkspaceSnapshot>(
 // after it is frozen.
 const localReleaseManager = 'local-release-manager'
 
-export function ProductDatasetsPage({ datasets, formalDatasets, refresh }: { datasets: DatasetSummary[]; formalDatasets: FormalDatasetsResponse; refresh: () => Promise<void> }) {
+export function ProductDatasetsPage({ formalDatasets, refresh }: { formalDatasets: FormalDatasetsResponse; refresh: () => Promise<void> }) {
   const { t } = useLocale()
-  const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [authoringDatasets, setAuthoringDatasets] = useState<AuthoringDataset[]>([])
   const [creationOpen, setCreationOpen] = useState(false)
-  const [creationMode, setCreationMode] = useState<DatasetCreationMode | null>(null)
   const [resumedAuthoringDataset, setResumedAuthoringDataset] = useState<AuthoringDataset | null>(null)
   const [deletingReleaseId, setDeletingReleaseId] = useState('')
   const [selectedRelease, setSelectedRelease] = useState<FormalReleaseSummary | null>(null)
@@ -124,27 +121,16 @@ export function ProductDatasetsPage({ datasets, formalDatasets, refresh }: { dat
   }
   const closeCreation = () => {
     setCreationOpen(false)
-    setCreationMode(null)
     setResumedAuthoringDataset(null)
   }
-  const openCreation = (mode: DatasetCreationMode) => {
+  const openCreation = () => {
     setCreationOpen(true)
     // The persisted authoring state is an implementation detail. If someone
     // closes the creation flow before publishing, opening DOCX again quietly
     // resumes the latest unfinished document instead of showing a workspace
     // catalogue or making them start over.
-    const latestUnpublishedDocument = mode === 'docx'
-      ? latestResumableAuthoringDataset(authoringDatasets)
-      : null
+    const latestUnpublishedDocument = latestResumableAuthoringDataset(authoringDatasets)
     setResumedAuthoringDataset(latestUnpublishedDocument)
-    setCreationMode(mode)
-  }
-  const upload = async (file: File | undefined) => {
-    if (!file) return
-    setUploading(true); setError('')
-    try { const value = await api.uploadDataset(file); setMessage(t('product.datasets.uploaded', { id: value.bundle_id.slice(0, 12) })); await refreshAll(); closeCreation() }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
-    finally { setUploading(false) }
   }
   const deleteFormalRelease = async (release: FormalReleaseSummary) => {
     if (!window.confirm(t('product.datasets.formalDeleteConfirm', { version: release.version }))) return
@@ -315,26 +301,15 @@ export function ProductDatasetsPage({ datasets, formalDatasets, refresh }: { dat
   }
   // Product users work with published datasets. The persisted authoring
   // record remains available only to recover an interrupted creation flow.
-  const visibleCatalogCount = datasets.length + formalDatasets.releases.length
+  const visibleCatalogCount = formalDatasets.releases.length
   return <>
     <PageHeader title={t('product.datasets.title')} />
     {message && <p className="product-message"><CheckCircle2 size={15} /> {message}</p>}
     {error && <ErrorBanner message={error} />}
     <section className="dataset-quick-create" aria-label={t('product.datasets.createButton')}>
-      <button type="button" className="creation-method-card" onClick={() => openCreation('zip')}><FileUp size={20} /><span><b>{t('product.datasets.uploadTitle')}</b></span><ChevronRight size={16} /></button>
-      <button type="button" className="creation-method-card" onClick={() => openCreation('text')}><FileText size={20} /><span><b>{t('product.datasets.textTitle')}</b></span><ChevronRight size={16} /></button>
-      <button type="button" className="creation-method-card" onClick={() => openCreation('docx')}><WandSparkles size={20} /><span><b>{t('product.authoring.title')}</b></span><ChevronRight size={16} /></button>
+      <button type="button" className="creation-method-card" onClick={openCreation}><WandSparkles size={20} /><span><b>{t('product.authoring.title')}</b></span><ChevronRight size={16} /></button>
     </section>
     <section className="dataset-catalog" aria-label={t('product.datasets.available')}>
-      {datasets.length > 0 && <div className="dataset-catalog__group">
-        <div className="dataset-catalog__group-title">{t('product.datasets.importedTitle')}</div>
-        {datasets.map((dataset) => <article key={dataset.bundle_id} className="dataset-row dataset-row--muted">
-          <div className="dataset-row__identity">
-            <span className="dataset-row__icon"><Archive size={16} /></span>
-            <div><b>{dataset.name}</b><small>{t('common.version', { version: dataset.version })} · {t('product.datasets.caseCount', { count: dataset.cases })}</small></div>
-          </div>
-        </article>)}
-      </div>}
       {formalDatasets.releases.length > 0 && <div className="dataset-catalog__group">
         <div className="dataset-catalog__group-title">{t('product.datasets.formalTitle')}</div>
         {formalDatasets.releases.map((release) => <article key={release.release_id} className="dataset-row dataset-row--published">
@@ -350,26 +325,19 @@ export function ProductDatasetsPage({ datasets, formalDatasets, refresh }: { dat
       </div>}
       {visibleCatalogCount === 0 && <p className="dataset-catalog__empty">{t('product.datasets.empty')}</p>}
     </section>
-    {creationOpen && creationMode !== null && <Modal
+    {creationOpen && <Modal
       className="dataset-creation-modal"
-      title={creationMode === 'zip' ? t('product.datasets.uploadTitle') : creationMode === 'text' ? t('product.datasets.textTitle') : resumedAuthoringDataset?.source.original_filename || t('product.authoring.title')}
+      title={resumedAuthoringDataset?.source.original_filename || t('product.authoring.title')}
       closeLabel={t('product.datasets.closeCreation')}
       onClose={closeCreation}
     >
       <div className="creation-flow">
-        {creationMode === 'zip' && <section className="creation-panel">
-          <div className="creation-panel__heading"><FileUp size={20} /><h3>{t('product.datasets.uploadTitle')}</h3></div>
-          <label className="file-picker-button"><Upload size={16} /><span>{uploading ? t('product.datasets.uploading') : t('product.datasets.chooseZip')}</span><input type="file" accept=".zip,application/zip" onChange={(event) => void upload(event.target.files?.[0])} disabled={uploading} /></label>
-        </section>}
-        {creationMode === 'text' && <DatasetAuthoring onSealed={async () => { await refreshAll(); closeCreation() }} />}
-        {creationMode === 'docx' && <DocumentAuthoring initialDataset={resumedAuthoringDataset} onChanged={refreshAuthoring} onRegistered={async () => { await refreshAll(); closeCreation() }} />}
+        <DocumentAuthoring initialDataset={resumedAuthoringDataset} onChanged={refreshAuthoring} onRegistered={async () => { await refreshAll(); closeCreation() }} />
       </div>
     </Modal>}
     {selectedRelease && <Modal className="formal-release-modal" title={t('product.datasets.formalDatasetTitle', { version: selectedRelease.version })} closeLabel={t('product.datasets.detailModalClose')} onClose={closeFormalRelease}>{indexLoading && <div className="formal-loading"><span className="loading__bar" /><p>{t('product.datasets.loadingDetails')}</p></div>}{formalError && <ErrorBanner message={formalError} />}{documentCase && documentView && <FormalDocumentViewer view={documentView} evidenceIds={documentEvidenceIds} onBack={backToQuestions} sourceUrl={api.formalDatasetSourceUrl(selectedRelease.release_id)} nativeUrl={api.formalDatasetNativeDocumentUrl(selectedRelease.release_id)} />}{documentCase && !documentView && documentLoading && <div className="formal-loading"><span className="loading__bar" /><p>{t('product.datasets.loadingDocument')}</p></div>}{documentCase && !documentView && documentError && <div className="formal-document-error"><ErrorBanner message={documentError} /><Button variant="quiet" onClick={backToQuestions}>{t('product.datasets.backToQuestions')}</Button></div>}{formalCaseIndex && !documentCase && <FormalReleaseDetails index={formalCaseIndex} selectedCase={selectedFormalCase} loading={caseLoading} error={formalCaseError} onSelect={(item) => void selectFormalCase(selectedRelease.release_id, item)} onViewDocument={openFormalDocument} />}</Modal>}
   </>
 }
-
-type DatasetCreationMode = 'zip' | 'text' | 'docx'
 
 function FormalReleaseDetails({ index, selectedCase, loading, error, onSelect, onViewDocument }: { index: FormalReleaseCaseIndexResponse; selectedCase: FormalCaseContent | null; loading: boolean; error: string; onSelect: (item: FormalCaseListItem) => void; onViewDocument: (item: FormalCaseContent) => void }) {
   const { t } = useLocale()
@@ -480,44 +448,6 @@ export function FormalDocumentViewer({ view, evidenceIds, onBack, sourceUrl, nat
     return <article key={block.block_id} ref={(node) => { blockRefs.current[block.block_id] = node }} className={baseClass}><p className={`${block.kind === 'caption' ? 'formal-document-caption ' : ''}${isListItem ? 'formal-document-list-item' : ''}`}>{isListItem && <span className="formal-document-list-marker" aria-hidden="true">•</span>}{block.text || t('common.none')}</p></article>
   }
   return <div className="formal-document-viewer"><header className="formal-document-toolbar"><Button variant="quiet" onClick={onBack}><ArrowLeft size={15} />{t('product.datasets.backToQuestions')}</Button><div><b>{t('product.datasets.documentViewTitle')}</b><small>{view.filename}</small></div><SegmentedControl label={t('product.datasets.documentViewMode')} value={viewMode} options={[{ value: 'native', label: t('product.datasets.documentNativeMode') }, { value: 'evidence', label: t('product.datasets.documentEvidenceMode') }]} onChange={setViewMode} /><a className="button button--quiet" href={sourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />{t('product.datasets.openOriginal')}</a></header>{viewMode === 'native' && !nativeFailed ? <section className="formal-native-document"><div className="formal-native-document__caption"><span>{t('product.datasets.documentNativeHint')}</span><span>{t('product.datasets.documentNativePagination')}</span></div><iframe title={view.filename} src={nativeUrl} onError={() => setNativeFailed(true)} /></section> : <>{nativeFailed && viewMode === 'native' && <div className="formal-document-native-error"><ErrorBanner message={t('product.datasets.documentNativeUnavailable')} /><Button variant="quiet" onClick={() => { setNativeFailed(false); setViewMode('evidence') }}>{t('product.datasets.documentEvidenceMode')}</Button></div>}<div className="formal-document-layout"><aside className="formal-document-outline" aria-label={t('product.datasets.documentOutline')}><div className="formal-document-outline__title"><ListTree size={15} />{t('product.datasets.documentOutline')}</div>{headings.length === 0 ? <p className="formal-document-outline__empty">{t('product.datasets.documentOutlineEmpty')}</p> : <nav>{headings.map((heading, index) => <button type="button" key={heading.block_id} className={`formal-document-outline__item formal-document-outline__item--level-${Math.min(6, Math.max(1, heading.heading_level ?? 2))}`} onClick={() => scrollToBlock(heading.block_id)}><span>{String(index + 1).padStart(2, '0')}</span><b>{heading.text}</b></button>)}</nav>}</aside><main className="formal-document-pages">{readableBlocks.length === 0 && <p className="field-note">{t('product.datasets.documentEmpty')}</p>}{pages.map((page, pageIndex) => <section className="formal-document-page" key={`${view.document_id}-page-${pageIndex}`}><div className="formal-document-page__meta"><span>{view.filename}</span><span>{t('product.datasets.documentPage', { current: pageIndex + 1, total: pages.length })}</span></div><div className="formal-document-page__body">{page.map(renderBlock)}</div><footer className="formal-document-page__footer">{pageIndex + 1} / {pages.length}</footer></section>)}</main></div></>}</div>
-}
-
-function DatasetAuthoring({ onSealed }: { onSealed: () => Promise<void> }) {
-  const { t } = useLocale()
-  const sourceRef = useRef<HTMLTextAreaElement>(null)
-  const [draftId, setDraftId] = useState('')
-  const [name, setName] = useState('')
-  const [version, setVersion] = useState('1.0.0')
-  const [content, setContent] = useState('')
-  const [question, setQuestion] = useState('')
-  const [gold, setGold] = useState('')
-  const [selection, setSelection] = useState({ start: 0, end: 0 })
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
-  const automaticDiscoveryAttempt = useRef('')
-  const payload = (): DatasetDraft => ({
-    ...(draftId ? { draft_id: draftId } : {}), name, version,
-    documents: [{ document_id: 'document-1', filename: 'source.md', content }],
-    cases: question && gold && selection.end > selection.start ? [{ case_id: 'case-1', question, gold_answer: gold, document_id: 'document-1', span_start: selection.start, span_end: selection.end }] : [],
-  })
-  const seal = async () => { try { const value = await api.saveDatasetDraft(payload()); const sealed = await api.sealDatasetDraft(value.draft_id || ''); setDraftId(value.draft_id || ''); setMessage(t('product.datasets.sealed', { id: sealed.bundle_id.slice(0, 12) })); setError(''); await onSealed() } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) } }
-  const captureSelection = () => { const source = sourceRef.current; if (source) setSelection({ start: source.selectionStart, end: source.selectionEnd }) }
-  return <div className="authoring-panel">
-    <div className="authoring-panel__heading"><FileText size={20} /><h3>{t('product.datasets.textTitle')}</h3></div>
-    <div className="authoring-grid">
-      <label><span>{t('product.datasets.name')}</span><input value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label><span>{t('product.datasets.version')}</span><input value={version} onChange={(event) => setVersion(event.target.value)} /></label>
-    </div>
-    <label><span>{t('product.datasets.source')}</span><textarea ref={sourceRef} value={content} onChange={(event) => { setContent(event.target.value); setSelection({ start: 0, end: 0 }) }} onSelect={captureSelection} placeholder={t('product.datasets.sourcePlaceholder')} /></label>
-    {selection.end > selection.start && <div className="selection-note"><ShieldCheck size={15} />{t('product.datasets.selection', { start: selection.start, end: selection.end })}</div>}
-    <div className="authoring-grid">
-      <label><span>{t('product.datasets.question')}</span><input value={question} onChange={(event) => setQuestion(event.target.value)} /></label>
-      <label><span>{t('product.datasets.goldAnswer')}</span><input value={gold} onChange={(event) => setGold(event.target.value)} /></label>
-    </div>
-    <div className="authoring-actions"><Button variant="primary" disabled={!name || !content || !question || !gold || selection.end <= selection.start} onClick={() => void seal()}>{t('product.datasets.createDataset')}</Button></div>
-    {message && <p className="product-message"><CheckCircle2 size={15} /> {message}</p>}
-    {error && <ErrorBanner message={error} />}
-  </div>
 }
 
 function AuthoringSourcePreview({ preview, loading }: { preview?: AuthoringTargetPreview; loading?: boolean }) {

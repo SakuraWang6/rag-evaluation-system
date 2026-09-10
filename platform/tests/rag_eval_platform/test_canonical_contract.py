@@ -27,14 +27,6 @@ from rag_eval.contracts.canonical import (
     SourceSpan,
     build_canonical_manifest,
 )
-from rag_eval.datasets.registry import (
-    DatasetLifecycle,
-    DatasetRegistryError,
-    DatasetRegistryRecord,
-    DatasetUsage,
-    FROZEN_20_CASE_BUNDLE_ID,
-    FROZEN_20_CASE_REFERENCE,
-)
 from rag_eval.service import PlatformService
 from rag_eval.storage.layout import PlatformPaths
 from tests.rag_eval_platform.test_authoring import mini_docx
@@ -413,23 +405,8 @@ def test_ooxml_non_breaking_hyphen_is_preserved_in_source_text() -> None:
     assert DocxCanonicalizer._paragraph_text(paragraph) == "表 2-7 网络设备"
 
 
-def test_frozen_20_case_external_registry_is_immutable_and_does_not_touch_bundle(tmp_path: Path) -> None:
+def test_platform_has_no_retired_runtime_dataset_registry(tmp_path: Path) -> None:
     service = PlatformService(PlatformPaths(tmp_path / "platform"), product_enabled=False)
-    record = service.dataset_registry.get(FROZEN_20_CASE_BUNDLE_ID)
-    assert record == FROZEN_20_CASE_REFERENCE
-    assert record.lifecycle.value == "frozen"
-    assert record.usage.value == "development/reference_diagnostic"
-    assert record.held_out is False
-    assert record.generalization_claim_allowed is False
-    assert not (service.paths.datasets / FROZEN_20_CASE_BUNDLE_ID).exists()
-    changed = DatasetRegistryRecord.build(
-        bundle_id=FROZEN_20_CASE_BUNDLE_ID,
-        lifecycle=DatasetLifecycle.RETIRED,
-        usage=DatasetUsage.DEVELOPMENT_REFERENCE_DIAGNOSTIC,
-        held_out=False,
-        generalization_claim_allowed=False,
-    )
-    with pytest.raises(DatasetRegistryError, match="immutable"):
-        service.dataset_registry.register(changed)
-    source_record = Path(__file__).resolve().parents[2] / "registries" / "reference-datasets" / f"{FROZEN_20_CASE_BUNDLE_ID}.json"
-    assert json.loads(source_record.read_text()) == FROZEN_20_CASE_REFERENCE.model_dump(mode="json")
+    assert not hasattr(service, "datasets")
+    assert not hasattr(service, "dataset_registry")
+    assert not hasattr(service.paths, "datasets")

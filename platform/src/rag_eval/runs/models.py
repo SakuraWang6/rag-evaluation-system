@@ -12,12 +12,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rag_eval.artifact_contract import artifact_digest
-from rag_eval.contracts.canonical import canonical_json
-from rag_eval.contracts.dataset import (
-    GoldAnswer,
-    GoldEvidenceSet,
-    GoldSourceIdentity,
+from rag_eval.contracts.benchmark import (
+    BenchmarkAnswerV2,
+    BenchmarkCaseV2,
+    BenchmarkGoldV2,
+    BenchmarkSourceIdentityV2,
+    NativeBenchmarkReleaseV2,
 )
+from rag_eval.contracts.canonical import canonical_json
 from rag_eval.contracts.observation import (
     AdapterRunResultV2,
     ObservationProfileIdentity,
@@ -107,60 +109,29 @@ class ArtifactEvidenceJudgment(ArtifactV2Model):
         return self
 
 
-class BenchmarkCaseSnapshotV2(ArtifactV2Model):
-    case_id: str = Field(pattern=_SAFE_ID.pattern)
-    question: str = Field(min_length=1)
-    gold_answer: GoldAnswer
-    gold_evidence_set: GoldEvidenceSet
-
-
 class BenchmarkIdentityV2(ArtifactV2Model):
-    dataset_release_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
-    dataset_release_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    bundle_id: str = Field(pattern=r"^[0-9a-f]{64}$")
-    case_selection_id: str = Field(min_length=1)
-    benchmark_snapshot_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
-    source_identities: tuple[GoldSourceIdentity, ...] = Field(min_length=1)
+    release_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    release_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    validation_report_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    payload_snapshot_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    case_selection_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    benchmark_snapshot_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_identity: BenchmarkSourceIdentityV2
 
     @classmethod
     def build(
         cls,
         *,
-        dataset_release_id: str,
-        dataset_release_digest: str,
-        bundle_id: str,
-        case_selection_id: str,
-        cases: tuple[BenchmarkCaseSnapshotV2, ...],
+        benchmark: NativeBenchmarkReleaseV2,
     ) -> BenchmarkIdentityV2:
-        if not cases:
-            raise ValueError("Artifact 2.0 benchmark requires at least one case")
-        unique_cases = {item.case_id: item for item in cases}
-        if len(unique_cases) != len(cases):
-            raise ValueError("Artifact 2.0 benchmark repeats case IDs")
-        sources = {
-            source.document_id: source
-            for case in cases
-            for source in case.gold_evidence_set.source_identities
-        }
-        for case in cases:
-            for source in case.gold_evidence_set.source_identities:
-                if sources[source.document_id] != source:
-                    raise ValueError(
-                        "Artifact 2.0 benchmark has conflicting source identities"
-                    )
-        if not sources:
-            raise ValueError("Artifact 2.0 benchmark requires pinned source identities")
-        snapshot = tuple(
-            unique_cases[case_id].model_dump(mode="json")
-            for case_id in sorted(unique_cases)
-        )
         return cls(
-            dataset_release_id=dataset_release_id,
-            dataset_release_digest=dataset_release_digest,
-            bundle_id=bundle_id,
-            case_selection_id=case_selection_id,
-            benchmark_snapshot_digest=_digest_payload(snapshot),
-            source_identities=tuple(sources[key] for key in sorted(sources)),
+            release_id=benchmark.release_id,
+            release_digest=benchmark.release_digest,
+            validation_report_digest=benchmark.validation_report_digest,
+            payload_snapshot_digest=benchmark.payload_snapshot_digest,
+            case_selection_id=benchmark.case_selection_id,
+            benchmark_snapshot_digest=benchmark.snapshot_digest,
+            source_identity=benchmark.source_identity,
         )
 
 
@@ -191,7 +162,7 @@ class PersistedEvaluationV2(ArtifactV2Model):
     scorer_version: Literal[UNIFIED_SCORER_VERSION] = UNIFIED_SCORER_VERSION
     scorer_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     trace_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    gold_evidence_set_id: str = Field(min_length=1)
+    gold_revision_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
     metrics: tuple[EvaluationMetric, ...]
     localizations: tuple[StageLocalization, ...] = ()
     pipeline_deltas: tuple[PipelineDelta, ...] = ()
@@ -245,9 +216,7 @@ class RunArtifactCaseV2(ArtifactV2Model):
     repetition: int = Field(ge=1)
     seed: int
     status: Literal["completed", "timeout", "system_error", "cancelled"]
-    question: str = Field(min_length=1)
-    gold_answer: GoldAnswer
-    gold_evidence_set: GoldEvidenceSet
+    benchmark_case: BenchmarkCaseV2
     trace_validation: TraceValidationRecordV2
     adapter_result: AdapterRunResultV2 | None = None
     evaluation: PersistedEvaluationV2
@@ -262,9 +231,23 @@ class RunArtifactCaseV2(ArtifactV2Model):
     def observation_status(self) -> ObservationStatus:
         return self.trace_validation.status
 
+    @property
+    def question(self) -> str:
+        return self.benchmark_case.question
+
+    @property
+    def gold_answer(self) -> BenchmarkAnswerV2:
+        return self.benchmark_case.gold.answer
+
+    @property
+    def gold(self) -> BenchmarkGoldV2:
+        return self.benchmark_case.gold
+
     @model_validator(mode="after")
     def validate_case(self) -> RunArtifactCaseV2:
         observed = self.trace_validation.status == ObservationStatus.OBSERVED
+        if self.benchmark_case.case_id != self.case_id:
+            raise ValueError("Artifact case differs from its Benchmark Case")
         if observed != (self.adapter_result is not None):
             raise ValueError("observed trace status and Adapter result must agree")
         if observed:
@@ -302,10 +285,8 @@ class RunArtifactCaseV2(ArtifactV2Model):
             raise ValueError("completed Artifact case cannot carry an execution error")
         if self.status != "completed" and self.error is None:
             raise ValueError("failed Artifact case requires an execution error")
-        if self.evaluation.gold_evidence_set_id != (
-            self.gold_evidence_set.gold_evidence_set_id
-        ):
-            raise ValueError("persisted evaluation references another Gold set")
+        if self.evaluation.gold_revision_id != self.gold.gold_revision_id:
+            raise ValueError("persisted evaluation references another Gold revision")
         if self.completed_at < self.started_at:
             raise ValueError("Artifact case completion precedes its start")
         expected = _digest_payload(
@@ -591,7 +572,6 @@ __all__ = [
     "ArtifactEvidenceJudgment",
     "ArtifactEvidenceStatus",
     "ArtifactMemberV2",
-    "BenchmarkCaseSnapshotV2",
     "BenchmarkIdentityV2",
     "LeaderboardEligibilityV2",
     "PersistedEvaluationV2",

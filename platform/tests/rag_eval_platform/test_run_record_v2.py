@@ -50,7 +50,12 @@ from tests.rag_eval_platform.test_run_artifact_v2 import (
     _benchmark_identity,
     _evaluated_case,
 )
-from tests.rag_eval_platform.test_unified_evaluation_v2 import SHA_A, SHA_C, _profile
+from tests.rag_eval_platform.test_unified_evaluation_v2 import (
+    SHA_A,
+    SHA_B,
+    SHA_C,
+    _profile,
+)
 
 PLAN_DIGEST = "sha256:" + "a" * 64
 PLAN_REFERENCE = ResolvedRunPlanReferenceV2(
@@ -70,12 +75,14 @@ def _record_plan_store(
             release_id="dataset-release-1",
             release_digest=SHA_C,
             validation_report_digest=SHA_A,
-            runtime_bundle_id=SHA_A,
+            payload_snapshot_digest=SHA_B,
+            benchmark_snapshot_digest=SHA_C,
         ),
         original_document=OriginalDocumentIdentityV2(
             document_id="doc-1",
             source_sha256=SHA_A,
-            runtime_path="documents/source.docx",
+            canonical_digest=SHA_C,
+            canonical_catalog_sha256=SHA_B,
             mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ),
         system=ResolvedSystemIdentityV2(
@@ -102,7 +109,7 @@ def _record_plan_store(
         evaluation_profile=profile,
         metric_descriptors=formal_metric_descriptors(profile),
         case_ids=("case-1",),
-        case_selection_id="selection-1",
+        case_selection_id=SHA_A,
         seed=7,
         repetitions=1,
         resource_limits=ResolvedResourceLimitsV2(
@@ -227,8 +234,8 @@ class _NativeProvider:
 
 
 def _native_executor(tmp_path: Path, _monkeypatch: pytest.MonkeyPatch):
-    service, experiment, bundle = _native_experiment(tmp_path)
-    reference = service.admit_new_public_experiment(experiment, bundle)
+    service, experiment, _benchmark = _native_experiment(tmp_path)
+    reference = service.admit_new_public_experiment(experiment)
     plan = service.resolved_run_plans.get(reference)
     resolved = service.system_resolver.resolve(
         experiment.system_id,
@@ -239,10 +246,9 @@ def _native_executor(tmp_path: Path, _monkeypatch: pytest.MonkeyPatch):
         system_id=experiment.system_id,
     )
     executor = RunExecutor(
-        service.datasets,
+        service.formal_datasets,
         service.run_records,
         provider=_NativeProvider(client),
-        dataset_release_store=service.formal_datasets.releases,
     )
     return service, executor, experiment, plan, reference, resolved.command, client
 
@@ -398,7 +404,7 @@ def test_tampered_artifact_cannot_complete_a_run_record(tmp_path: Path) -> None:
         / "rep-0001-case-1.json"
     )
     payload = json.loads(case_path.read_text(encoding="utf-8"))
-    payload["question"] = "tampered"
+    payload["benchmark_case"]["question"] = "tampered"
     case_path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(ValueError, match="verification"):

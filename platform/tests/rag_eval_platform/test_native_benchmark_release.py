@@ -18,7 +18,6 @@ from rag_eval.contracts.benchmark import (
     BenchmarkEvidenceRoleV2,
     native_benchmark_snapshot_digest,
 )
-from rag_eval.datasets.bundle import DatasetBundleStore
 from rag_eval.datasets.formal import FormalDatasetError
 from tests.rag_eval_platform.test_formal_release_lineage import (
     _approve,
@@ -58,46 +57,30 @@ def test_native_benchmark_resolves_stably_without_editable_ledger(
     assert formal.resolve_native_benchmark(release.release_id) == first
 
 
-def test_native_benchmark_matches_lossless_bundle_shadow_projection(
+def test_native_benchmark_preserves_exact_case_answer_and_mses_without_projection(
     tmp_path: Path,
 ) -> None:
     _authoring, _dataset, _candidate, formal, release = _release(tmp_path)
     benchmark = formal.resolve_native_benchmark(release.release_id)
-    bundle = formal.materialize_runtime_bundle(
-        release.release_id,
-        DatasetBundleStore(tmp_path / "runtime-bundles"),
-    )
-
     case = benchmark.cases[0]
-    question = bundle.questions[0]
-    answer = bundle.gold_answers[question.gold_answer_id]
-    evidence_set = bundle.gold_evidence_sets[question.gold_evidence_set_id]
-    runtime_evidence = {
-        item.evidence_id: item.canonical_object_id for item in evidence_set.evidence
-    }
-    runtime_paths = [
-        [
-            [runtime_evidence[evidence_id] for evidence_id in clause]
-            for clause in path
-        ]
-        for path in evidence_set.mses_paths or []
-    ]
-    benchmark_evidence = {
-        item.evidence_id: item.canonical_object_id for item in case.gold.evidence
-    }
-    benchmark_paths = [
-        [
-            [benchmark_evidence[evidence_id] for evidence_id in clause.alternatives]
-            for clause in path.clauses
-        ]
-        for path in case.gold.mses_paths
-    ]
+    payload = formal.releases.payload_snapshots(release.release_id)
+    frozen_case = payload["cases"][0]
+    frozen_gold = payload["gold"][0]
 
-    assert question.case_id == case.case_id
-    assert question.question == case.question
-    assert answer.kind.value == case.gold.answer.kind.value
-    assert answer.canonical == case.gold.answer.canonical
-    assert runtime_paths == benchmark_paths
+    assert case.case_id == frozen_case["case_id"]
+    assert case.question == frozen_case["draft"]["question"]
+    assert case.gold.answer.canonical == frozen_gold["payload"]["answer"]["canonical"]
+    assert case.gold.mses_paths
+    assert {
+        alternative
+        for path in case.gold.mses_paths
+        for clause in path.clauses
+        for alternative in clause.alternatives
+    } == {
+        item.evidence_id
+        for item in case.gold.evidence
+        if item.role == BenchmarkEvidenceRoleV2.REQUIRED
+    }
 
 
 def test_native_benchmark_rejects_missing_payload_without_ledger_fallback(

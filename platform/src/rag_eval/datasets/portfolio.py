@@ -185,7 +185,6 @@ class SourceFamily(StrEnum):
     """Only a family assignment, never an invented document/source identity."""
 
     UNASSIGNED = "unassigned"
-    FROZEN_REFERENCE_DIAGNOSTIC = "frozen_reference_diagnostic"
     HELD_OUT_ISOLATED_PENDING_ADMISSION = "held_out_isolated_pending_admission"
 
 
@@ -432,17 +431,6 @@ class CoverageDeficit(PortfolioModel):
     reason: str = Field(min_length=1)
 
 
-class FrozenReferenceObservation(PortfolioModel):
-    bundle_id: str = Field(pattern=r"^[0-9a-f]{64}$")
-    case_count: int = Field(ge=1)
-    usage: PortfolioUsage
-    diagnostic_reference: bool
-    held_out: bool
-    generalization_claim_allowed: bool
-    source_family: SourceFamily
-    typed_case_axes_available: bool
-
-
 class PortfolioCoverageReport(PortfolioModel):
     schema_version: Literal[PORTFOLIO_REPORT_SCHEMA_VERSION] = PORTFOLIO_REPORT_SCHEMA_VERSION
     portfolio_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
@@ -452,7 +440,6 @@ class PortfolioCoverageReport(PortfolioModel):
     state_counts: tuple[tuple[PortfolioSlotState, int], ...]
     coverage: tuple[CoverageBucket, ...]
     deficits: tuple[CoverageDeficit, ...]
-    frozen_reference: FrozenReferenceObservation
     report_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
@@ -476,7 +463,6 @@ class PortfolioCoverageReport(PortfolioModel):
             "state_counts": [(item.value, count) for item, count in self.state_counts],
             "coverage": [item.model_dump(mode="json") for item in self.coverage],
             "deficits": [item.model_dump(mode="json") for item in self.deficits],
-            "frozen_reference": self.frozen_reference.model_dump(mode="json"),
         }
 
     @classmethod
@@ -487,7 +473,6 @@ class PortfolioCoverageReport(PortfolioModel):
         state_counts: tuple[tuple[PortfolioSlotState, int], ...],
         coverage: tuple[CoverageBucket, ...],
         deficits: tuple[CoverageDeficit, ...],
-        frozen_reference: FrozenReferenceObservation,
     ) -> "PortfolioCoverageReport":
         values = {
             "portfolio_id": portfolio.portfolio_id,
@@ -497,9 +482,8 @@ class PortfolioCoverageReport(PortfolioModel):
             "state_counts": state_counts,
             "coverage": tuple(sorted(coverage, key=lambda item: (item.axis.value, item.value))),
             "deficits": tuple(sorted(deficits, key=lambda item: (item.axis.value, item.value))),
-            "frozen_reference": frozen_reference,
         }
-        digest = _digest({"schema_version": PORTFOLIO_REPORT_SCHEMA_VERSION, **{key: [item.model_dump(mode="json") for item in value] if key in {"input_digests", "coverage", "deficits"} else [(item.value, count) for item, count in value] if key == "state_counts" else value.model_dump(mode="json") if key == "frozen_reference" else value for key, value in values.items()}})
+        digest = _digest({"schema_version": PORTFOLIO_REPORT_SCHEMA_VERSION, **{key: [item.model_dump(mode="json") for item in value] if key in {"input_digests", "coverage", "deficits"} else [(item.value, count) for item, count in value] if key == "state_counts" else value for key, value in values.items()}})
         return cls(**values, report_digest=digest)
 
 
@@ -764,24 +748,11 @@ class BenchmarkPortfolioService:
             for item in coverage
             if item.missing > 0 or item.blocked > 0
         )
-        from rag_eval.datasets.registry import FROZEN_20_CASE_BUNDLE_ID
-
-        frozen = FrozenReferenceObservation(
-            bundle_id=FROZEN_20_CASE_BUNDLE_ID,
-            case_count=20,
-            usage=PortfolioUsage.DEVELOPMENT,
-            diagnostic_reference=True,
-            held_out=False,
-            generalization_claim_allowed=False,
-            source_family=SourceFamily.FROZEN_REFERENCE_DIAGNOSTIC,
-            typed_case_axes_available=False,
-        )
         return PortfolioCoverageReport.build(
             portfolio=portfolio,
             state_counts=state_counts,
             coverage=coverage,
             deficits=deficits,
-            frozen_reference=frozen,
         )
 
     def transition_slot(

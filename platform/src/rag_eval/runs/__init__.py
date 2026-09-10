@@ -21,7 +21,6 @@ from rag_eval.runs.models import (
     ArtifactChecksumGraphV2,
     ArtifactEvidenceJudgment,
     ArtifactEvidenceStatus,
-    BenchmarkCaseSnapshotV2,
     BenchmarkIdentityV2,
     LeaderboardEligibilityV2,
     PersistedEvaluationV2,
@@ -38,7 +37,7 @@ from rag_eval.runs.orchestration import (
     NativeCaseOutcome,
     TraceValidationResult,
     TraceValidator,
-    benchmark_identity_from_release_metadata,
+    benchmark_identity_from_release,
     evaluation_profile_from_query_config,
 )
 from rag_eval.runs.plans import (
@@ -92,7 +91,6 @@ __all__ = [
     "ArtifactVerificationView",
     "ArtifactViewAvailability",
     "ArtifactWriter",
-    "BenchmarkCaseSnapshotV2",
     "BenchmarkIdentityV2",
     "BenchmarkReleaseIdentityV2",
     "BenchmarkResolver",
@@ -125,7 +123,7 @@ __all__ = [
     "TraceValidationRecordV2",
     "TraceValidationResult",
     "TraceValidator",
-    "benchmark_identity_from_release_metadata",
+    "benchmark_identity_from_release",
     "build_artifact_summary",
     "build_case_index",
     "derive_leaderboard_eligibility",

@@ -32,8 +32,7 @@ class ExperimentSpec(ContractModel):
     # A human-facing label is frozen with newly created experiments but never
     # changes the evaluation semantics or research identifiers.
     display_name: str | None = Field(default=None, max_length=160)
-    bundle_id: str = Field(min_length=1)
-    dataset_release_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
+    dataset_release_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
     system_id: str = Field(min_length=1)
     adapter_id: str = Field(min_length=1)
     adapter_config: dict[str, Any] = Field(default_factory=dict)

@@ -65,13 +65,6 @@ export interface RunRecordViewV2 {
   display_name_source: 'override' | 'generated'
 }
 
-export interface DatasetSummary {
-  bundle_id: string
-  name: string
-  version: string
-  cases: number
-}
-
 export interface FormalDatasetReleaseSummary {
   release_id: string
   dataset_id: string
@@ -87,20 +80,8 @@ export interface FormalDatasetReleaseSummary {
   runtime_reason: string | null
 }
 
-export interface FormalBundleV3Summary {
-  bundle_id: string
-  target_release_id: string
-  dataset_id: string
-  case_count: number
-  gold_count: number
-  evidence_count: number
-  runnable: boolean
-  visibility: string
-}
-
 export interface FormalDatasetsResponse {
   releases: FormalDatasetReleaseSummary[]
-  bundles_v3: FormalBundleV3Summary[]
 }
 
 export interface FormalCanonicalObjectView {
@@ -361,21 +342,34 @@ export interface RunArtifactCaseV2 {
   repetition: number
   seed: number
   status: string
-  question: string
-  gold_answer: { kind: string; canonical: string | string[] | null; unit?: string | null }
-  gold_evidence_set: {
-    gold_evidence_set_id: string
-    required_groups: string[][]
-    mses_paths: string[][][] | null
-    source_identities: unknown[]
-    evidence: Array<{
+  benchmark_case: {
+    case_id: string
+    case_revision_id: string
+    target_id: string
+    question: string
+    language: string
+    source_object_ids: string[]
+    gold: {
+      gold_id: string
+      gold_revision_id: string
+      case_id: string
+      case_revision_id: string
+      source_identity: Record<string, unknown>
+      answer: { kind: string; canonical: string | string[] | null; accepted_values: string[]; locale: string | null; unit: string | null; tolerance: string | number | null }
+      evidence: Array<{
       evidence_id: string
       document_id: string
-      canonical_object_id?: string | null
-      canonical_value?: string | null
-      quote_anchor?: string | null
-      locator?: Record<string, unknown>
-    }>
+        canonical_object_id: string
+        role: 'required' | 'supporting' | 'conflicting' | 'near_miss' | 'negative_scope'
+        canonical_object_type: string
+        canonical_value: string
+        canonical_witness_sha256: string
+      }>
+      mses_paths: Array<{ path_id: string; clauses: Array<{ clause_id: string; alternatives: string[] }> }>
+      dependencies: Array<Record<string, unknown>>
+      negative_scope_object_ids: string[]
+      negative_rationale: string | null
+    }
   }
   trace_validation: { status: ObservationStatus; reason: string | null }
   adapter_result: {
@@ -402,6 +396,8 @@ export interface RunArtifactCaseV2 {
     scorer_id: string
     scorer_version: string
     scorer_digest: string
+    trace_digest: string | null
+    gold_revision_id: string
     metrics: EvaluationMetricV2[]
     localizations: Array<Record<string, unknown>>
     pipeline_deltas: Array<Record<string, unknown>>
@@ -420,7 +416,7 @@ export interface ArtifactOverviewV2 {
   reason: string | null
   verification: ArtifactVerification
   manifest: {
-    benchmark_identity: { dataset_release_id: string; benchmark_snapshot_digest: string; source_identities: unknown[] }
+    benchmark_identity: { release_id: string; release_digest: string; benchmark_snapshot_digest: string; source_identity: Record<string, unknown> }
     runtime_profiles: Array<{ profile_id: string; system_id: string; system_version: string; configuration_digest: string }>
     observation_profiles: Array<{ profile_id: string; adapter_id: string; adapter_version: string; profile_digest: string }>
     artifact_digest: string
@@ -546,29 +542,6 @@ export interface SystemConnectionPayload {
   query_overrides?: Record<string, unknown>
   metric_overrides?: Record<string, unknown>
   request_timeout_seconds?: number
-}
-
-export interface DatasetDraftDocument {
-  document_id: string
-  filename: string
-  content: string
-}
-
-export interface DatasetDraftCase {
-  case_id: string
-  question: string
-  gold_answer: string
-  document_id: string
-  span_start: number
-  span_end: number
-}
-
-export interface DatasetDraft {
-  draft_id?: string
-  name: string
-  version: string
-  documents: DatasetDraftDocument[]
-  cases: DatasetDraftCase[]
 }
 
 export interface AuthoringDataset {
@@ -699,16 +672,6 @@ export interface AuthoringDiscoveryJob {
   error_detail: string | null
 }
 
-export interface AuthoringExport {
-  release_id: string
-  name: string
-  version: string
-  approved_case_ids: string[]
-  views: Record<string, string>
-  blocked_cases: Array<Record<string, unknown>>
-  registered_bundle_ids: Record<string, string>
-}
-
 export interface EvaluationDraft {
   draft_id?: string
   mode: 'basic' | 'advanced'
@@ -738,8 +701,7 @@ export interface SystemSummary {
 export interface ExperimentSpec {
   experiment_id: string
   display_name?: string | null
-  bundle_id: string
-  dataset_release_id?: string | null
+  dataset_release_id: string
   system_id: string
   adapter_id: string
   adapter_config: Record<string, unknown>

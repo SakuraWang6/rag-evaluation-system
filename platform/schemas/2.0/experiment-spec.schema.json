@@ -336,23 +336,10 @@
       "default": null,
       "title": "Display Name"
     },
-    "bundle_id": {
-      "minLength": 1,
-      "title": "Bundle Id",
-      "type": "string"
-    },
     "dataset_release_id": {
-      "anyOf": [
-        {
-          "pattern": "^[A-Za-z0-9_-]+$",
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Dataset Release Id"
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Dataset Release Id",
+      "type": "string"
     },
     "system_id": {
       "minLength": 1,
@@ -510,7 +497,7 @@
   },
   "required": [
     "experiment_id",
-    "bundle_id",
+    "dataset_release_id",
     "system_id",
     "adapter_id",
     "case_selection_id"

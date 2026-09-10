@@ -163,7 +163,7 @@ class UnifiedEvaluationResult(EvaluationModel):
     scorer_id: Literal[UNIFIED_SCORER_ID] = UNIFIED_SCORER_ID
     scorer_version: Literal[UNIFIED_SCORER_VERSION] = UNIFIED_SCORER_VERSION
     scorer_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
-    gold_evidence_set_id: str = Field(min_length=1)
+    gold_revision_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
     trace_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     metrics: tuple[EvaluationMetric, ...]
     localizations: tuple[StageLocalization, ...]

@@ -3,7 +3,6 @@ import type {
   ArtifactCaseViewV2,
   ArtifactOverviewV2,
   ComparisonResponse,
-  DatasetSummary,
   FormalCaseContent,
   FormalReleaseCaseIndexResponse,
   FormalReleaseContentResponse,
@@ -16,7 +15,6 @@ import type {
   SystemProfile,
   ProductSystemSummary,
   SystemConnectionPayload,
-  DatasetDraft,
   EvaluationDraft,
   AuthoringDataset,
   AuthoringTarget,
@@ -25,7 +23,6 @@ import type {
   AuthoringDiscoveryJob,
   AuthoringGenerationJob,
   AuthoringResolution,
-  AuthoringExport,
   LLMConfigRevision,
   LLMProviderConfig,
   LLMStageBinding,
@@ -59,7 +56,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<{ status: string; schema_version: number; producer: string; product_layer_enabled?: boolean }>('/health'),
-  datasets: () => request<DatasetSummary[]>('/datasets'),
   formalDatasets: () => request<FormalDatasetsResponse>('/product/formal-datasets'),
   formalDatasetContent: (releaseId: string) => request<FormalReleaseContentResponse>(`/product/formal-datasets/${encodeURIComponent(releaseId)}/content`),
   formalDatasetCaseIndex: (releaseId: string) => request<FormalReleaseCaseIndexResponse>(`/product/formal-datasets/${encodeURIComponent(releaseId)}/cases`),
@@ -68,9 +64,6 @@ export const api = {
   formalDatasetSourceUrl: (releaseId: string) => `${API_ROOT}/product/formal-datasets/${encodeURIComponent(releaseId)}/source`,
   formalDatasetNativeDocumentUrl: (releaseId: string) => `${API_ROOT}/product/formal-datasets/${encodeURIComponent(releaseId)}/document/native`,
   deleteFormalDataset: (releaseId: string) => request<{ release_id: string; deleted: boolean }>(`/product/formal-datasets/${encodeURIComponent(releaseId)}`, { method: 'DELETE' }),
-  registerDataset: (path: string) => request<{ bundle_id: string }>('/datasets', {
-    method: 'POST', body: JSON.stringify({ path }),
-  }),
   systems: () => request<SystemSummary[]>('/systems'),
   experiments: () => request<ExperimentSpec[]>('/experiments'),
   jobs: () => request<JobRecord[]>('/jobs'),
@@ -105,25 +98,6 @@ export const api = {
   deleteProductSystem: (systemId: string) => request<{ system_id: string; deleted: boolean; previous_execution_provider: string; secret_keys: string[] }>(`/product/systems/${encodeURIComponent(systemId)}`, { method: 'DELETE' }),
   removeProductSystemSecret: (systemId: string, environmentKey: string) => request<{ system_id: string; secret_keys: string[]; configured: boolean }>(`/product/systems/${encodeURIComponent(systemId)}/secrets/${encodeURIComponent(environmentKey)}`, { method: 'DELETE' }),
   testProductSystem: (systemId: string) => request<{ status: string; system_id: string; adapter_id: string; execution_provider: string }>(`/product/systems/${encodeURIComponent(systemId)}/test`, { method: 'POST' }),
-  uploadDataset: async (file: File) => {
-    let response: Response
-    try {
-      response = await fetch(`${API_ROOT}/product/datasets/upload`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/zip', 'X-RAG-EVAL-Filename': uploadFilenameHeader(file.name) },
-        body: file,
-      })
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause)
-      throw new Error(`${message} (${API_ROOT}/product/datasets/upload)`)
-    }
-    if (!response.ok) throw new Error(await response.text())
-    return response.json() as Promise<{ bundle_id: string }>
-  },
-  saveDatasetDraft: (draft: DatasetDraft) => request<DatasetDraft>('/product/dataset-drafts', {
-    method: 'POST', body: JSON.stringify(draft),
-  }),
-  sealDatasetDraft: (draftId: string) => request<{ bundle_id: string; sealed: boolean }>(`/product/dataset-drafts/${encodeURIComponent(draftId)}/seal`, { method: 'POST' }),
   authoringDatasets: () => request<AuthoringDataset[]>('/authoring/datasets'),
   uploadAuthoringDocument: async (file: File) => {
     let response: Response
@@ -156,8 +130,6 @@ export const api = {
   resolveAuthoringCandidate: (datasetId: string, candidateId: string, resolution: AuthoringResolution) => request<AuthoringCandidate>(`/authoring/datasets/${encodeURIComponent(datasetId)}/candidates/${encodeURIComponent(candidateId)}/resolve`, { method: 'POST', body: JSON.stringify({ resolution }) }),
   generateAuthoringAnswer: (datasetId: string, candidateId: string, provider: 'ollama' | 'remote' = 'ollama') => request<AuthoringCandidate>(`/authoring/datasets/${encodeURIComponent(datasetId)}/candidates/${encodeURIComponent(candidateId)}/resolve/generate`, { method: 'POST', body: JSON.stringify({ provider }) }),
   reviewAuthoringCandidate: (datasetId: string, candidateId: string, decision: 'accept' | 'edit' | 'reject', reviewer: string, note = '', editedQuestion?: string, editedResolution?: AuthoringResolution) => request<AuthoringCandidate>(`/authoring/datasets/${encodeURIComponent(datasetId)}/candidates/${encodeURIComponent(candidateId)}/review`, { method: 'POST', body: JSON.stringify({ decision, reviewer, note, ...(editedQuestion === undefined ? {} : { edited_question: editedQuestion }), ...(editedResolution === undefined ? {} : { edited_resolution: editedResolution }) }) }),
-  exportAuthoringDataset: (datasetId: string, name: string, version: string) => request<AuthoringExport>(`/authoring/datasets/${encodeURIComponent(datasetId)}/exports`, { method: 'POST', body: JSON.stringify({ name, version }) }),
-  registerAuthoringExport: (datasetId: string, releaseId: string, view: 'canonical-text' | 'native-docx') => request<{ bundle_id: string; export: AuthoringExport }>(`/authoring/datasets/${encodeURIComponent(datasetId)}/exports/${encodeURIComponent(releaseId)}/register/${encodeURIComponent(view)}`, { method: 'POST' }),
   publishAuthoringFormalRelease: (datasetId: string, displayName: string, releaseVersion: string, actor: string) => request<{ release_id: string; dataset_id: string; name: string | null; version: string; case_count: number; gold_count: number }>(`/authoring/datasets/${encodeURIComponent(datasetId)}/formal-releases`, { method: 'POST', body: JSON.stringify({ display_name: displayName, release_version: releaseVersion, actor }) }),
   archiveAuthoringDataset: (datasetId: string) => request<AuthoringDataset>(`/authoring/datasets/${encodeURIComponent(datasetId)}/archive`, { method: 'POST' }),
   deleteAuthoringDataset: (datasetId: string) => request<void>(`/authoring/datasets/${encodeURIComponent(datasetId)}`, { method: 'DELETE' }),

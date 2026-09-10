@@ -141,7 +141,6 @@ class ArtifactPresentationReader:
         expected_artifact_digest: str | None = None,
         expected_benchmark_release_id: str | None = None,
         expected_benchmark_release_digest: str | None = None,
-        expected_bundle_id: str | None = None,
         expected_case_selection_id: str | None = None,
         expected_plan: ResolvedRunPlanV2 | None = None,
     ) -> None:
@@ -151,7 +150,6 @@ class ArtifactPresentationReader:
         self.expected_artifact_digest = expected_artifact_digest
         self.expected_benchmark_release_id = expected_benchmark_release_id
         self.expected_benchmark_release_digest = expected_benchmark_release_digest
-        self.expected_bundle_id = expected_bundle_id
         self.expected_case_selection_id = expected_case_selection_id
         self.expected_plan = expected_plan
 
@@ -287,21 +285,16 @@ class ArtifactPresentationReader:
             benchmark = manifest.benchmark_identity
             if (
                 self.expected_benchmark_release_id is not None
-                and benchmark.dataset_release_id
+                and benchmark.release_id
                 != self.expected_benchmark_release_id
             ):
                 invalid_models.append("resolved-plan:benchmark-release-id")
             if (
                 self.expected_benchmark_release_digest is not None
-                and benchmark.dataset_release_digest
+                and benchmark.release_digest
                 != self.expected_benchmark_release_digest
             ):
                 invalid_models.append("resolved-plan:benchmark-release-digest")
-            if (
-                self.expected_bundle_id is not None
-                and benchmark.bundle_id != self.expected_bundle_id
-            ):
-                invalid_models.append("resolved-plan:runtime-bundle-id")
             if (
                 self.expected_case_selection_id is not None
                 and benchmark.case_selection_id != self.expected_case_selection_id

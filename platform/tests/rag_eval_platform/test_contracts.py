@@ -8,12 +8,12 @@ import pytest
 from pydantic import ValidationError
 
 from rag_eval.artifact_contract import artifact_digest
-from rag_eval.contracts.dataset import (
-    GoldAnswer,
-    GoldAnswerKind,
-    GoldEvidence,
-    GoldEvidenceSet,
-    ObjectLocator,
+from rag_eval.contracts.benchmark import (
+    BenchmarkAnswerKindV2,
+    BenchmarkAnswerV2,
+    BenchmarkGoldV2,
+    BenchmarkMsesClauseV2,
+    BenchmarkMsesPathV2,
 )
 from rag_eval.contracts.research import (
     AnalysisContract,
@@ -33,61 +33,56 @@ from tests.rag_eval_platform.test_run_artifact_v2 import (
     _observed_fixture,
     _prepared_fixture,
 )
+from tests.rag_eval_platform.test_unified_evaluation_v2 import _gold
 
 EXAMPLES_ROOT = Path(__file__).resolve().parents[2] / "examples"
 
 
 def test_evidence_groups_are_non_empty_and_reference_known_ids() -> None:
-    evidence = GoldEvidence(
-        evidence_id="e-1",
-        document_id="doc-1",
-        locator=ObjectLocator(object_type="fact", object_id="FACT-1"),
-        canonical_value="42",
-    )
-    valid = GoldEvidenceSet(
-        gold_evidence_set_id="set-1",
-        evidence=[evidence],
-        required_groups=[["e-1"]],
-    )
-    assert valid.required_groups == [["e-1"]]
+    valid = _gold(("e-1",))
+    assert valid.mses_paths[0].clauses[0].alternatives == ("e-1",)
 
     with pytest.raises(ValidationError, match="unknown evidence"):
-        GoldEvidenceSet(
-            gold_evidence_set_id="set-1",
-            evidence=[evidence],
-            required_groups=[["missing"]],
+        BenchmarkGoldV2.model_validate(
+            valid.model_dump(mode="json")
+            | {
+                "mses_paths": [
+                    {
+                        "path_id": "path-1",
+                        "clauses": [
+                            {"clause_id": "clause-1", "alternatives": ["missing"]}
+                        ],
+                    }
+                ]
+            }
         )
 
 
-def test_evidence_cannot_inflate_multiple_required_groups() -> None:
-    evidence = GoldEvidence(
-        evidence_id="e-1",
-        document_id="doc-1",
-        locator=ObjectLocator(object_type="fact", object_id="FACT-1"),
-        canonical_value="42",
-    )
-    with pytest.raises(ValidationError, match="only one required group"):
-        GoldEvidenceSet(
-            gold_evidence_set_id="set-1",
-            evidence=[evidence],
-            required_groups=[["e-1"], ["e-1"]],
+def test_mses_rejects_duplicate_clause_identity() -> None:
+    with pytest.raises(ValidationError, match="clause IDs"):
+        BenchmarkMsesPathV2(
+            path_id="path-1",
+            clauses=(
+                BenchmarkMsesClauseV2(
+                    clause_id="clause-1", alternatives=("e-1",)
+                ),
+                BenchmarkMsesClauseV2(
+                    clause_id="clause-1", alternatives=("e-2",)
+                ),
+            ),
         )
 
 
 def test_gold_evidence_rejects_blank_witnesses() -> None:
-    with pytest.raises(ValidationError, match="requires canonical_value"):
-        GoldEvidence(
-            evidence_id="e-1",
-            document_id="doc-1",
-            locator=ObjectLocator(object_type="fact", object_id="FACT-1"),
-            canonical_value=" ",
-            quote_anchor="\t",
-        )
+    payload = _gold(("e-1",)).model_dump(mode="json")
+    payload["evidence"][0]["canonical_value"] = ""
+    with pytest.raises(ValidationError, match="at least 1 character"):
+        BenchmarkGoldV2.model_validate(payload)
 
 
 def test_non_abstain_answer_requires_canonical_value() -> None:
     with pytest.raises(ValidationError, match="canonical"):
-        GoldAnswer(gold_answer_id="a-1", kind=GoldAnswerKind.TEXT)
+        BenchmarkAnswerV2(kind=BenchmarkAnswerKindV2.TEXT)
 
 
 def test_all_public_contracts_emit_json_schema() -> None:
@@ -123,7 +118,7 @@ def test_contract_does_not_define_hallucination_metric() -> None:
 def test_formal_experiment_requires_verified_immutable_model_identity() -> None:
     base = {
         "experiment_id": "formal",
-        "bundle_id": "bundle",
+        "dataset_release_id": "release",
         "system_id": "system",
         "adapter_id": "adapter",
         "case_selection_id": "selection",
@@ -198,7 +193,7 @@ def test_formal_prepare_fails_before_ingestion_when_model_identity_is_missing() 
     )
     experiment = ExperimentSpec(
         experiment_id="formal",
-        bundle_id="bundle",
+        dataset_release_id="release",
         system_id="system",
         adapter_id="adapter",
         case_selection_id="selection",
@@ -246,7 +241,7 @@ def test_latency_protocol_requires_observed_cache_policy_and_warms_once() -> Non
     prepared_system = _prepared_fixture(_observed_fixture()[3])
     experiment = ExperimentSpec(
         experiment_id="latency",
-        bundle_id="bundle",
+        dataset_release_id="release",
         system_id="system",
         adapter_id="adapter",
         case_selection_id="selection",

@@ -30,14 +30,14 @@ def test_launcher_bootstrap_registers_system_without_starting_worker(
     assert not service.run_records.list()
 
 
-def test_formal_dataset_catalog_endpoint_is_separate_from_bundle2_catalog(tmp_path: Path) -> None:
+def test_formal_dataset_catalog_exposes_only_immutable_releases(tmp_path: Path) -> None:
     service = PlatformService(PlatformPaths(tmp_path / "platform"))
     client = TestClient(create_app(service, start_supervisor=False))
 
     response = client.get("/api/v1/product/formal-datasets")
 
     assert response.status_code == 200
-    assert response.json() == {"releases": [], "bundles_v3": []}
+    assert response.json() == {"releases": []}
 
 
 def test_formal_dataset_content_endpoint_joins_pinned_case_gold_and_canonical_evidence(tmp_path: Path) -> None:

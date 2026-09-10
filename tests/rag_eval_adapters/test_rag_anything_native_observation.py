@@ -8,11 +8,17 @@ from typing import ClassVar
 
 import pytest
 from rag_eval.adapters.observation_tck import assert_unified_observation_tck
-from rag_eval.contracts.dataset import (
-    GoldEvidence,
-    GoldEvidenceSet,
-    GoldSourceIdentity,
+from rag_eval.contracts.benchmark import (
+    BenchmarkAnswerKindV2,
+    BenchmarkAnswerV2,
+    BenchmarkEvidenceRoleV2,
+    BenchmarkEvidenceV2,
+    BenchmarkGoldV2,
+    BenchmarkMsesClauseV2,
+    BenchmarkMsesPathV2,
+    BenchmarkSourceIdentityV2,
 )
+from rag_eval.contracts.canonical import CanonicalObjectType, SourceSpan
 from rag_eval.contracts.native import (
     NativeQueryV2,
     OriginalDocumentV2,
@@ -480,28 +486,51 @@ async def test_adapter_emits_typed_native_trace_and_unions_split_evidence(
     )
     assert runtime.query_calls == 1
 
-    gold = GoldEvidenceSet(
-        gold_evidence_set_id="gold-1",
-        evidence=[
-            GoldEvidence(
+    gold = BenchmarkGoldV2(
+        gold_id="gold-1",
+        gold_revision_id="gold-revision-1",
+        case_id="case-1",
+        case_revision_id="case-revision-1",
+        source_identity=BenchmarkSourceIdentityV2(
+            document_id="doc-1",
+            source_sha256=document.source_sha256,
+            canonical_schema_version="1.3",
+            canonical_digest="c" * 64,
+            canonical_catalog_sha256=document.canonical_catalog_sha256,
+            parser_identity="python-docx/fixture",
+            canonicalizer_identity="rag-eval-authoring-canonicalizer/5",
+            configuration_digest="a" * 64,
+        ),
+        answer=BenchmarkAnswerV2(
+            kind=BenchmarkAnswerKindV2.TEXT,
+            canonical="42 ms",
+        ),
+        evidence=(
+            BenchmarkEvidenceV2(
                 evidence_id="evidence-1",
                 document_id="doc-1",
                 canonical_object_id="paragraph-1",
+                role=BenchmarkEvidenceRoleV2.REQUIRED,
+                canonical_object_type=CanonicalObjectType.PARAGRAPH,
+                source_spans=(
+                    SourceSpan(
+                        part="word/document.xml",
+                        coordinates={"body_ordinal": 1},
+                    ),
+                ),
                 canonical_value="alpha beta gamma",
-                locator={
-                    "type": "object",
-                    "object_type": "paragraph",
-                    "object_id": "paragraph-1",
-                },
-            )
-        ],
-        required_groups=[["evidence-1"]],
-        source_identities=(
-            GoldSourceIdentity(
-                document_id="doc-1",
-                source_sha256=document.source_sha256,
-                source_coordinate_schema="ooxml-structural-v1",
-                canonical_catalog_sha256=document.canonical_catalog_sha256,
+                canonical_witness_sha256=_sha("alpha beta gamma"),
+            ),
+        ),
+        mses_paths=(
+            BenchmarkMsesPathV2(
+                path_id="path-1",
+                clauses=(
+                    BenchmarkMsesClauseV2(
+                        clause_id="clause-1",
+                        alternatives=("evidence-1",),
+                    ),
+                ),
             ),
         ),
     )

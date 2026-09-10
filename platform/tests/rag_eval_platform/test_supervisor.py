@@ -99,12 +99,11 @@ def test_supervisor_retains_a_timed_out_thread_as_the_single_writer(
 def test_supervisor_keeps_the_formal_release_store_for_queued_runs(tmp_path, monkeypatch) -> None:
     """A formal release validated in preview must remain available at execution."""
 
-    formal_store = object()
+    benchmark_service = object()
     jobs = JobStore(tmp_path / "jobs")
     plans = ResolvedRunPlanStore(tmp_path / "resolved-run-plans")
     experiment = ExperimentSpec(
         experiment_id="formal-supervisor-test",
-        bundle_id="a" * 64,
         dataset_release_id="dataset-release-formal-test",
         system_id="fixture-system",
         adapter_id="fixture-adapter",
@@ -147,12 +146,14 @@ def test_supervisor_keeps_the_formal_release_store_for_queued_runs(tmp_path, mon
             release_id="dataset-release-formal-test",
             release_digest="d" * 64,
             validation_report_digest="e" * 64,
-            runtime_bundle_id="a" * 64,
+            payload_snapshot_digest="a" * 64,
+            benchmark_snapshot_digest="b" * 64,
         ),
         original_document=OriginalDocumentIdentityV2(
             document_id="fixture-document",
             source_sha256="f" * 64,
-            runtime_path="documents/fixture.docx",
+            canonical_digest="1" * 64,
+            canonical_catalog_sha256="2" * 64,
             mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ),
         system=system_identity,
@@ -176,9 +177,8 @@ def test_supervisor_keeps_the_formal_release_store_for_queued_runs(tmp_path, mon
         execution_provider="fixture",
     )
     outer_executor = RunExecutor(
+        benchmark_service,  # type: ignore[arg-type]
         SimpleNamespace(),  # type: ignore[arg-type]
-        SimpleNamespace(),  # type: ignore[arg-type]
-        dataset_release_store=formal_store,  # type: ignore[arg-type]
     )
     observed: list[tuple[object, object]] = []
     run_records = SimpleNamespace(
@@ -187,7 +187,7 @@ def test_supervisor_keeps_the_formal_release_store_for_queued_runs(tmp_path, mon
 
     def execute(self, *_args, **_kwargs):
         observed.append(
-            (self.dataset_release_store, _kwargs.get("resolved_plan"))
+            (self.benchmark_service, _kwargs.get("resolved_plan"))
         )
         return SimpleNamespace(
             state=RunRecordStateV2.COMPLETED,
@@ -210,5 +210,5 @@ def test_supervisor_keeps_the_formal_release_store_for_queued_runs(tmp_path, mon
     )
 
     assert supervisor.run_once() is True
-    assert observed == [(formal_store, plan)]
+    assert observed == [(benchmark_service, plan)]
     assert jobs.get(job.job_id).status == JobStatus.COMPLETED

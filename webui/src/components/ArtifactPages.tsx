@@ -86,7 +86,7 @@ export function ArtifactRunDetailPage({ runId, runs, go }: { runId: string; runs
       {overview && <AvailabilityNotice value={overview} />}
       <div className="run-detail-facts">
         <span><small>系统</small><b>{run.system_id}</b></span>
-        <span><small>Benchmark Release</small><b>{overview?.manifest?.benchmark_identity.dataset_release_id ?? run.benchmark_release_id}</b></span>
+        <span><small>Benchmark Release</small><b>{overview?.manifest?.benchmark_identity.release_id ?? run.benchmark_release_id}</b></span>
         <span><small>创建时间</small><b>{formatDate(run.created_at)}</b></span>
         <span><small>Artifact Contract</small><b>{overview?.artifact_contract_version ?? '—'}</b></span>
       </div>
@@ -161,17 +161,18 @@ function ArtifactCaseDetail({ value, run }: { value: ArtifactCaseViewV2; run?: R
 }
 
 function PersistedCaseDetail({ value, run }: { value: RunArtifactCaseV2; run?: RunRecordViewV2 }) {
-  const answer = value.gold_answer.canonical
+  const answer = value.benchmark_case.gold.answer.canonical
+  const gold = value.benchmark_case.gold
   const trace = value.adapter_result?.trace
   return <>
-    <section className="question-block"><span>Repetition {value.repetition} · seed {value.seed}</span><h2>{value.question}</h2></section>
+    <section className="question-block"><span>Repetition {value.repetition} · seed {value.seed}</span><h2>{value.benchmark_case.question}</h2></section>
     {value.error && <ErrorBanner message={`${value.error.code}: ${value.error.message}`} />}
     <section className="case-judgments">
       <Surface className="case-judgment-card"><span>答案判断</span><StateMark state={value.answer_judgment.value ?? value.answer_judgment.status} /><p>{value.answer_judgment.reason ?? 'Persisted Artifact judgment.'}</p></Surface>
       <Surface className="case-judgment-card"><span>证据覆盖</span><StateMark state={value.evidence_judgment.value ?? value.evidence_judgment.status} /><p>{value.evidence_judgment.reason ?? 'Persisted Artifact judgment.'}</p></Surface>
       <Surface className="case-judgment-card"><span>Failure attribution</span><StateMark state={value.evaluation.failure?.kind ?? 'none'} /><p>{value.evaluation.failure?.reason ?? 'No proof-gated failure was persisted.'}</p></Surface>
     </section>
-    <div className="answer-pair"><Surface tone="inset"><span>Gold answer</span><p>{Array.isArray(answer) ? answer.join(' · ') : answer ?? '—'} {value.gold_answer.unit ?? ''}</p></Surface><Surface><span>Generated answer</span><p>{trace?.answer.content ?? 'UNAVAILABLE'}</p><small>{trace ? `${trace.answer.observation_status} · ${trace.answer.completeness}` : value.trace_validation.status}</small></Surface></div>
+    <div className="answer-pair"><Surface tone="inset"><span>Gold answer</span><p>{Array.isArray(answer) ? answer.join(' · ') : answer ?? '—'} {gold.answer.unit ?? ''}</p></Surface><Surface><span>Generated answer</span><p>{trace?.answer.content ?? 'UNAVAILABLE'}</p><small>{trace ? `${trace.answer.observation_status} · ${trace.answer.completeness}` : value.trace_validation.status}</small></Surface></div>
     <details className="case-audit-details" open><summary>Unified Trace 与证明</summary><div className="case-audit-details__body">
       {!trace && <p className="artifact-unavailable-note">{value.trace_validation.reason ?? 'Unified Trace is unavailable.'}</p>}
       {trace && <>
@@ -181,7 +182,7 @@ function PersistedCaseDetail({ value, run }: { value: RunArtifactCaseV2; run?: R
         <StageObservationPanel title="Final Context" observation={trace.final_context} />
         <Surface tone="inset"><span className="eyebrow">Transformation lineage</span><p>{trace.transformations.length} transformation record(s) · {trace.mapping_diagnostics.length} mapping diagnostic(s)</p><small>Trace digest {trace.trace_digest}</small></Surface>
       </>}
-      <Surface className="case-answer-evidence"><header><div><span className="eyebrow">Canonical Gold Evidence</span><h4>{value.gold_evidence_set.gold_evidence_set_id}</h4><p>这些位置来自 Artifact 中冻结的 Benchmark Snapshot。</p></div></header><div className="case-answer-evidence__items">{value.gold_evidence_set.evidence.map((evidence, index) => <article key={evidence.evidence_id}><span>{String(index + 1).padStart(2, '0')}</span><p>{evidence.quote_anchor ?? evidence.canonical_value ?? evidence.evidence_id}</p></article>)}</div></Surface>
+      <Surface className="case-answer-evidence"><header><div><span className="eyebrow">Canonical Gold Evidence</span><h4>{gold.gold_revision_id}</h4><p>这些位置来自 Artifact 中冻结的 Benchmark Snapshot。</p></div></header><div className="case-answer-evidence__items">{gold.evidence.map((evidence, index) => <article key={evidence.evidence_id}><span>{String(index + 1).padStart(2, '0')}</span><p>{evidence.canonical_value}</p></article>)}</div></Surface>
       <section className="metric-breakdown"><h4>Persisted metrics</h4><div className="metric-grid">{value.evaluation.metrics.map((metric) => <ArtifactMetricCell key={metric.metric_id} metric={metric} descriptor={metric.descriptor} />)}</div></section>
       <details><summary>Localization / pipeline records</summary><pre>{JSON.stringify({ localizations: value.evaluation.localizations, pipeline_deltas: value.evaluation.pipeline_deltas, runtime_profile: trace?.runtime_profile, observation_profile: trace?.observation_profile, run_id: run?.run_id }, null, 2)}</pre></details>
     </div></details>

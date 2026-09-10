@@ -1,6 +1,6 @@
 """Editable product-layer resources that compile into frozen research contracts.
 
-Nothing in this module changes Bundle, ExperimentSpec, Worker Wire, scoring, or
+Nothing in this module changes Benchmark Release, ExperimentSpec, Worker Wire, scoring, or
 replay semantics.  It deliberately stores drafts outside immutable artifact
 directories so the product layer can be switched off without affecting CLI use.
 """
@@ -19,8 +19,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from rag_eval.contracts.benchmark import benchmark_case_selection_id
 from rag_eval.contracts.run import ExperimentSpec
-from rag_eval.datasets.bundle import case_selection_id
 from rag_eval.runtime_admission import require_no_public_corpus_selector
 from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.ids import safe_id
@@ -249,10 +249,7 @@ class SystemConnection(ProductModel):
 class EvaluationDraft(ProductModel):
     draft_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     mode: ProductMode = ProductMode.BASIC
-    bundle_id: str | None = None
-    # A formal release is selected directly in the product UI.  Its immutable
-    # runtime projection is resolved only when previewing/finalising the draft.
-    dataset_release_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
+    dataset_release_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
     system_id: str | None = None
     profile_id: str | None = None
     profile_version: str | None = None
@@ -284,7 +281,6 @@ def canonical_experiment(
     profile: SystemProfile,
     *,
     case_ids: list[str],
-    bundle_id: str | None = None,
 ) -> ExperimentSpec:
     if draft.profile_id != connection.profile_id or draft.profile_version != connection.profile_version:
         raise ValueError("evaluation draft and system connection profile versions differ")
@@ -303,7 +299,11 @@ def canonical_experiment(
     selected_case_ids = None if draft.case_ids is None else sorted(draft.case_ids)
     selected = sorted(case_ids if selected_case_ids is None else selected_case_ids)
     policy = "all" if draft.case_ids is None else "explicit"
-    selection_id = case_selection_id(selected, policy=policy, seed=draft.seed)
+    selection_id = benchmark_case_selection_id(
+        selected,
+        policy=policy,
+        seed=draft.seed,
+    )
     # The experiment ID is also the durable idempotency key used by
     # ExperimentStore.  It must represent *all* persisted experiment content,
     # not merely the dataset and seed: changing a selected model or any
@@ -312,7 +312,6 @@ def canonical_experiment(
     fingerprint = hashlib.sha256(
         json.dumps(
             {
-                "bundle_id": bundle_id or draft.bundle_id,
                 "dataset_release_id": draft.dataset_release_id,
                 "system_id": connection.system_id,
                 "adapter_id": profile.adapter_id,
@@ -333,7 +332,6 @@ def canonical_experiment(
     return ExperimentSpec(
         experiment_id=f"{name}-{fingerprint}",
         display_name=draft.display_name.strip() or None,
-        bundle_id=bundle_id or draft.bundle_id or "",
         dataset_release_id=draft.dataset_release_id,
         system_id=connection.system_id,
         adapter_id=profile.adapter_id,

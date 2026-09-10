@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Callable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from rag_eval.contracts.dataset import GoldAnswerKind
+from rag_eval.contracts.benchmark import BenchmarkAnswerKindV2
 from rag_eval.contracts.observation import ObservationStatus
 from rag_eval.runs.models import ArtifactAnswerStatus, RunArtifactCaseV2
 from rag_eval.storage.atomic import atomic_write_json
@@ -468,7 +468,10 @@ class SemanticAnswerReviewer:
 
         if case.status != "completed":
             return False
-        if case.gold_answer.kind not in {GoldAnswerKind.TEXT, GoldAnswerKind.FORMULA}:
+        if case.gold_answer.kind not in {
+            BenchmarkAnswerKindV2.TEXT,
+            BenchmarkAnswerKindV2.FORMULA,
+        }:
             return False
         if case.answer_judgment.status != ArtifactAnswerStatus.NEEDS_REVIEW:
             return False
@@ -492,7 +495,10 @@ class SemanticAnswerReviewer:
     ) -> CaseReviewRecord:
         if case.status != "completed":
             raise SemanticReviewError("only completed Cases with a Gold answer can be semantically reviewed")
-        if case.gold_answer.kind not in {GoldAnswerKind.TEXT, GoldAnswerKind.FORMULA}:
+        if case.gold_answer.kind not in {
+            BenchmarkAnswerKindV2.TEXT,
+            BenchmarkAnswerKindV2.FORMULA,
+        }:
             raise SemanticReviewError("semantic review is limited to text and formula answers")
         existing = self.store.get(
             run_id,

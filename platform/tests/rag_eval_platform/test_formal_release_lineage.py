@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import shutil
 from pathlib import Path
 
@@ -19,9 +18,7 @@ from rag_eval.authoring.ledger import (
 )
 from rag_eval.authoring.models import AnswerEvidenceCandidate, CandidateEvidence, DiscoveryMethod
 from rag_eval.authoring.service import AuthoringService
-from rag_eval.datasets.bundle import DatasetBundleStore
 from rag_eval.datasets.formal import (
-    BundleProjectionStatus,
     FormalDatasetError,
     FormalDatasetReleaseService,
     ReleaseSchemaVersions,
@@ -61,19 +58,21 @@ def _workflow(tmp_path: Path, *, question: str = "延迟指标对应的数值是
     return authoring, dataset, candidate, resolved, formal, target
 
 
-def test_release_reader_accepts_previously_shipped_canonical_schema_v11() -> None:
-    versions = ReleaseSchemaVersions.model_validate(
-        {
-            "canonical_schema_version": "1.1",
-            "ledger_schema_version": "authoring-ledger/1.0",
-            "validator_version": "formal-dataset-validator/1.0",
-            "release_schema_version": "formal-dataset-release/2.0",
-        }
-    )
-    assert versions.canonical_schema_version == "1.1"
+def test_release_reader_rejects_retired_ledger_and_validator_contracts() -> None:
+    with pytest.raises(ValidationError):
+        ReleaseSchemaVersions.model_validate(
+            {
+                "canonical_schema_version": "1.1",
+                "ledger_schema_version": "authoring-ledger/1.0",
+                "validator_version": "formal-dataset-validator/1.0",
+                "release_schema_version": "formal-dataset-release/2.0",
+            }
+        )
 
 
-def test_lossless_release_materializes_a_release_pinned_runtime_bundle(tmp_path: Path) -> None:
+def test_release_resolves_a_pinned_native_benchmark_without_a_runtime_bundle(
+    tmp_path: Path,
+) -> None:
     authoring, dataset, candidate, _resolved, formal, _target = _workflow(tmp_path)
     _approve(authoring, dataset, candidate)
     release = formal.freeze(
@@ -83,21 +82,16 @@ def test_lossless_release_materializes_a_release_pinned_runtime_bundle(tmp_path:
         actor="fixture-release-manager",
     )
 
-    bundle = formal.materialize_runtime_bundle(
-        release.release_id, DatasetBundleStore(tmp_path / "runtime-bundles")
-    )
+    benchmark = formal.resolve_native_benchmark(release.release_id)
 
-    assert bundle.questions[0].case_id == release.cases[0].case_id
-    assert bundle.manifest.metadata["formal_runtime_projection"]["release_id"] == release.release_id
-    assert bundle.manifest.metadata["formal_runtime_projection"]["release_digest"] == release.release_digest
-    evidence_set = next(iter(bundle.gold_evidence_sets.values()))
-    source_pin = evidence_set.source_identities[0]
-    document = bundle.manifest.documents[0]
-    assert source_pin.source_sha256 == document.sha256
-    assert source_pin.canonical_catalog_sha256 == hashlib.sha256(
-        (bundle.root / document.canonical_path).read_bytes()
-    ).hexdigest()
-    assert all(item.canonical_object_id for item in evidence_set.evidence)
+    assert benchmark.cases[0].case_id == release.cases[0].case_id
+    assert benchmark.release_id == release.release_id
+    assert benchmark.release_digest == release.release_digest
+    assert benchmark.source_identity.source_sha256 == release.document.source_digest
+    assert benchmark.original_docx_path.read_bytes() == formal.releases.source_snapshot(
+        release.release_id
+    ).read_bytes()
+    assert all(item.canonical_object_id for item in benchmark.cases[0].gold.evidence)
 
 
 def _approve(authoring: AuthoringService, dataset, candidate) -> None:
@@ -150,7 +144,9 @@ def test_validator_generates_deterministic_error_report_and_blocks_freeze(tmp_pa
     assert formal.releases.list() == []
 
 
-def test_warning_is_not_an_error_and_lossy_projection_cannot_claim_bundle_v2(tmp_path: Path) -> None:
+def test_rich_gold_is_preserved_without_a_lossy_runtime_projection(
+    tmp_path: Path,
+) -> None:
     authoring, dataset, candidate, _, formal, target = _workflow(tmp_path)
     _approve(authoring, dataset, candidate)
     case_id = _case_id(formal, candidate)
@@ -211,10 +207,8 @@ def test_warning_is_not_an_error_and_lossy_projection_cannot_claim_bundle_v2(tmp
         case_revision_ids=(case.case_revision_id,),
         gold_revision_ids=(approved.gold_revision_id,),
     )
-    warning = next(item for item in report.findings if item.rule_id == "bundle_v2.projection_lossiness")
-    assert warning.severity == RuleSeverity.WARN and warning.result == RuleResult.FAIL
     assert not report.has_errors
-    with pytest.raises(FormalDatasetError, match="lossy/non-runnable"):
+    with pytest.raises(TypeError, match="bundle_id"):
         formal.freeze(
             dataset.authoring_dataset_id,
             release_version="1.0.0",
@@ -228,8 +222,14 @@ def test_warning_is_not_an_error_and_lossy_projection_cannot_claim_bundle_v2(tmp
         case_ids=(case_id,),
         actor="release-manager",
     )
-    assert release.bundle_projection.status == BundleProjectionStatus.LOSSY_NON_RUNNABLE
-    assert release.bundle_projection.bundle_id is None
+    benchmark = formal.resolve_native_benchmark(release.release_id)
+    gold = benchmark.cases[0].gold
+    assert len(gold.mses_paths) == 2
+    assert gold.mses_paths[0].clauses[0].alternatives == (
+        "required-a",
+        "required-b",
+    )
+    assert any(item.role.value == "supporting" for item in gold.evidence)
 
 
 def test_immutable_release_parent_successor_lineage_and_deterministic_rebuild(tmp_path: Path) -> None:

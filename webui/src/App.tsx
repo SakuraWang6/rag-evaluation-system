@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   Activity,
-  ArrowRight,
   Beaker,
   BrainCircuit,
   Boxes,
@@ -24,12 +23,11 @@ import {
   ArtifactComparePage as ComparePage,
   ArtifactRunDetailPage as RunDetailPage,
 } from './components/ArtifactPages'
-import { Button, DataTable, IconButton, SegmentedControl, StatusBadge, Surface } from './components/primitives'
+import { Button, IconButton, SegmentedControl, StatusBadge, Surface } from './components/primitives'
 import { LLMConfigurationPage, NewEvaluationPage, OverviewPage, ProductDatasetsPage, ProductSystemsPage } from './components/ProductPages'
 import type { MessageKey } from './i18n'
 import { useLocale } from './i18n/LocaleProvider'
 import type {
-  DatasetSummary,
   FormalDatasetsResponse,
   ExperimentSpec,
   JobRecord,
@@ -47,7 +45,7 @@ const nav: Array<{ id: NavigationPage; labelKey: MessageKey; icon: LucideIcon; g
   { id: 'new-evaluation', labelKey: 'nav.newEvaluation', icon: Play, group: 'evaluation', product: true },
   { id: 'runs', labelKey: 'nav.runs', icon: Activity, group: 'evaluation' },
   { id: 'compare', labelKey: 'nav.compare', icon: GitCompareArrows, group: 'evaluation' },
-  { id: 'datasets', labelKey: 'nav.datasets', icon: Database, group: 'resources' },
+  { id: 'datasets', labelKey: 'nav.datasets', icon: Database, group: 'resources', product: true },
   { id: 'systems', labelKey: 'nav.systems', icon: ServerCog, group: 'resources' },
   { id: 'llm', labelKey: 'nav.llm', icon: BrainCircuit, group: 'resources', product: true },
   { id: 'experiments', labelKey: 'nav.experiments', icon: Beaker, group: 'advanced' },
@@ -80,8 +78,7 @@ function useHashRoute() {
 }
 
 function usePlatformData() {
-  const [datasets, setDatasets] = useState<DatasetSummary[]>([])
-  const [formalDatasets, setFormalDatasets] = useState<FormalDatasetsResponse>({ releases: [], bundles_v3: [] })
+  const [formalDatasets, setFormalDatasets] = useState<FormalDatasetsResponse>({ releases: [] })
   const [systems, setSystems] = useState<SystemSummary[]>([])
   const [experiments, setExperiments] = useState<ExperimentSpec[]>([])
   const [runs, setRuns] = useState<RunRecordViewV2[]>([])
@@ -93,12 +90,11 @@ function usePlatformData() {
 
   const refresh = useCallback(async () => {
     try {
-      const [health, nextDatasets, nextFormalDatasets, nextSystems, nextExperiments, nextRuns, nextJobs] = await Promise.all([
-        api.health(), api.datasets(), api.formalDatasets(), api.systems(), api.experiments(), api.runs(), api.jobs(),
+      const [health, nextFormalDatasets, nextSystems, nextExperiments, nextRuns, nextJobs] = await Promise.all([
+        api.health(), api.formalDatasets(), api.systems(), api.experiments(), api.runs(), api.jobs(),
       ])
       setConnected(health.status === 'ok')
       setProductEnabled(health.product_layer_enabled === true)
-      setDatasets(nextDatasets)
       setFormalDatasets(nextFormalDatasets)
       setSystems(nextSystems)
       setExperiments(nextExperiments)
@@ -128,7 +124,7 @@ function usePlatformData() {
     return () => window.clearInterval(timer)
   }, [hasActiveJobs, refresh])
 
-  return { datasets, formalDatasets, systems, experiments, runs, jobs, error, connected, productEnabled, loading, refresh }
+  return { formalDatasets, systems, experiments, runs, jobs, error, connected, productEnabled, loading, refresh }
 }
 
 export default function App() {
@@ -149,7 +145,7 @@ export default function App() {
   useEffect(() => {
     if (!data.productEnabled) { setProductSystems([]); return }
     void api.productSystems().then(setProductSystems).catch(() => setProductSystems([]))
-  }, [data.productEnabled, data.runs.length, data.datasets.length])
+  }, [data.productEnabled, data.runs.length, data.formalDatasets.releases.length])
 
   useEffect(() => {
     if (!data.loading && !data.productEnabled && (route.page === 'overview' || route.page === 'new-evaluation')) route.go('runs')
@@ -191,7 +187,7 @@ export default function App() {
     {data.loading ? <Loading /> : <div className="page-content">
       {route.page === 'overview' && data.productEnabled && <OverviewPage formalDatasets={data.formalDatasets} systems={productSystems} runs={data.runs.length} onNewEvaluation={() => route.go('new-evaluation')} onAddDataset={() => route.go('datasets')} onAddSystem={() => route.go('systems')} />}
       {route.page === 'new-evaluation' && data.productEnabled && <NewEvaluationPage formalDatasets={data.formalDatasets} onQueued={() => { void data.refresh(); route.go('runs') }} />}
-      {route.page === 'datasets' && (data.productEnabled ? <ProductDatasetsPage datasets={data.datasets} formalDatasets={data.formalDatasets} refresh={data.refresh} /> : <DatasetsPage datasets={data.datasets} refresh={data.refresh} />)}
+      {route.page === 'datasets' && data.productEnabled && <ProductDatasetsPage formalDatasets={data.formalDatasets} refresh={data.refresh} />}
       {route.page === 'systems' && (data.productEnabled ? <ProductSystemsPage /> : <SystemsPage systems={data.systems} />)}
       {route.page === 'llm' && data.productEnabled && <LLMConfigurationPage />}
       {route.page === 'experiments' && <ExperimentsPage experiments={data.experiments} />}
@@ -228,23 +224,6 @@ function PageIntro({ titleKey, descriptionKey: _descriptionKey, actions }: { tit
   return <PageHeader title={t(titleKey)} actions={actions} />
 }
 
-function DatasetsPage({ datasets, refresh }: { datasets: DatasetSummary[]; refresh: () => Promise<void> }) {
-  const { t } = useLocale()
-  const [path, setPath] = useState('')
-  const [error, setError] = useState('')
-  const register = async () => {
-    try { await api.registerDataset(path); setPath(''); setError(''); await refresh() }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
-  }
-  return <>
-    <PageIntro titleKey="page.datasets.title" descriptionKey="page.datasets.description" />
-    <Surface className="action-strip"><label><span>{t('page.datasets.path')}</span><input value={path} onChange={(event) => setPath(event.target.value)} placeholder={t('page.datasets.placeholder')} /></label><Button variant="primary" disabled={!path} onClick={() => void register()}>{t('page.datasets.register')} <ArrowRight size={16} /></Button></Surface>
-    {error && <ErrorBanner message={error} />}
-    <DataTable><thead><tr><th>{t('page.datasets.bundleVersion')}</th><th>{t('page.datasets.cases')}</th><th>{t('page.datasets.contentAddress')}</th><th>{t('page.datasets.state')}</th></tr></thead><tbody>{datasets.map((dataset) => <tr key={dataset.bundle_id}><td><strong>{dataset.name}</strong><small>{t('common.version', { version: dataset.version })}</small></td><td className="table-number">{dataset.cases}</td><td><code title={dataset.bundle_id}>{dataset.bundle_id.slice(0, 16)}…</code></td><td><StateMark state="immutable" /></td></tr>)}</tbody></DataTable>
-    {!datasets.length && <Empty>{t('page.datasets.empty')}</Empty>}
-  </>
-}
-
 function SystemsPage({ systems }: { systems: SystemSummary[] }) {
   const { t } = useLocale()
   return <><PageIntro titleKey="page.systems.title" descriptionKey="page.systems.description" /><div className="system-grid">{systems.map((system) => <Surface className="system-card" key={system.system_id}><div className="system-card__mark"><ServerCog size={17} /><span>{system.adapter_id}</span></div><h3>{system.system_id}</h3><p>{system.description || t('page.systems.defaultDescription')}</p><dl><dt>{t('page.systems.factory')}</dt><dd>{system.adapter_factory}</dd><dt>{t('page.systems.python')}</dt><dd>{system.python_executable}</dd><dt>{t('page.systems.timeout')}</dt><dd>{t('page.systems.seconds', { value: system.request_timeout_seconds })}</dd><dt>{t('page.systems.environmentKeys')}</dt><dd>{system.environment_keys.join(', ') || t('page.systems.none')}</dd></dl></Surface>)}</div>{!systems.length && <Empty>{t('page.systems.empty')}</Empty>}</>
@@ -252,7 +231,7 @@ function SystemsPage({ systems }: { systems: SystemSummary[] }) {
 
 function ExperimentsPage({ experiments }: { experiments: ExperimentSpec[] }) {
   const { t } = useLocale()
-  return <><PageIntro titleKey="page.experiments.title" descriptionKey="page.experiments.description" /><Surface tone="inset"><p>{t('page.experiments.readOnly')}</p></Surface><div className="experiment-list">{experiments.map((experiment) => { const repetitions = experiment.repetitions === 1 ? t('page.experiments.repetitions', { count: experiment.repetitions }) : t('page.experiments.repetitionsPlural', { count: experiment.repetitions }); return <Surface key={experiment.experiment_id}><div><span className="eyebrow">{experiment.adapter_id} / {t('page.experiments.seed', { value: experiment.seed })}</span><h3>{experiment.display_name?.trim() || experiment.experiment_id}</h3><p>{t('page.experiments.bundleSummary', { id: experiment.bundle_id.slice(0, 12), repetitions })}</p></div><code>{JSON.stringify({ query: experiment.query_config, metrics: experiment.metric_config }, null, 2)}</code></Surface> })}</div>{!experiments.length && <Empty>{t('page.experiments.empty')}</Empty>}</>
+  return <><PageIntro titleKey="page.experiments.title" descriptionKey="page.experiments.description" /><Surface tone="inset"><p>{t('page.experiments.readOnly')}</p></Surface><div className="experiment-list">{experiments.map((experiment) => { const repetitions = experiment.repetitions === 1 ? t('page.experiments.repetitions', { count: experiment.repetitions }) : t('page.experiments.repetitionsPlural', { count: experiment.repetitions }); return <Surface key={experiment.experiment_id}><div><span className="eyebrow">{experiment.adapter_id} / {t('page.experiments.seed', { value: experiment.seed })}</span><h3>{experiment.display_name?.trim() || experiment.experiment_id}</h3><p>{t('page.experiments.bundleSummary', { id: experiment.dataset_release_id.slice(0, 12), repetitions })}</p></div><code>{JSON.stringify({ query: experiment.query_config, metrics: experiment.metric_config }, null, 2)}</code></Surface> })}</div>{!experiments.length && <Empty>{t('page.experiments.empty')}</Empty>}</>
 }
 
 function runTitle(run: Pick<RunRecordViewV2, 'display_name' | 'experiment_id'>): string {

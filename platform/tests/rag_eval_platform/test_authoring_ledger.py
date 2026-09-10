@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -26,7 +25,6 @@ from rag_eval.authoring.ledger import (
 )
 from rag_eval.authoring.models import AnswerEvidenceCandidate, CandidateEvidence, CandidateState, DiscoveryMethod
 from rag_eval.authoring.service import AuthoringService
-from rag_eval.datasets.registry import FROZEN_20_CASE_BUNDLE_ID
 from tests.rag_eval_platform.test_authoring import mini_docx
 
 
@@ -310,7 +308,9 @@ def test_disagreement_adjudication_and_synthetic_auto_approval_fail_closed(tmp_p
         )
 
 
-def test_mses_alternatives_multihop_and_negative_scope_are_formal_and_bundle_v2_is_explicitly_lossy(tmp_path: Path) -> None:
+def test_mses_alternatives_multihop_and_negative_scope_remain_lossless_in_ledger(
+    tmp_path: Path,
+) -> None:
     rich = _payload(alternative=True, dependency=True)
     assert len(rich.mses_paths) == 2  # Alternative MSES paths (OR).
     assert rich.mses_paths[0].clauses[0].alternatives == ("required-a", "required-b")  # Clause OR.
@@ -338,19 +338,11 @@ def test_mses_alternatives_multihop_and_negative_scope_are_formal_and_bundle_v2_
         actor="fixture-author",
         reason="express alternative MSES paths and multi-hop evidence",
     )
-    assessment = ledger.assess_bundle_v2(rich_revision)
-    assert not assessment.runnable and assessment.lossy
-    assert set(assessment.reasons).issuperset(
-        {
-            "alternative_mses_paths_are_not_representable",
-            "or_alternatives_within_mses_clause_are_not_representable",
-            "multi_hop_dependencies_are_not_representable",
-            "non_required_evidence_roles_are_not_representable",
-        }
-    )
+    assert rich_revision.payload == rich
+    assert not hasattr(ledger, "assess_bundle_v2")
 
 
-def test_docx_authoring_freezes_ledger_without_changing_frozen_registry(tmp_path: Path) -> None:
+def test_docx_authoring_freezes_the_native_benchmark_ledger(tmp_path: Path) -> None:
     service, dataset, ledger = _dataset(tmp_path)
     target = next(
         item
@@ -390,7 +382,10 @@ def test_docx_authoring_freezes_ledger_without_changing_frozen_registry(tmp_path
     gold_id = ledger.gold_id_for_case(case_id)
     assert ledger.current_case(dataset.authoring_dataset_id, case_id).lifecycle == LifecycleState.FROZEN
     assert ledger.current_gold(dataset.authoring_dataset_id, gold_id).lifecycle == LifecycleState.FROZEN
-    report_registry = Path(__file__).resolve().parents[2] / "registries" / "reference-datasets" / f"{FROZEN_20_CASE_BUNDLE_ID}.json"
-    frozen_record = json.loads(report_registry.read_text(encoding="utf-8"))
-    assert frozen_record["bundle_id"] == FROZEN_20_CASE_BUNDLE_ID
-    assert frozen_record["metadata"]["bundle_mutated"] is False
+    assert not list(
+        (
+            Path(__file__).resolve().parents[2]
+            / "registries"
+            / "reference-datasets"
+        ).glob("*.json")
+    )

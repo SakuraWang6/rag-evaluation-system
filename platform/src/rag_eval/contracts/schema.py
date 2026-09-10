@@ -7,13 +7,14 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from rag_eval.contracts.canonical import CanonicalConformanceReport, CanonicalDocument
-from rag_eval.contracts.dataset import (
-    DatasetBundleManifest,
-    GoldAnswer,
-    GoldEvidenceSet,
-    Question,
+from rag_eval.contracts.benchmark import (
+    BenchmarkCaseV2,
+    BenchmarkEvidenceV2,
+    BenchmarkGoldV2,
+    BenchmarkSourceIdentityV2,
+    NativeBenchmarkReleaseV2,
 )
+from rag_eval.contracts.canonical import CanonicalConformanceReport, CanonicalDocument
 from rag_eval.contracts.native import (
     IngestionReceiptV2,
     NativeHealthReportV2,
@@ -61,10 +62,11 @@ from rag_eval.runs.views import (
 PUBLIC_MODELS: dict[str, type[BaseModel]] = {
     "canonical-document": CanonicalDocument,
     "canonical-conformance": CanonicalConformanceReport,
-    "dataset-bundle-manifest": DatasetBundleManifest,
-    "question": Question,
-    "gold-answer": GoldAnswer,
-    "gold-evidence-set": GoldEvidenceSet,
+    "benchmark-source-identity-v2": BenchmarkSourceIdentityV2,
+    "benchmark-evidence-v2": BenchmarkEvidenceV2,
+    "benchmark-gold-v2": BenchmarkGoldV2,
+    "benchmark-case-v2": BenchmarkCaseV2,
+    "native-benchmark-release-v2": NativeBenchmarkReleaseV2,
     "adapter-capabilities-v2": AdapterCapabilitiesV2,
     "unified-trace-v2": UnifiedTrace,
     "adapter-run-result-v2": AdapterRunResultV2,

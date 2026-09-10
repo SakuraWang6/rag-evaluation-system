@@ -2,9 +2,8 @@
 
 This module is the formal Authoring domain contract.  It deliberately stores
 only references to Canonical Data Model objects; it does not introduce a
-second representation of document structure.  The older ``QuestionCandidate``
-files remain a Bundle 2.0 compatibility projection, while this ledger owns
-revision history, review, adjudication, approval, and rich Gold semantics.
+second representation of document structure.  The ledger owns revision
+history, review, adjudication, approval, and rich Gold semantics.
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -31,7 +30,7 @@ from rag_eval.storage.atomic import atomic_write_json
 from rag_eval.storage.ids import safe_id
 
 
-LEDGER_SCHEMA_VERSION = "authoring-ledger/1.0"
+LEDGER_SCHEMA_VERSION = "authoring-ledger/2.0"
 
 
 class LedgerError(ValueError):
@@ -351,23 +350,14 @@ class Supersession(LedgerModel):
     created_at: datetime
 
 
-class BundleV2Projection(LedgerModel):
-    """An explicit, non-mutating assessment of the legacy Bundle v2 view."""
-
-    runnable: bool
-    lossy: bool
-    reasons: tuple[str, ...] = ()
-
-
 class AuthoringRelease(LedgerModel):
-    """Historical Authoring snapshot; this is not a Bundle v3 release contract."""
+    """Immutable Authoring selection used to publish a Benchmark Release."""
 
     schema_version: Literal[LEDGER_SCHEMA_VERSION] = LEDGER_SCHEMA_VERSION
     ledger_release_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
     dataset_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
     case_revision_ids: tuple[str, ...] = Field(min_length=1)
     gold_revision_ids: tuple[str, ...] = Field(min_length=1)
-    bundle_v2_projection: tuple[BundleV2Projection, ...]
     actor: str = Field(min_length=1)
     reason: str = Field(min_length=1)
     created_at: datetime
@@ -768,7 +758,6 @@ class AuthoringLedger:
             return AuthoringRelease.model_validate_json(path.read_text(encoding="utf-8"))
         frozen_cases: list[CaseRevision] = []
         frozen_gold: list[GoldRevision] = []
-        projections: list[BundleV2Projection] = []
         for case_id in sorted(case_ids):
             case = self.current_case(dataset.authoring_dataset_id, case_id)
             if case.lifecycle not in {LifecycleState.APPROVED, LifecycleState.FROZEN}:
@@ -795,7 +784,6 @@ class AuthoringLedger:
             )
             frozen_cases.append(frozen_case)
             frozen_gold.append(frozen_gold_item)
-            projections.append(self.assess_bundle_v2(frozen_gold_item))
             if frozen_case is not case:
                 self._event("frozen", TargetKind.CASE, case_id, actor, reason, frozen_case_id)
             if frozen_gold_item is not gold:
@@ -805,7 +793,6 @@ class AuthoringLedger:
             dataset_id=dataset.authoring_dataset_id,
             case_revision_ids=tuple(item.case_revision_id for item in frozen_cases),
             gold_revision_ids=tuple(item.gold_revision_id for item in frozen_gold),
-            bundle_v2_projection=tuple(projections),
             actor=actor,
             reason=reason,
             created_at=_now(),
@@ -813,25 +800,6 @@ class AuthoringLedger:
         self._append(path, result)
         self._event("release_frozen", "release", result.ledger_release_id, actor, reason)
         return result
-
-    @staticmethod
-    def assess_bundle_v2(gold: GoldRevision) -> BundleV2Projection:
-        """Describe exactly where legacy Bundle 2.0 loses formal Gold semantics."""
-
-        reasons: list[str] = []
-        if len(gold.payload.mses_paths) > 1:
-            reasons.append("alternative_mses_paths_are_not_representable")
-        if any(len(clause.alternatives) > 1 for path in gold.payload.mses_paths for clause in path.clauses):
-            reasons.append("or_alternatives_within_mses_clause_are_not_representable")
-        if gold.payload.dependencies:
-            reasons.append("multi_hop_dependencies_are_not_representable")
-        roles = {item.role for item in gold.payload.evidence}
-        if roles.intersection({EvidenceRole.SUPPORTING, EvidenceRole.CONFLICTING, EvidenceRole.NEAR_MISS}):
-            reasons.append("non_required_evidence_roles_are_not_representable")
-        if len(gold.payload.negative_scope_object_ids) > 1:
-            reasons.append("multi_object_negative_scope_is_not_representable")
-        runnable = not reasons
-        return BundleV2Projection(runnable=runnable, lossy=bool(reasons), reasons=tuple(sorted(reasons)))
 
     def case_history(self, dataset_id: str, case_id: str) -> list[CaseRevision]:
         root = self._root(dataset_id) / "cases" / safe_id(case_id)

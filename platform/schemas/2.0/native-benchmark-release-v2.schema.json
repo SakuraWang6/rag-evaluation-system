@@ -1,0 +1,1000 @@
+{
+  "$defs": {
+    "BenchmarkAnswerKindV2": {
+      "enum": [
+        "text",
+        "numeric",
+        "formula",
+        "set",
+        "abstain"
+      ],
+      "title": "BenchmarkAnswerKindV2",
+      "type": "string"
+    },
+    "BenchmarkAnswerV2": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/BenchmarkAnswerKindV2"
+        },
+        "canonical": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical"
+        },
+        "accepted_values": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Accepted Values",
+          "type": "array"
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locale"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "tolerance": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tolerance"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "BenchmarkAnswerV2",
+      "type": "object"
+    },
+    "BenchmarkCaseV2": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_revision_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Revision Id",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "language": {
+          "minLength": 1,
+          "title": "Language",
+          "type": "string"
+        },
+        "source_object_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Object Ids",
+          "type": "array"
+        },
+        "gold": {
+          "$ref": "#/$defs/BenchmarkGoldV2"
+        }
+      },
+      "required": [
+        "case_id",
+        "case_revision_id",
+        "target_id",
+        "question",
+        "language",
+        "source_object_ids",
+        "gold"
+      ],
+      "title": "BenchmarkCaseV2",
+      "type": "object"
+    },
+    "BenchmarkEvidenceDependencyV2": {
+      "additionalProperties": false,
+      "properties": {
+        "dependency_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Dependency Id",
+          "type": "string"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dependency_id",
+        "description"
+      ],
+      "title": "BenchmarkEvidenceDependencyV2",
+      "type": "object"
+    },
+    "BenchmarkEvidenceRoleV2": {
+      "enum": [
+        "required",
+        "supporting",
+        "conflicting",
+        "near_miss",
+        "negative_scope"
+      ],
+      "title": "BenchmarkEvidenceRoleV2",
+      "type": "string"
+    },
+    "BenchmarkEvidenceV2": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "canonical_object_id": {
+          "minLength": 1,
+          "title": "Canonical Object Id",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/BenchmarkEvidenceRoleV2"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rationale"
+        },
+        "canonical_object_type": {
+          "$ref": "#/$defs/CanonicalObjectType"
+        },
+        "representation_status": {
+          "const": "complete",
+          "default": "complete",
+          "title": "Representation Status",
+          "type": "string"
+        },
+        "source_spans": {
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          },
+          "minItems": 1,
+          "title": "Source Spans",
+          "type": "array"
+        },
+        "canonical_value": {
+          "minLength": 1,
+          "title": "Canonical Value",
+          "type": "string"
+        },
+        "canonical_witness_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Witness Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "document_id",
+        "canonical_object_id",
+        "role",
+        "canonical_object_type",
+        "source_spans",
+        "canonical_value",
+        "canonical_witness_sha256"
+      ],
+      "title": "BenchmarkEvidenceV2",
+      "type": "object"
+    },
+    "BenchmarkGoldV2": {
+      "additionalProperties": false,
+      "properties": {
+        "gold_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Gold Id",
+          "type": "string"
+        },
+        "gold_revision_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Gold Revision Id",
+          "type": "string"
+        },
+        "case_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_revision_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Revision Id",
+          "type": "string"
+        },
+        "source_identity": {
+          "$ref": "#/$defs/BenchmarkSourceIdentityV2"
+        },
+        "answer": {
+          "$ref": "#/$defs/BenchmarkAnswerV2"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BenchmarkEvidenceV2"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "mses_paths": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BenchmarkMsesPathV2"
+          },
+          "title": "Mses Paths",
+          "type": "array"
+        },
+        "dependencies": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BenchmarkEvidenceDependencyV2"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "negative_scope_object_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Negative Scope Object Ids",
+          "type": "array"
+        },
+        "negative_rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Rationale"
+        }
+      },
+      "required": [
+        "gold_id",
+        "gold_revision_id",
+        "case_id",
+        "case_revision_id",
+        "source_identity",
+        "answer"
+      ],
+      "title": "BenchmarkGoldV2",
+      "type": "object"
+    },
+    "BenchmarkMsesClauseV2": {
+      "additionalProperties": false,
+      "properties": {
+        "clause_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Clause Id",
+          "type": "string"
+        },
+        "alternatives": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Alternatives",
+          "type": "array"
+        }
+      },
+      "required": [
+        "clause_id",
+        "alternatives"
+      ],
+      "title": "BenchmarkMsesClauseV2",
+      "type": "object"
+    },
+    "BenchmarkMsesPathV2": {
+      "additionalProperties": false,
+      "properties": {
+        "path_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Path Id",
+          "type": "string"
+        },
+        "clauses": {
+          "items": {
+            "$ref": "#/$defs/BenchmarkMsesClauseV2"
+          },
+          "minItems": 1,
+          "title": "Clauses",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path_id",
+        "clauses"
+      ],
+      "title": "BenchmarkMsesPathV2",
+      "type": "object"
+    },
+    "BenchmarkSourceIdentityV2": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "media_type": {
+          "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "default": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "coordinate_system_version": {
+          "const": "ooxml-structural-v1",
+          "default": "ooxml-structural-v1",
+          "title": "Coordinate System Version",
+          "type": "string"
+        },
+        "canonical_schema_version": {
+          "minLength": 1,
+          "title": "Canonical Schema Version",
+          "type": "string"
+        },
+        "canonical_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Digest",
+          "type": "string"
+        },
+        "canonical_catalog_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Catalog Sha256",
+          "type": "string"
+        },
+        "parser_identity": {
+          "minLength": 1,
+          "title": "Parser Identity",
+          "type": "string"
+        },
+        "canonicalizer_identity": {
+          "minLength": 1,
+          "title": "Canonicalizer Identity",
+          "type": "string"
+        },
+        "configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "canonical_schema_version",
+        "canonical_digest",
+        "canonical_catalog_sha256",
+        "parser_identity",
+        "canonicalizer_identity",
+        "configuration_digest"
+      ],
+      "title": "BenchmarkSourceIdentityV2",
+      "type": "object"
+    },
+    "CanonicalDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "manifest": {
+          "$ref": "#/$defs/CanonicalDocumentManifest"
+        },
+        "objects": {
+          "items": {
+            "$ref": "#/$defs/CanonicalObject"
+          },
+          "minItems": 1,
+          "title": "Objects",
+          "type": "array"
+        },
+        "relations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CanonicalRelation"
+          },
+          "title": "Relations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "manifest",
+        "objects"
+      ],
+      "title": "CanonicalDocument",
+      "type": "object"
+    },
+    "CanonicalDocumentManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "default": "1.2",
+          "enum": [
+            "1.0",
+            "1.1",
+            "1.2"
+          ],
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "parser_identity": {
+          "minLength": 1,
+          "title": "Parser Identity",
+          "type": "string"
+        },
+        "canonicalizer_identity": {
+          "minLength": 1,
+          "title": "Canonicalizer Identity",
+          "type": "string"
+        },
+        "configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
+        },
+        "object_count": {
+          "minimum": 1,
+          "title": "Object Count",
+          "type": "integer"
+        },
+        "relation_count": {
+          "minimum": 0,
+          "title": "Relation Count",
+          "type": "integer"
+        },
+        "objects_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Objects Digest",
+          "type": "string"
+        },
+        "relations_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Relations Digest",
+          "type": "string"
+        },
+        "canonical_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "parser_identity",
+        "canonicalizer_identity",
+        "configuration_digest",
+        "object_count",
+        "relation_count",
+        "objects_digest",
+        "relations_digest",
+        "canonical_digest"
+      ],
+      "title": "CanonicalDocumentManifest",
+      "type": "object"
+    },
+    "CanonicalObject": {
+      "additionalProperties": false,
+      "properties": {
+        "object_id": {
+          "minLength": 1,
+          "title": "Object Id",
+          "type": "string"
+        },
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "object_type": {
+          "$ref": "#/$defs/CanonicalObjectType"
+        },
+        "representation_status": {
+          "$ref": "#/$defs/RepresentationStatus"
+        },
+        "document_order": {
+          "minimum": 0,
+          "title": "Document Order",
+          "type": "integer"
+        },
+        "canonical_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Value"
+        },
+        "provenance": {
+          "$ref": "#/$defs/CanonicalObjectProvenance"
+        },
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        }
+      },
+      "required": [
+        "object_id",
+        "document_id",
+        "object_type",
+        "representation_status",
+        "document_order",
+        "provenance"
+      ],
+      "title": "CanonicalObject",
+      "type": "object"
+    },
+    "CanonicalObjectProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "parser_identity": {
+          "minLength": 1,
+          "title": "Parser Identity",
+          "type": "string"
+        },
+        "canonicalizer_identity": {
+          "minLength": 1,
+          "title": "Canonicalizer Identity",
+          "type": "string"
+        },
+        "configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
+        },
+        "extraction_method": {
+          "minLength": 1,
+          "title": "Extraction Method",
+          "type": "string"
+        },
+        "source_spans": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          },
+          "title": "Source Spans",
+          "type": "array"
+        },
+        "derived_from_object_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Derived From Object Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_sha256",
+        "parser_identity",
+        "canonicalizer_identity",
+        "configuration_digest",
+        "extraction_method"
+      ],
+      "title": "CanonicalObjectProvenance",
+      "type": "object"
+    },
+    "CanonicalObjectType": {
+      "enum": [
+        "document",
+        "section",
+        "heading",
+        "paragraph",
+        "text_span",
+        "table",
+        "row",
+        "cell",
+        "logical_row",
+        "logical_column",
+        "logical_cell",
+        "figure",
+        "caption",
+        "equation",
+        "reference",
+        "footnote",
+        "endnote",
+        "embedded_object",
+        "media_resource"
+      ],
+      "title": "CanonicalObjectType",
+      "type": "string"
+    },
+    "CanonicalRelation": {
+      "additionalProperties": false,
+      "properties": {
+        "relation_id": {
+          "minLength": 1,
+          "title": "Relation Id",
+          "type": "string"
+        },
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "relation_type": {
+          "$ref": "#/$defs/CanonicalRelationType"
+        },
+        "source_object_id": {
+          "minLength": 1,
+          "title": "Source Object Id",
+          "type": "string"
+        },
+        "target_object_id": {
+          "minLength": 1,
+          "title": "Target Object Id",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/CanonicalRelationProvenance"
+        },
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        }
+      },
+      "required": [
+        "relation_id",
+        "document_id",
+        "relation_type",
+        "source_object_id",
+        "target_object_id",
+        "provenance"
+      ],
+      "title": "CanonicalRelation",
+      "type": "object"
+    },
+    "CanonicalRelationProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "extraction_method": {
+          "minLength": 1,
+          "title": "Extraction Method",
+          "type": "string"
+        },
+        "source_object_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Object Ids",
+          "type": "array"
+        },
+        "source_spans": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          },
+          "title": "Source Spans",
+          "type": "array"
+        }
+      },
+      "required": [
+        "extraction_method",
+        "source_object_ids"
+      ],
+      "title": "CanonicalRelationProvenance",
+      "type": "object"
+    },
+    "CanonicalRelationType": {
+      "enum": [
+        "parent_child",
+        "sibling",
+        "section_hierarchy",
+        "document_order",
+        "caption_of",
+        "reference_to",
+        "figure_has_resource",
+        "paragraph_references_figure",
+        "equation_in_paragraph",
+        "section_contains_figure",
+        "section_contains_equation",
+        "table_contains_row",
+        "row_contains_cell",
+        "table_contains_logical_row",
+        "table_contains_logical_column",
+        "logical_row_contains_cell",
+        "logical_column_contains_cell",
+        "physical_to_logical_cell",
+        "header_for",
+        "nested_table_in_cell"
+      ],
+      "title": "CanonicalRelationType",
+      "type": "string"
+    },
+    "RepresentationStatus": {
+      "enum": [
+        "complete",
+        "partial",
+        "unsupported",
+        "missing"
+      ],
+      "title": "RepresentationStatus",
+      "type": "string"
+    },
+    "SourceSpan": {
+      "additionalProperties": false,
+      "description": "One directly observed source location in ``ooxml-structural-v1``.",
+      "properties": {
+        "coordinate_system": {
+          "const": "ooxml-structural-v1",
+          "default": "ooxml-structural-v1",
+          "title": "Coordinate System",
+          "type": "string"
+        },
+        "part": {
+          "minLength": 1,
+          "title": "Part",
+          "type": "string"
+        },
+        "coordinates": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "minProperties": 1,
+          "title": "Coordinates",
+          "type": "object"
+        },
+        "text_start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text Start"
+        },
+        "text_end": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text End"
+        }
+      },
+      "required": [
+        "part",
+        "coordinates"
+      ],
+      "title": "SourceSpan",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Verified, host-local execution snapshot of one immutable Release.",
+  "properties": {
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "release_id": {
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Release Id",
+      "type": "string"
+    },
+    "release_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Digest",
+      "type": "string"
+    },
+    "validation_report_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Validation Report Digest",
+      "type": "string"
+    },
+    "payload_snapshot_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Payload Snapshot Digest",
+      "type": "string"
+    },
+    "dataset_id": {
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Dataset Id",
+      "type": "string"
+    },
+    "release_version": {
+      "minLength": 1,
+      "title": "Release Version",
+      "type": "string"
+    },
+    "source_identity": {
+      "$ref": "#/$defs/BenchmarkSourceIdentityV2"
+    },
+    "original_docx_path": {
+      "format": "path",
+      "title": "Original Docx Path",
+      "type": "string"
+    },
+    "canonical_snapshot": {
+      "$ref": "#/$defs/CanonicalDocument"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/BenchmarkCaseV2"
+      },
+      "minItems": 1,
+      "title": "Cases",
+      "type": "array"
+    },
+    "case_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Case Ids",
+      "type": "array"
+    },
+    "case_selection_policy": {
+      "enum": [
+        "all",
+        "explicit"
+      ],
+      "title": "Case Selection Policy",
+      "type": "string"
+    },
+    "case_selection_seed": {
+      "title": "Case Selection Seed",
+      "type": "integer"
+    },
+    "case_selection_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Case Selection Id",
+      "type": "string"
+    },
+    "snapshot_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Snapshot Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "release_id",
+    "release_digest",
+    "validation_report_digest",
+    "payload_snapshot_digest",
+    "dataset_id",
+    "release_version",
+    "source_identity",
+    "original_docx_path",
+    "canonical_snapshot",
+    "cases",
+    "case_ids",
+    "case_selection_policy",
+    "case_selection_seed",
+    "case_selection_id",
+    "snapshot_digest"
+  ],
+  "title": "NativeBenchmarkReleaseV2",
+  "type": "object"
+}

@@ -22,6 +22,7 @@ DECISION_DOCUMENTS = {
     "0004-native-v2-only-convergence.md",
 }
 PLATFORM_GUIDES = {"BENCHMARK_AUTHORING.md", "QUICK_START.md"}
+AUDIT_DOCUMENTS = {"FINAL_NATIVE_V2_AUDIT.md"}
 ENTRY_DOCUMENTS = {
     Path("README.md"),
     Path("platform/README.md"),
@@ -62,11 +63,13 @@ def test_long_term_documentation_has_one_native_v2_authority() -> None:
     assert _relative_markdown_files(REPOSITORY_ROOT / "platform/docs") == (
         PLATFORM_GUIDES
     )
+    assert _relative_markdown_files(REPOSITORY_ROOT / "docs/audit") <= (
+        AUDIT_DOCUMENTS
+    )
     assert {
         path.name for path in (REPOSITORY_ROOT / "platform").glob("*.md")
     } == {"README.md"}
     for retired_directory in (
-        "docs/audit",
         "docs/migration",
         "platform/docs/archive",
         "platform/docs/evidence-repair",

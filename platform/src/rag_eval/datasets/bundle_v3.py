@@ -1,10 +1,9 @@
 """Lossless, release-derived Bundle 3.0 delivery format.
 
-Bundle 3.0 is an immutable projection of frozen Dataset Release lineage.  It
-is intentionally *not* an Authoring importer and never becomes the source of
-truth for Canonical, Ledger, Gold, review, or release data.  A private
-evaluation package and a separately exportable runtime-only view make the
-Gold-leak boundary explicit in both the contract and filesystem layout.
+Bundle 3.0 is an immutable offline projection of frozen Dataset Release
+lineage.  It is intentionally *not* an Authoring importer or a runtime input,
+and never becomes the source of truth for Canonical, Ledger, Gold, review, or
+release data.
 """
 
 from __future__ import annotations
@@ -32,17 +31,14 @@ from rag_eval.authoring.ledger import (
 )
 from rag_eval.authoring.storage import AuthoringWorkspaceStore
 from rag_eval.contracts.canonical import CanonicalDocument, CanonicalObject
-from rag_eval.datasets.bundle import canonical_file_hashes, digest_file_hashes
 from rag_eval.datasets.formal import (
     DatasetRelease,
     DatasetReleaseStore,
-    FormalDatasetError,
     ReleaseCasePin,
     ReleaseGoldPin,
     ValidationReport,
 )
 from rag_eval.datasets.portfolio import (
-    BenchmarkPortfolio,
     PortfolioAssignment,
     PortfolioSlot,
     PortfolioSlotState,
@@ -53,7 +49,6 @@ from rag_eval.storage.ids import safe_id
 
 
 BUNDLE_V3_SCHEMA_VERSION = "dataset-bundle/3.0"
-BUNDLE_V3_RUNTIME_SCHEMA_VERSION = "dataset-bundle-runtime/3.0"
 BUNDLE_V3_BUILDER_VERSION = "rag-eval-bundle-v3-builder/1.0"
 
 
@@ -77,6 +72,26 @@ def _jsonl_bytes(values: Iterable[BaseModel]) -> bytes:
 
 def _digest_value(value: object) -> str:
     return hashlib.sha256(_canonical_bytes(value)).hexdigest()
+
+
+def canonical_file_hashes(root: Path) -> dict[str, str]:
+    files: dict[str, str] = {}
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        relative = path.relative_to(root).as_posix()
+        if relative == "checksums.json" or relative.startswith("."):
+            continue
+        files[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return files
+
+
+def digest_file_hashes(files: dict[str, str]) -> str:
+    digest = hashlib.sha256()
+    for path, file_digest in sorted(files.items()):
+        digest.update(path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(file_digest.encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
 
 
 def _read_jsonl(path: Path, model: type[BaseModel]) -> list[BaseModel]:
@@ -128,7 +143,7 @@ class BundleV3CanonicalPin(BundleV3Model):
 
 class BundleV3SourcePin(BundleV3Model):
     source_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    runtime_path: str = Field(min_length=1)
+    path: str = Field(min_length=1)
     document_ids: tuple[str, ...] = Field(min_length=1)
 
 
@@ -144,7 +159,6 @@ class BundleV3Manifest(BundleV3Model):
     case_count: int = Field(ge=1)
     gold_count: int = Field(ge=1)
     evidence_count: int = Field(ge=1)
-    runtime_manifest_path: Literal["runtime/manifest.json"] = "runtime/manifest.json"
     private_dataset_path: Literal["private/dataset.json"] = "private/dataset.json"
 
     @model_validator(mode="after")
@@ -247,25 +261,6 @@ class BundleV3EvidenceRecord(BundleV3Model):
         return self
 
 
-class BundleV3RuntimeQuestion(BundleV3Model):
-    """The only Case representation allowed to enter a system-under-test view."""
-
-    case_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
-    case_revision_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
-    question: str = Field(min_length=1)
-    language: str = Field(min_length=1)
-    portfolio_slot: PortfolioSlot
-
-
-class BundleV3RuntimeManifest(BundleV3Model):
-    schema_version: Literal[BUNDLE_V3_RUNTIME_SCHEMA_VERSION] = BUNDLE_V3_RUNTIME_SCHEMA_VERSION
-    target_release_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
-    dataset_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
-    questions_path: Literal["questions.jsonl"] = "questions.jsonl"
-    source_documents: tuple[BundleV3SourcePin, ...] = Field(min_length=1)
-    case_count: int = Field(ge=1)
-
-
 @dataclass(frozen=True, slots=True)
 class DatasetBundleV3:
     root: Path
@@ -276,14 +271,6 @@ class DatasetBundleV3:
     gold: tuple[BundleV3GoldRecord, ...]
     evidence: tuple[BundleV3EvidenceRecord, ...]
     canonical_documents: dict[str, CanonicalDocument]
-
-
-@dataclass(frozen=True, slots=True)
-class DatasetBundleV3Runtime:
-    root: Path
-    runtime_bundle_id: str
-    manifest: BundleV3RuntimeManifest
-    questions: tuple[BundleV3RuntimeQuestion, ...]
 
 
 def _canonical_path(release_id: str, filename: str) -> str:
@@ -404,7 +391,7 @@ class BundleV3Builder:
         source_pins = tuple(
             BundleV3SourcePin(
                 source_digest=digest,
-                runtime_path=f"source/{digest}.docx",
+                path=f"private/source/{digest}.docx",
                 document_ids=tuple(sorted({canonical.manifest.document_id for canonical in canonicals.values() if canonical.manifest.source_sha256 == digest})),
             )
             for digest in sorted(source_payloads)
@@ -433,22 +420,6 @@ class BundleV3Builder:
             gold_count=len(gold),
             evidence_count=len(evidence),
         )
-        runtime = BundleV3RuntimeManifest(
-            target_release_id=manifest.target_release_id,
-            dataset_id=dataset_id,
-            source_documents=source_pins,
-            case_count=len(cases),
-        )
-        runtime_questions = tuple(
-            BundleV3RuntimeQuestion(
-                case_id=item.case.case_id,
-                case_revision_id=item.case.case_revision_id,
-                question=item.case.draft.question,
-                language=item.case.draft.language,
-                portfolio_slot=item.portfolio.slot,
-            )
-            for item in cases
-        )
         return BundleV3Materialization(
             manifest=manifest,
             dataset=dataset,
@@ -462,8 +433,6 @@ class BundleV3Builder:
             reviews=reviews,
             approvals=approvals,
             adjudications=adjudications,
-            runtime_manifest=runtime,
-            runtime_questions=runtime_questions,
         )
 
     @staticmethod
@@ -616,8 +585,6 @@ class BundleV3Materialization:
     reviews: tuple[Review, ...]
     approvals: tuple[Approval, ...]
     adjudications: tuple[Adjudication, ...]
-    runtime_manifest: BundleV3RuntimeManifest
-    runtime_questions: tuple[BundleV3RuntimeQuestion, ...]
 
 
 class BundleV3Store:
@@ -698,31 +665,6 @@ class BundleV3Store:
             return ""
         return directory_name
 
-    def export_runtime_view(self, bundle_id: str, runtime_root: Path) -> DatasetBundleV3Runtime:
-        bundle = self.get(bundle_id)
-        source = bundle.root / "runtime"
-        runtime_root.mkdir(parents=True, exist_ok=True)
-        staging = Path(tempfile.mkdtemp(prefix=".bundle-v3-runtime-", dir=runtime_root))
-        try:
-            for path in sorted(item for item in source.rglob("*") if item.is_file()):
-                relative = path.relative_to(source)
-                target = staging / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                atomic_write_bytes(target, path.read_bytes())
-            runtime = load_bundle_v3_runtime(staging)
-            destination = runtime_root / runtime.runtime_bundle_id
-            if destination.exists():
-                existing = load_bundle_v3_runtime(destination)
-                if existing.manifest != runtime.manifest:
-                    raise BundleV3IntegrityError("runtime content-address collision")
-                return existing
-            staging.rename(destination)
-            return load_bundle_v3_runtime(destination)
-        except Exception:
-            if staging.exists():
-                shutil.rmtree(staging)
-            raise
-
     @staticmethod
     def _write(root: Path, material: BundleV3Materialization) -> None:
         atomic_write_bytes(root / "manifest.json", _canonical_bytes(material.manifest))
@@ -743,15 +685,8 @@ class BundleV3Store:
             atomic_write_bytes(root / _canonical_path(release_id, "manifest.json"), _canonical_bytes(canonical.manifest))
             atomic_write_bytes(root / _canonical_path(release_id, "objects.jsonl"), _jsonl_bytes(canonical.objects))
             atomic_write_bytes(root / _canonical_path(release_id, "relations.jsonl"), _jsonl_bytes(canonical.relations))
-        atomic_write_bytes(root / "runtime/manifest.json", _canonical_bytes(material.runtime_manifest))
-        atomic_write_bytes(root / "runtime/questions.jsonl", _jsonl_bytes(material.runtime_questions))
         for digest, payload in sorted(material.source_payloads.items()):
-            atomic_write_bytes(root / f"runtime/source/{digest}.docx", payload)
-        runtime_files = canonical_file_hashes(root / "runtime")
-        atomic_write_bytes(
-            root / "runtime/checksums.json",
-            _canonical_bytes({"schema_version": BUNDLE_V3_RUNTIME_SCHEMA_VERSION, "runtime_bundle_id": digest_file_hashes(runtime_files), "files": runtime_files}),
-        )
+            atomic_write_bytes(root / f"private/source/{digest}.docx", payload)
         files = canonical_file_hashes(root)
         atomic_write_bytes(
             root / "checksums.json",
@@ -764,9 +699,6 @@ def load_bundle_v3(root: Path) -> DatasetBundleV3:
     required = (
         "manifest.json",
         "checksums.json",
-        "runtime/manifest.json",
-        "runtime/questions.jsonl",
-        "runtime/checksums.json",
         "private/dataset.json",
         "private/cases.jsonl",
         "private/gold.jsonl",
@@ -803,8 +735,6 @@ def load_bundle_v3(root: Path) -> DatasetBundleV3:
         adjudications=adjudications,
         canonical_documents=canonical_documents,
     )
-    runtime = load_bundle_v3_runtime(root / "runtime")
-    _validate_runtime_matches_private(runtime, manifest, cases)
     bundle_id = _validate_checksums(root, schema_version=BUNDLE_V3_SCHEMA_VERSION, key="bundle_id")
     return DatasetBundleV3(
         root=root,
@@ -816,25 +746,6 @@ def load_bundle_v3(root: Path) -> DatasetBundleV3:
         evidence=evidence,
         canonical_documents=canonical_documents,
     )
-
-
-def load_bundle_v3_runtime(root: Path) -> DatasetBundleV3Runtime:
-    root = root.resolve()
-    required = ("manifest.json", "questions.jsonl", "checksums.json")
-    if any(not (root / item).is_file() for item in required):
-        raise BundleV3IntegrityError("runtime view is missing manifest, questions, or checksums")
-    runtime_id = _validate_checksums(root, schema_version=BUNDLE_V3_RUNTIME_SCHEMA_VERSION, key="runtime_bundle_id")
-    _validate_runtime_layout(root)
-    manifest = BundleV3RuntimeManifest.model_validate_json((root / "manifest.json").read_text(encoding="utf-8"))
-    questions = tuple(_read_jsonl(root / "questions.jsonl", BundleV3RuntimeQuestion))
-    if len(questions) != manifest.case_count or len({item.case_id for item in questions}) != len(questions):
-        raise BundleV3IntegrityError("runtime questions must be unique and match the declared Case count")
-    for source in manifest.source_documents:
-        payload = root / source.runtime_path
-        if not payload.is_file() or hashlib.sha256(payload.read_bytes()).hexdigest() != source.source_digest:
-            raise BundleV3IntegrityError(f"runtime source checksum mismatch: {source.runtime_path}")
-    return DatasetBundleV3Runtime(root=root, runtime_bundle_id=runtime_id, manifest=manifest, questions=questions)
-
 
 def _validate_checksums(root: Path, *, schema_version: str, key: str) -> str:
     path = root / "checksums.json"
@@ -851,17 +762,6 @@ def _validate_checksums(root: Path, *, schema_version: str, key: str) -> str:
     ):
         raise BundleV3IntegrityError("checksums.json does not match Bundle content")
     return digest
-
-
-def _validate_runtime_layout(root: Path) -> None:
-    allowed = {"manifest.json", "questions.jsonl", "checksums.json"}
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        relative = path.relative_to(root).as_posix()
-        if relative in allowed or relative.startswith("source/"):
-            continue
-        raise BundleV3IntegrityError(f"runtime view exposes a private or unknown artifact: {relative}")
 
 
 def _load_canonical_documents(root: Path, manifest: BundleV3Manifest) -> dict[str, CanonicalDocument]:
@@ -945,9 +845,9 @@ def _validate_bundle_v3(
     _validate_gold_semantics(gold, evidence, canonical_documents)
     _validate_review_lineage(releases, reviews, approvals, adjudications)
     for source in manifest.source_documents:
-        source_path = root / "runtime" / source.runtime_path
+        source_path = root / source.path
         if not source_path.is_file() or hashlib.sha256(source_path.read_bytes()).hexdigest() != source.source_digest:
-            raise BundleV3IntegrityError(f"source digest mismatch: {source.runtime_path}")
+            raise BundleV3IntegrityError(f"source digest mismatch: {source.path}")
 
 
 def _validate_gold_semantics(
@@ -1024,22 +924,3 @@ def _validate_review_lineage(
         raise BundleV3IntegrityError("review/approval lineage differs from frozen Release pins")
     if any(not set(item.review_ids).intersection(review_ids) for item in adjudications):
         raise BundleV3IntegrityError("adjudication does not relate to packaged review lineage")
-
-
-def _validate_runtime_matches_private(
-    runtime: DatasetBundleV3Runtime,
-    manifest: BundleV3Manifest,
-    cases: tuple[BundleV3CaseRecord, ...],
-) -> None:
-    if runtime.manifest.target_release_id != manifest.target_release_id or runtime.manifest.dataset_id != manifest.dataset_id:
-        raise BundleV3IntegrityError("runtime manifest differs from private Bundle identity")
-    expected = {
-        item.case.case_id: (item.case.case_revision_id, item.case.draft.question, item.case.draft.language, item.portfolio.slot)
-        for item in cases
-    }
-    actual = {
-        item.case_id: (item.case_revision_id, item.question, item.language, item.portfolio_slot)
-        for item in runtime.questions
-    }
-    if actual != expected:
-        raise BundleV3IntegrityError("runtime questions differ from private frozen Case records")

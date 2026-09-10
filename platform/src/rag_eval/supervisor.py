@@ -116,13 +116,9 @@ class JobSupervisor:
                 self.jobs.update_worker(job.job_id, run_id=run_id, worker_pid=pid)
 
             executor = RunExecutor(
-                self.executor.dataset_store,
+                self.executor.benchmark_service,
                 self.run_records,
                 self.providers.get(resolved.provider),
-                # A queued run must retain the formal-release authority used
-                # by its preview; otherwise formal releases look unavailable
-                # only after the supervisor claims the job.
-                dataset_release_store=self.executor.dataset_release_store,
             )
             record = executor.execute(
                 job.experiment,

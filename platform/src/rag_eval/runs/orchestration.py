@@ -9,7 +9,12 @@ from time import monotonic
 from typing import Any, Protocol
 
 from rag_eval.artifact_contract import artifact_digest
-from rag_eval.contracts.dataset import GoldAnswer, GoldEvidenceSet, Question
+from rag_eval.contracts.benchmark import (
+    BenchmarkAnswerV2,
+    BenchmarkCaseV2,
+    BenchmarkGoldV2,
+    NativeBenchmarkReleaseV2,
+)
 from rag_eval.contracts.native import NativeQueryV2, PreparedSystemV2
 from rag_eval.contracts.observation import (
     AdapterRunResultV2,
@@ -39,7 +44,6 @@ from rag_eval.runs.models import (
     ArtifactCaseErrorV2,
     ArtifactEvidenceJudgment,
     ArtifactEvidenceStatus,
-    BenchmarkCaseSnapshotV2,
     BenchmarkIdentityV2,
     PersistedEvaluationV2,
     RunArtifactCaseV2,
@@ -61,24 +65,12 @@ class BenchmarkResolver:
     def __init__(
         self,
         *,
-        questions: Mapping[str, Question],
-        gold_answers: Mapping[str, GoldAnswer],
-        gold_evidence_sets: Mapping[str, GoldEvidenceSet],
+        cases: Mapping[str, BenchmarkCaseV2],
     ) -> None:
-        self._questions = dict(questions)
-        self._gold_answers = dict(gold_answers)
-        self._gold_evidence_sets = dict(gold_evidence_sets)
+        self._cases = dict(cases)
 
-    def resolve(self, case_id: str) -> BenchmarkCaseSnapshotV2:
-        question = self._questions[case_id]
-        answer = self._gold_answers[question.gold_answer_id]
-        evidence = self._gold_evidence_sets[question.gold_evidence_set_id]
-        return BenchmarkCaseSnapshotV2(
-            case_id=question.case_id,
-            question=question.question,
-            gold_answer=answer,
-            gold_evidence_set=evidence,
-        )
+    def resolve(self, case_id: str) -> BenchmarkCaseV2:
+        return self._cases[case_id]
 
 
 class AdapterSession:
@@ -184,7 +176,7 @@ class EvaluationEngine:
 
     def evaluate(
         self,
-        benchmark: BenchmarkCaseSnapshotV2,
+        benchmark: BenchmarkCaseV2,
         validation: TraceValidationResult,
         *,
         started_at: datetime,
@@ -197,7 +189,7 @@ class EvaluationEngine:
         adapter_result = validation.adapter_result
         if adapter_result is None:
             evaluation = self._unavailable_evaluation(
-                benchmark.gold_evidence_set,
+                benchmark.gold,
                 validation.record.reason or "Unified Trace is unavailable",
             )
             answer_judgment = ArtifactAnswerJudgment(
@@ -210,14 +202,14 @@ class EvaluationEngine:
             )
         else:
             unified = evaluate_unified_trace(
-                benchmark.gold_evidence_set,
+                benchmark.gold,
                 adapter_result.trace,
                 profile=self.profile,
-                gold_answer=benchmark.gold_answer,
+                gold_answer=benchmark.gold.answer,
             )
             evaluation = PersistedEvaluationV2.from_unified(unified)
             answer_judgment = self._answer_judgment(
-                benchmark.gold_answer, adapter_result
+                benchmark.gold.answer, adapter_result
             )
             evidence_judgment = self._evidence_judgment(evaluation)
         return RunArtifactCaseV2.build(
@@ -225,9 +217,7 @@ class EvaluationEngine:
             repetition=repetition,
             seed=seed,
             status=status,
-            question=benchmark.question,
-            gold_answer=benchmark.gold_answer,
-            gold_evidence_set=benchmark.gold_evidence_set,
+            benchmark_case=benchmark,
             trace_validation=validation.record,
             adapter_result=adapter_result,
             evaluation=evaluation,
@@ -239,7 +229,7 @@ class EvaluationEngine:
         )
 
     def _unavailable_evaluation(
-        self, gold: GoldEvidenceSet, reason: str
+        self, gold: BenchmarkGoldV2, reason: str
     ) -> PersistedEvaluationV2:
         digest = scorer_source_digest()
         metrics = tuple(
@@ -266,7 +256,7 @@ class EvaluationEngine:
             scorer_id=UNIFIED_SCORER_ID,
             scorer_version=UNIFIED_SCORER_VERSION,
             scorer_digest=digest,
-            gold_evidence_set_id=gold.gold_evidence_set_id,
+            gold_revision_id=gold.gold_revision_id,
             metrics=metrics,
             failure=ProofGatedFailure(
                 kind=FailureKind.UNOBSERVABLE,
@@ -276,7 +266,7 @@ class EvaluationEngine:
 
     @staticmethod
     def _answer_judgment(
-        gold: GoldAnswer, result: AdapterRunResultV2
+        gold: BenchmarkAnswerV2, result: AdapterRunResultV2
     ) -> ArtifactAnswerJudgment:
         observation = result.trace.answer
         if observation.observation_status != ObservationStatus.OBSERVED:
@@ -423,48 +413,19 @@ def evaluation_profile_from_query_config(
     )
 
 
-def benchmark_identity_from_release_metadata(
-    *,
-    bundle_id: str,
-    case_selection_id: str,
-    dataset_release_id: str | None,
-    metadata: Mapping[str, Any],
-    document_sources: Mapping[str, str],
+def benchmark_identity_from_release(
+    benchmark: NativeBenchmarkReleaseV2,
     cases: tuple[RunArtifactCaseV2, ...],
-) -> BenchmarkIdentityV2 | None:
-    """Resolve only an immutable formal Release; never invent a Benchmark ID."""
+) -> BenchmarkIdentityV2:
+    """Bind an Artifact to the exact immutable Benchmark snapshot it evaluated."""
 
-    projection = metadata.get("formal_runtime_projection")
-    if dataset_release_id is None or not isinstance(projection, Mapping):
-        return None
-    release_id = projection.get("release_id")
-    release_digest = projection.get("release_digest")
-    if release_id != dataset_release_id:
-        return None
-    if not isinstance(release_digest, str):
-        return None
-    snapshots = {
-        case.case_id: BenchmarkCaseSnapshotV2(
-            case_id=case.case_id,
-            question=case.question,
-            gold_answer=case.gold_answer,
-            gold_evidence_set=case.gold_evidence_set,
-        )
-        for case in cases
-    }
-    for snapshot in snapshots.values():
-        for source in snapshot.gold_evidence_set.source_identities:
-            if document_sources.get(source.document_id) != source.source_sha256:
-                raise ValueError(
-                    "Canonical Gold source identity differs from the Bundle source"
-                )
-    return BenchmarkIdentityV2.build(
-        dataset_release_id=dataset_release_id,
-        dataset_release_digest=release_digest,
-        bundle_id=bundle_id,
-        case_selection_id=case_selection_id,
-        cases=tuple(snapshots[key] for key in sorted(snapshots)),
-    )
+    expected = {item.case_id: item for item in benchmark.cases}
+    observed = {item.case_id: item.benchmark_case for item in cases}
+    if set(observed) != set(expected):
+        raise ValueError("Artifact cases differ from the Benchmark selection")
+    if any(observed[case_id] != expected[case_id] for case_id in expected):
+        raise ValueError("Artifact Case/Gold content differs from the Benchmark snapshot")
+    return BenchmarkIdentityV2.build(benchmark=benchmark)
 
 
 __all__ = [
@@ -475,6 +436,6 @@ __all__ = [
     "NativeCaseOutcome",
     "TraceValidationResult",
     "TraceValidator",
-    "benchmark_identity_from_release_metadata",
+    "benchmark_identity_from_release",
     "evaluation_profile_from_query_config",
 ]

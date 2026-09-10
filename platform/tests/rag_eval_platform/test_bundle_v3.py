@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,7 +21,6 @@ from rag_eval.authoring.ledger import (
 from rag_eval.authoring.service import AuthoringService
 from rag_eval.authoring.models import DiscoveryMethod
 from rag_eval.contracts.canonical import CanonicalDocument
-from rag_eval.datasets.bundle import load_bundle
 from rag_eval.datasets.bundle_v3 import (
     BundleV3Builder,
     BundleV3EvidenceRecord,
@@ -36,7 +37,6 @@ from rag_eval.datasets.portfolio import (
     PortfolioLinks,
     PortfolioSlotState,
 )
-from rag_eval.datasets.registry import FROZEN_20_CASE_BUNDLE_ID
 from tests.rag_eval_platform.test_authoring import mini_docx
 from tests.rag_eval_platform.test_rich_content_canonicalization import _rich_fixture
 
@@ -122,7 +122,7 @@ def _release_context(tmp_path: Path):
     return authoring, formal, release, store, target
 
 
-def test_bundle_v3_build_is_deterministic_and_runtime_view_cannot_leak_gold(tmp_path: Path) -> None:
+def test_bundle_v3_build_is_deterministic_and_offline_only(tmp_path: Path) -> None:
     _authoring, _formal, release, store, _target = _release_context(tmp_path)
     first = store.build_from_release(release.release_id)
     second = store.build_from_release(release.release_id)
@@ -136,25 +136,34 @@ def test_bundle_v3_build_is_deterministic_and_runtime_view_cannot_leak_gold(tmp_
     assert any(item.object_type.value == "logical_cell" for item in first.canonical_documents[release.release_id].objects)
     assert any(item.relation_type.value == "physical_to_logical_cell" for item in first.canonical_documents[release.release_id].relations)
 
-    runtime = store.export_runtime_view(first.bundle_id, tmp_path / "runtime-exports")
-    assert len(runtime.questions) == 1
-    assert runtime.questions[0].question == first.cases[0].case.draft.question
-    assert set(path.relative_to(runtime.root).as_posix() for path in runtime.root.rglob("*") if path.is_file()) == {
-        "manifest.json",
-        "questions.jsonl",
-        "checksums.json",
-        f"source/{release.document.source_digest}.docx",
+    paths = {
+        path.relative_to(first.root).as_posix()
+        for path in first.root.rglob("*")
+        if path.is_file()
     }
-    runtime_question = json.loads((runtime.root / "questions.jsonl").read_text().splitlines()[0])
-    assert set(runtime_question) == {
-        "case_id",
-        "case_revision_id",
-        "question",
-        "language",
-        "portfolio_slot",
-    }
-    assert "gold" not in (runtime.root / "questions.jsonl").read_text().casefold()
-    assert not (runtime.root / "private").exists()
+    assert f"private/source/{release.document.source_digest}.docx" in paths
+    assert "private/gold.jsonl" in paths
+    assert "runtime/manifest.json" not in paths
+    assert "runtime/questions.jsonl" not in paths
+    assert not hasattr(store, "export_runtime_view")
+
+
+def test_production_composition_root_does_not_import_offline_bundle_v3() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; import rag_eval.service; "
+                "assert 'rag_eval.datasets.bundle_v3' not in sys.modules"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_bundle_v3_catalog_preserves_content_address_with_manifest(tmp_path: Path) -> None:
@@ -308,13 +317,14 @@ def test_bundle_v3_tamper_and_release_snapshot_mismatch_fail_closed(tmp_path: Pa
         store.build_from_release(release.release_id)
 
 
-def test_bundle_v2_reader_and_frozen_20_registry_remain_untouched(tmp_path: Path) -> None:
-    # Bundle 3.0 has a separate loader/store and never rewrites legacy Bundle
-    # contents or the external frozen-20 classification record.
-    fixture = Path(__file__).resolve().parents[2] / "examples" / "golden-smoke-v1"
-    assert load_bundle(fixture).manifest.schema_version == 2
-    registry = Path(__file__).resolve().parents[2] / "registries" / "reference-datasets" / f"{FROZEN_20_CASE_BUNDLE_ID}.json"
-    before = registry.read_bytes()
-    assert json.loads(before)["bundle_id"] == FROZEN_20_CASE_BUNDLE_ID
-    _release_context(tmp_path)
-    assert registry.read_bytes() == before
+def test_offline_bundle_v3_is_not_a_production_runtime_dependency() -> None:
+    source_root = Path(__file__).resolve().parents[2] / "src" / "rag_eval"
+    for relative in (
+        "runtime_admission.py",
+        "execution.py",
+        "service.py",
+        "api.py",
+    ):
+        source = (source_root / relative).read_text(encoding="utf-8")
+        assert "bundle_v3" not in source
+        assert "BundleV3" not in source

@@ -126,29 +126,31 @@ def artifact_plan_binding_errors(
     expected_benchmark = (
         plan.benchmark_release.release_id,
         plan.benchmark_release.release_digest,
-        plan.benchmark_release.runtime_bundle_id,
+        plan.benchmark_release.validation_report_digest,
+        plan.benchmark_release.payload_snapshot_digest,
+        plan.benchmark_release.benchmark_snapshot_digest,
         plan.case_selection_id,
     )
     observed_benchmark = (
-        benchmark.dataset_release_id,
-        benchmark.dataset_release_digest,
-        benchmark.bundle_id,
+        benchmark.release_id,
+        benchmark.release_digest,
+        benchmark.validation_report_digest,
+        benchmark.payload_snapshot_digest,
+        benchmark.benchmark_snapshot_digest,
         benchmark.case_selection_id,
     )
     if observed_benchmark != expected_benchmark:
         errors.append("resolved-plan:benchmark-identity")
 
-    source_pins = {
-        (item.document_id, item.source_sha256)
-        for item in benchmark.source_identities
-    }
-    expected_source = {
-        (
-            plan.original_document.document_id,
-            plan.original_document.source_sha256,
-        )
-    }
-    if source_pins != expected_source:
+    source = benchmark.source_identity
+    if (
+        source.document_id != plan.original_document.document_id
+        or source.source_sha256 != plan.original_document.source_sha256
+        or source.canonical_digest != plan.original_document.canonical_digest
+        or source.canonical_catalog_sha256
+        != plan.original_document.canonical_catalog_sha256
+        or source.media_type != plan.original_document.mime_type
+    ):
         errors.append("resolved-plan:original-document")
 
     expected_case_keys = {

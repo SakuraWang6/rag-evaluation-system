@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from rag_eval.contracts.dataset import GoldEvidenceSet
+from rag_eval.contracts.benchmark import BenchmarkGoldV2
 from rag_eval.contracts.observation import (
     StageName,
     StageTransitionMode,
@@ -24,7 +24,7 @@ from rag_eval.evaluation.unified.proofs import (
 
 
 def pipeline_delta(
-    gold: GoldEvidenceSet,
+    gold: BenchmarkGoldV2,
     trace: UnifiedTrace,
     *,
     source: StageProof,

@@ -112,7 +112,6 @@ class RunArtifactHistory:
             expected_artifact_digest=record.artifact_digest,
             expected_benchmark_release_id=plan.benchmark_release.release_id,
             expected_benchmark_release_digest=plan.benchmark_release.release_digest,
-            expected_bundle_id=plan.benchmark_release.runtime_bundle_id,
             expected_case_selection_id=plan.case_selection_id,
             expected_plan=plan,
         )

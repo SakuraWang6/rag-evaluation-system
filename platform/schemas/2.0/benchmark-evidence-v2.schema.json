@@ -1,0 +1,182 @@
+{
+  "$defs": {
+    "BenchmarkEvidenceRoleV2": {
+      "enum": [
+        "required",
+        "supporting",
+        "conflicting",
+        "near_miss",
+        "negative_scope"
+      ],
+      "title": "BenchmarkEvidenceRoleV2",
+      "type": "string"
+    },
+    "CanonicalObjectType": {
+      "enum": [
+        "document",
+        "section",
+        "heading",
+        "paragraph",
+        "text_span",
+        "table",
+        "row",
+        "cell",
+        "logical_row",
+        "logical_column",
+        "logical_cell",
+        "figure",
+        "caption",
+        "equation",
+        "reference",
+        "footnote",
+        "endnote",
+        "embedded_object",
+        "media_resource"
+      ],
+      "title": "CanonicalObjectType",
+      "type": "string"
+    },
+    "SourceSpan": {
+      "additionalProperties": false,
+      "description": "One directly observed source location in ``ooxml-structural-v1``.",
+      "properties": {
+        "coordinate_system": {
+          "const": "ooxml-structural-v1",
+          "default": "ooxml-structural-v1",
+          "title": "Coordinate System",
+          "type": "string"
+        },
+        "part": {
+          "minLength": 1,
+          "title": "Part",
+          "type": "string"
+        },
+        "coordinates": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "minProperties": 1,
+          "title": "Coordinates",
+          "type": "object"
+        },
+        "text_start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text Start"
+        },
+        "text_end": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text End"
+        }
+      },
+      "required": [
+        "part",
+        "coordinates"
+      ],
+      "title": "SourceSpan",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "evidence_id": {
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "document_id": {
+      "minLength": 1,
+      "title": "Document Id",
+      "type": "string"
+    },
+    "canonical_object_id": {
+      "minLength": 1,
+      "title": "Canonical Object Id",
+      "type": "string"
+    },
+    "role": {
+      "$ref": "#/$defs/BenchmarkEvidenceRoleV2"
+    },
+    "rationale": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rationale"
+    },
+    "canonical_object_type": {
+      "$ref": "#/$defs/CanonicalObjectType"
+    },
+    "representation_status": {
+      "const": "complete",
+      "default": "complete",
+      "title": "Representation Status",
+      "type": "string"
+    },
+    "source_spans": {
+      "items": {
+        "$ref": "#/$defs/SourceSpan"
+      },
+      "minItems": 1,
+      "title": "Source Spans",
+      "type": "array"
+    },
+    "canonical_value": {
+      "minLength": 1,
+      "title": "Canonical Value",
+      "type": "string"
+    },
+    "canonical_witness_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Canonical Witness Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "document_id",
+    "canonical_object_id",
+    "role",
+    "canonical_object_type",
+    "source_spans",
+    "canonical_value",
+    "canonical_witness_sha256"
+  ],
+  "title": "BenchmarkEvidenceV2",
+  "type": "object"
+}

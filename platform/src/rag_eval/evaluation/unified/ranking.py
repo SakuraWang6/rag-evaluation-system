@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rag_eval.contracts.dataset import GoldEvidenceSet
+from rag_eval.contracts.benchmark import BenchmarkGoldV2
 from rag_eval.evaluation.unified.proofs import EPSILON, StageProof, paths
 
 
@@ -40,7 +40,7 @@ def complete_mrr_bounds(
 
 
 def first_fragment_mrr_bounds(
-    gold: GoldEvidenceSet,
+    gold: BenchmarkGoldV2,
     prefixes: dict[int, StageProof],
     cutoff: int,
 ) -> tuple[float, float, str | None]:

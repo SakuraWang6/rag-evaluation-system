@@ -84,7 +84,7 @@ def validate_artifact_comparison_v2(
                 (
                     run.plan.benchmark_release.release_id,
                     run.plan.benchmark_release.release_digest,
-                    run.plan.benchmark_release.runtime_bundle_id,
+                    run.plan.benchmark_release.benchmark_snapshot_digest,
                 )
                 for run in runs
             },

@@ -17,15 +17,6 @@ class PlatformPaths:
         return cls(Path(configured).expanduser() if configured else Path.home() / ".rag_eval_platform")
 
     @property
-    def datasets(self) -> Path:
-        return self.home / "datasets"
-
-    @property
-    def dataset_registry(self) -> Path:
-        """External immutable Dataset classification records, never Bundle files."""
-        return self.home / "dataset-registry"
-
-    @property
     def runs(self) -> Path:
         return self.home / "runs"
 
@@ -49,10 +40,6 @@ class PlatformPaths:
     def product(self) -> Path:
         """Editable product-layer state, deliberately separate from artifacts."""
         return self.home / "product"
-
-    @property
-    def dataset_drafts(self) -> Path:
-        return self.product / "dataset-drafts"
 
     @property
     def evaluation_drafts(self) -> Path:
@@ -80,11 +67,6 @@ class PlatformPaths:
     def dataset_bundles_v3(self) -> Path:
         """Private, content-addressed Bundle 3.0 evaluation packages."""
         return self.product / "dataset-bundles-v3"
-
-    @property
-    def dataset_bundles_v3_runtime(self) -> Path:
-        """Public runtime-only exports; this tree never contains Gold data."""
-        return self.product / "dataset-bundles-v3-runtime"
 
     @property
     def benchmark_portfolios(self) -> Path:
@@ -122,8 +104,6 @@ class PlatformPaths:
 
     def initialize(self, *, product_enabled: bool = True) -> None:
         paths = [
-            self.datasets,
-            self.dataset_registry,
             self.runs,
             self.jobs,
             self.experiments,
@@ -133,14 +113,12 @@ class PlatformPaths:
         if product_enabled:
             paths.extend(
                 (
-                    self.dataset_drafts,
                     self.evaluation_drafts,
                     self.system_connections,
                     self.product_uploads,
                     self.authoring_datasets,
                     self.formal_dataset_releases,
                     self.dataset_bundles_v3,
-                    self.dataset_bundles_v3_runtime,
                     self.benchmark_portfolios,
                     self.benchmark_admission,
                     self.llm_configuration,

@@ -1,93 +1,19 @@
 from __future__ import annotations
 
-import io
 import base64
 import sys
-import zipfile
 from pathlib import Path
-from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
 
 from rag_eval.api import create_app
-from rag_eval.datasets.drafts import DatasetDraft, DatasetDraftStore, DraftCase, DraftDocument
 from rag_eval.products import EvaluationDraft, SystemConnection, canonical_experiment
 from rag_eval.service import PlatformService
 from rag_eval.storage.layout import PlatformPaths
 from rag_eval.systems import SystemRegistration
 from rag_eval.secrets import safe_environment
 from rag_eval.secrets import EncryptedDevFileSecretStore
-from tests.rag_eval_platform.test_bundle_store import write_bundle
-
-
-def test_dataset_draft_text_span_validates_and_seals(tmp_path: Path) -> None:
-    store = DatasetDraftStore(tmp_path / "drafts", tmp_path / "staging")
-    bundle_store = PlatformService(PlatformPaths(tmp_path / "platform"), product_enabled=False).datasets
-    content = "The capital of France is Paris."
-    draft = DatasetDraft(
-        name="manual",
-        version="1.0.0",
-        documents=[DraftDocument(document_id="doc-1", filename="source.md", content=content)],
-        cases=[
-            DraftCase(
-                case_id="case-1",
-                question="What is the capital of France?",
-                gold_answer="Paris",
-                document_id="doc-1",
-                span_start=25,
-                span_end=30,
-            )
-        ],
-    )
-    stored = store.save(draft)
-    store.validate(stored)
-    bundle = store.seal(stored, bundle_store)
-    evidence = bundle.gold_evidence_sets["evidence-set-case-1"].evidence[0]
-    assert evidence.locator.type == "text_span"
-    assert evidence.locator.start == 25
-    assert evidence.canonical_value == "Paris"
-
-
-def test_product_manual_dataset_creation_is_a_one_way_create_and_seal_flow(tmp_path: Path) -> None:
-    service = PlatformService(PlatformPaths(tmp_path / "platform"), product_enabled=True)
-    client = TestClient(create_app(service, start_supervisor=False))
-    payload = {
-        "name": "manual",
-        "version": "1.0.0",
-        "documents": [
-            {
-                "document_id": "document-1",
-                "filename": "source.md",
-                "content": "The capital of France is Paris.",
-            }
-        ],
-        "cases": [
-            {
-                "case_id": "case-1",
-                "question": "What is the capital of France?",
-                "gold_answer": "Paris",
-                "document_id": "document-1",
-                "span_start": 25,
-                "span_end": 30,
-            }
-        ],
-    }
-
-    created = client.post("/api/v1/product/dataset-drafts", json=payload)
-    assert created.status_code == 200
-    draft_id = created.json()["draft_id"]
-
-    # The product UI creates an immutable Bundle in one action.  It does not
-    # expose a second, unresumable draft-management surface.
-    assert client.get("/api/v1/product/dataset-drafts").status_code == 405
-    assert client.put(f"/api/v1/product/dataset-drafts/{draft_id}", json=payload).status_code == 404
-    assert client.post(f"/api/v1/product/dataset-drafts/{draft_id}/validate").status_code == 404
-
-    sealed = client.post(f"/api/v1/product/dataset-drafts/{draft_id}/seal")
-    assert sealed.status_code == 200
-    assert sealed.json()["sealed"] is True
-    assert len(client.get("/api/v1/datasets").json()) == 1
 
 
 def test_versioned_profile_defaults_are_expanded_not_runtime_lookups(tmp_path: Path) -> None:
@@ -104,7 +30,7 @@ def test_versioned_profile_defaults_are_expanded_not_runtime_lookups(tmp_path: P
         )
     )
     draft = EvaluationDraft(
-        bundle_id="a" * 64,
+        dataset_release_id="release-1",
         system_id="lightrag",
         profile_id="lightrag",
         profile_version="1.0.1",
@@ -139,7 +65,7 @@ def test_legacy_profile_without_model_identity_fails_before_execution(tmp_path: 
         )
     )
     draft = EvaluationDraft(
-        bundle_id="a" * 64,
+        dataset_release_id="release-1",
         system_id="lightrag",
         profile_id="lightrag",
         profile_version="1.0.0",
@@ -163,7 +89,7 @@ def test_basic_and_advanced_compile_to_the_same_explicit_spec(tmp_path: Path) ->
         )
     )
     fields = dict(
-        bundle_id="a" * 64,
+        dataset_release_id="release-1",
         system_id="lightrag",
         profile_id="lightrag",
         profile_version="1.0.1",
@@ -192,7 +118,7 @@ def test_lightrag_query_timeout_override_is_frozen_in_the_experiment(tmp_path: P
 
     spec = canonical_experiment(
         EvaluationDraft(
-            bundle_id="a" * 64,
+            dataset_release_id="release-1",
             system_id="lightrag",
             profile_id="lightrag",
             profile_version="1.0.1",
@@ -227,7 +153,7 @@ def test_experiment_id_includes_the_effective_model_and_run_configuration(tmp_pa
         )
     )
     fields = dict(
-        bundle_id="a" * 64,
+        dataset_release_id="release-1",
         system_id="lightrag",
         profile_id="lightrag",
         profile_version="1.0.1",
@@ -275,7 +201,7 @@ def test_text_safe_rag_anything_profile_is_versioned_and_fully_expanded(tmp_path
     )
     spec = canonical_experiment(
         EvaluationDraft(
-            bundle_id="a" * 64,
+            dataset_release_id="release-1",
             system_id="rag-anything",
             profile_id="rag-anything",
             profile_version="1.0.1",
@@ -312,13 +238,9 @@ def test_basic_system_uses_profile_runtime_configuration_without_exposing_a_path
     assert service.products.get_connection("lightrag").python_executable == "/managed/lightrag/python"
 
 
-def test_product_disabled_preserves_legacy_only_api(tmp_path: Path) -> None:
-    source = tmp_path / "bundle"
-    source.mkdir()
-    write_bundle(source)
+def test_product_disabled_does_not_restore_retired_dataset_routes(tmp_path: Path) -> None:
     service = PlatformService(PlatformPaths(tmp_path / "platform"), product_enabled=False)
     assert not service.paths.product.exists()
-    service.datasets.register(source)
     service.systems.register(
         SystemRegistration(
             system_id="fake-rag",
@@ -329,19 +251,13 @@ def test_product_disabled_preserves_legacy_only_api(tmp_path: Path) -> None:
     )
     client = TestClient(create_app(service, start_supervisor=False))
     assert client.get("/api/v1/product/profiles").status_code == 404
-    assert client.get("/api/v1/datasets").status_code == 200
+    assert client.get("/api/v1/datasets").status_code == 404
     assert client.get("/api/v1/systems").json()[0]["system_id"] == "fake-rag"
 
 
-def test_product_zip_upload_and_system_api_never_return_secret_values(tmp_path: Path) -> None:
-    source = tmp_path / "bundle"
-    source.mkdir()
-    write_bundle(source)
-    archive = io.BytesIO()
-    with zipfile.ZipFile(archive, "w") as value:
-        for path in source.rglob("*"):
-            if path.is_file():
-                value.writestr(path.relative_to(source).as_posix(), path.read_bytes())
+def test_retired_upload_route_is_absent_and_system_api_never_returns_secrets(
+    tmp_path: Path,
+) -> None:
     service = PlatformService(PlatformPaths(tmp_path / "platform"), product_enabled=True)
 
     class FakeSecrets:
@@ -361,15 +277,10 @@ def test_product_zip_upload_and_system_api_never_return_secret_values(tmp_path: 
     assert "defaults" not in profiles.text
     uploaded = client.post(
         "/api/v1/product/datasets/upload",
-        content=archive.getvalue(),
-        headers={"content-type": "application/zip", "x-rag-eval-filename": f"utf-8''{quote('数据集.zip', safe='')}"},
+        content=b"retired-bundle-format",
+        headers={"content-type": "application/zip"},
     )
-    assert uploaded.status_code == 200
-    # A browser should never be asked to provide a host-local filesystem path.
-    # The trusted CLI registration route remains available outside the Product
-    # API; importing an existing sealed Bundle through the product surface is
-    # therefore file-upload only.
-    assert client.post("/api/v1/product/datasets/local-path", json={"path": str(source)}).status_code == 404
+    assert uploaded.status_code == 404
     response = client.post(
         "/api/v1/product/systems",
         json={
@@ -474,11 +385,7 @@ def test_explicit_development_secret_store_encrypts_without_serializing_value(tm
 def test_wizard_rejects_a_legacy_bundle_as_a_new_evaluation_source(
     tmp_path: Path,
 ) -> None:
-    source = tmp_path / "bundle"
-    source.mkdir()
-    write_bundle(source)
     service = PlatformService(PlatformPaths(tmp_path / "platform"), product_enabled=True)
-    bundle = service.datasets.register(source)
     client = TestClient(create_app(service, start_supervisor=False))
     connection = client.post(
         "/api/v1/product/systems",
@@ -497,7 +404,7 @@ def test_wizard_rejects_a_legacy_bundle_as_a_new_evaluation_source(
         "/api/v1/product/evaluation-drafts",
         json={
             "mode": "basic",
-            "bundle_id": bundle.bundle_id,
+            "bundle_id": "a" * 64,
             "system_id": "lightrag",
             "profile_id": "lightrag",
             "profile_version": "1.0.1",
@@ -562,14 +469,8 @@ def test_wizard_draft_uses_a_lossless_formal_release_without_an_authoring_worksp
     assert preview.status_code == 200
     assert preview.json()["dataset_release_id"] == release.release_id
     assert "evaluation_corpus" not in preview.json()["adapter_config"]
-    runtime_bundle = next(
-        item
-        for item in client.get("/api/v1/datasets").json()
-        if item["bundle_id"] == preview.json()["bundle_id"]
-    )
-    # The compatibility Bundle 2.0 view inherits the formal release's
-    # product-facing label rather than exposing ``formal-<dataset-id>``.
-    assert runtime_bundle["name"] == "private"
+    assert "bundle_id" not in preview.json()
+    assert client.get("/api/v1/datasets").status_code == 404
     finalized = client.post(
         f"/api/v1/product/evaluation-drafts/{created.json()['draft_id']}/finalize"
     )

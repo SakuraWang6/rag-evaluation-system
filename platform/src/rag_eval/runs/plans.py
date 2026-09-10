@@ -71,21 +71,16 @@ class BenchmarkReleaseIdentityV2(RunPlanModel):
     release_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
     release_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     validation_report_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    runtime_bundle_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    payload_snapshot_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    benchmark_snapshot_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class OriginalDocumentIdentityV2(RunPlanModel):
     document_id: str = Field(min_length=1)
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    runtime_path: str = Field(min_length=1)
+    canonical_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    canonical_catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     mime_type: str = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def validate_relative_path(self) -> OriginalDocumentIdentityV2:
-        path = PurePosixPath(self.runtime_path)
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError("runtime_path must be a safe relative path")
-        return self
 
 
 class ResolvedSystemIdentityV2(RunPlanModel):
@@ -184,7 +179,6 @@ class ResolvedRunPlanV2(RunPlanModel):
             self.experiment_id == experiment.experiment_id
             and self.experiment_digest == artifact_digest(experiment)
             and self.benchmark_release.release_id == experiment.dataset_release_id
-            and self.benchmark_release.runtime_bundle_id == experiment.bundle_id
             and self.system.system_id == experiment.system_id
             and self.system.adapter_id == experiment.adapter_id
             and self.adapter_config_digest == digest_json(experiment.adapter_config)

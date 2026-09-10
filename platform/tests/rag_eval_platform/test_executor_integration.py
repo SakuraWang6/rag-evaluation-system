@@ -30,7 +30,7 @@ def test_standalone_fake_adapter_run_is_reproducible_and_source_only(
     """The retained CI node now exercises the complete Direct Wire 2 path."""
 
     require_loopback_bind()
-    service, source_experiment, bundle = _native_experiment(tmp_path)
+    service, source_experiment, _benchmark = _native_experiment(tmp_path)
     platform_src = Path(__file__).resolve().parents[2] / "src"
     pythonpath = str(platform_src)
     if inherited := os.environ.get("PYTHONPATH"):
@@ -53,16 +53,15 @@ def test_standalone_fake_adapter_run_is_reproducible_and_source_only(
             "repetitions": 2,
         }
     )
-    reference = service.admit_new_public_experiment(experiment, bundle)
+    reference = service.admit_new_public_experiment(experiment)
     plan = service.resolved_run_plans.get(reference)
     command = service.system_resolver.resolve(
         experiment.system_id,
         provider=plan.system.execution_provider,
     ).command
     executor = RunExecutor(
-        service.datasets,
+        service.formal_datasets,
         service.run_records,
-        dataset_release_store=service.formal_datasets.releases,
     )
 
     record = executor.execute(
@@ -111,7 +110,7 @@ def test_standalone_fake_adapter_run_is_reproducible_and_source_only(
         / reader.manifest().cases[0].path
     )
     payload = json.loads(case_path.read_text(encoding="utf-8"))
-    payload["question"] = "tampered"
+    payload["benchmark_case"]["question"] = "tampered"
     case_path.write_text(json.dumps(payload), encoding="utf-8")
     assert not reader.verify().valid
 
@@ -121,7 +120,7 @@ def test_query_protocol_error_is_persisted_as_unavailable_artifact_case(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     require_loopback_bind()
-    service, source_experiment, bundle = _native_experiment(tmp_path)
+    service, source_experiment, _benchmark = _native_experiment(tmp_path)
     platform_src = Path(__file__).resolve().parents[2] / "src"
     pythonpath = str(platform_src)
     if inherited := os.environ.get("PYTHONPATH"):
@@ -143,7 +142,7 @@ def test_query_protocol_error_is_persisted_as_unavailable_artifact_case(
             "repetitions": 1,
         }
     )
-    reference = service.admit_new_public_experiment(experiment, bundle)
+    reference = service.admit_new_public_experiment(experiment)
     plan = service.resolved_run_plans.get(reference)
     command = service.system_resolver.resolve(
         experiment.system_id,
@@ -155,9 +154,8 @@ def test_query_protocol_error_is_persisted_as_unavailable_artifact_case(
 
     monkeypatch.setattr("rag_eval.worker.client.WorkerClient.query", fail_query)
     record = RunExecutor(
-        service.datasets,
+        service.formal_datasets,
         service.run_records,
-        dataset_release_store=service.formal_datasets.releases,
     ).execute(
         experiment,
         command,

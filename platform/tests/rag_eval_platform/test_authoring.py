@@ -352,12 +352,10 @@ def test_rule_targets_manual_candidate_review_and_native_release(tmp_path: Path)
         case_ids=(case_id,),
         actor="fixture-release-manager",
     )
-    native = service.formal_datasets.materialize_runtime_bundle(
-        release.release_id, service.datasets
-    )
-    assert native.questions[0].case_id == case_id
-    assert len(native.manifest.documents) == 1
-    assert native.manifest.documents[0].path.endswith(".docx")
+    native = service.formal_datasets.resolve_native_benchmark(release.release_id)
+    assert native.cases[0].case_id == case_id
+    assert native.original_docx_path.suffix == ".docx"
+    assert native.source_identity.source_sha256 == release.document.source_digest
 
 
 @pytest.mark.parametrize(

@@ -18,9 +18,14 @@
           "title": "Validation Report Digest",
           "type": "string"
         },
-        "runtime_bundle_id": {
+        "payload_snapshot_digest": {
           "pattern": "^[0-9a-f]{64}$",
-          "title": "Runtime Bundle Id",
+          "title": "Payload Snapshot Digest",
+          "type": "string"
+        },
+        "benchmark_snapshot_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Benchmark Snapshot Digest",
           "type": "string"
         }
       },
@@ -28,7 +33,8 @@
         "release_id",
         "release_digest",
         "validation_report_digest",
-        "runtime_bundle_id"
+        "payload_snapshot_digest",
+        "benchmark_snapshot_digest"
       ],
       "title": "BenchmarkReleaseIdentityV2",
       "type": "object"
@@ -229,9 +235,14 @@
           "title": "Source Sha256",
           "type": "string"
         },
-        "runtime_path": {
-          "minLength": 1,
-          "title": "Runtime Path",
+        "canonical_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Digest",
+          "type": "string"
+        },
+        "canonical_catalog_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Catalog Sha256",
           "type": "string"
         },
         "mime_type": {
@@ -243,7 +254,8 @@
       "required": [
         "document_id",
         "source_sha256",
-        "runtime_path",
+        "canonical_digest",
+        "canonical_catalog_sha256",
         "mime_type"
       ],
       "title": "OriginalDocumentIdentityV2",

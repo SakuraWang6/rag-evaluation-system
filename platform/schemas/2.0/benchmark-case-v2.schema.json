@@ -1,0 +1,556 @@
+{
+  "$defs": {
+    "BenchmarkAnswerKindV2": {
+      "enum": [
+        "text",
+        "numeric",
+        "formula",
+        "set",
+        "abstain"
+      ],
+      "title": "BenchmarkAnswerKindV2",
+      "type": "string"
+    },
+    "BenchmarkAnswerV2": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/BenchmarkAnswerKindV2"
+        },
+        "canonical": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical"
+        },
+        "accepted_values": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Accepted Values",
+          "type": "array"
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locale"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "tolerance": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tolerance"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "BenchmarkAnswerV2",
+      "type": "object"
+    },
+    "BenchmarkEvidenceDependencyV2": {
+      "additionalProperties": false,
+      "properties": {
+        "dependency_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Dependency Id",
+          "type": "string"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dependency_id",
+        "description"
+      ],
+      "title": "BenchmarkEvidenceDependencyV2",
+      "type": "object"
+    },
+    "BenchmarkEvidenceRoleV2": {
+      "enum": [
+        "required",
+        "supporting",
+        "conflicting",
+        "near_miss",
+        "negative_scope"
+      ],
+      "title": "BenchmarkEvidenceRoleV2",
+      "type": "string"
+    },
+    "BenchmarkEvidenceV2": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "canonical_object_id": {
+          "minLength": 1,
+          "title": "Canonical Object Id",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/BenchmarkEvidenceRoleV2"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rationale"
+        },
+        "canonical_object_type": {
+          "$ref": "#/$defs/CanonicalObjectType"
+        },
+        "representation_status": {
+          "const": "complete",
+          "default": "complete",
+          "title": "Representation Status",
+          "type": "string"
+        },
+        "source_spans": {
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          },
+          "minItems": 1,
+          "title": "Source Spans",
+          "type": "array"
+        },
+        "canonical_value": {
+          "minLength": 1,
+          "title": "Canonical Value",
+          "type": "string"
+        },
+        "canonical_witness_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Witness Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "document_id",
+        "canonical_object_id",
+        "role",
+        "canonical_object_type",
+        "source_spans",
+        "canonical_value",
+        "canonical_witness_sha256"
+      ],
+      "title": "BenchmarkEvidenceV2",
+      "type": "object"
+    },
+    "BenchmarkGoldV2": {
+      "additionalProperties": false,
+      "properties": {
+        "gold_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Gold Id",
+          "type": "string"
+        },
+        "gold_revision_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Gold Revision Id",
+          "type": "string"
+        },
+        "case_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_revision_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Revision Id",
+          "type": "string"
+        },
+        "source_identity": {
+          "$ref": "#/$defs/BenchmarkSourceIdentityV2"
+        },
+        "answer": {
+          "$ref": "#/$defs/BenchmarkAnswerV2"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BenchmarkEvidenceV2"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "mses_paths": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BenchmarkMsesPathV2"
+          },
+          "title": "Mses Paths",
+          "type": "array"
+        },
+        "dependencies": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BenchmarkEvidenceDependencyV2"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "negative_scope_object_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Negative Scope Object Ids",
+          "type": "array"
+        },
+        "negative_rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Rationale"
+        }
+      },
+      "required": [
+        "gold_id",
+        "gold_revision_id",
+        "case_id",
+        "case_revision_id",
+        "source_identity",
+        "answer"
+      ],
+      "title": "BenchmarkGoldV2",
+      "type": "object"
+    },
+    "BenchmarkMsesClauseV2": {
+      "additionalProperties": false,
+      "properties": {
+        "clause_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Clause Id",
+          "type": "string"
+        },
+        "alternatives": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Alternatives",
+          "type": "array"
+        }
+      },
+      "required": [
+        "clause_id",
+        "alternatives"
+      ],
+      "title": "BenchmarkMsesClauseV2",
+      "type": "object"
+    },
+    "BenchmarkMsesPathV2": {
+      "additionalProperties": false,
+      "properties": {
+        "path_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Path Id",
+          "type": "string"
+        },
+        "clauses": {
+          "items": {
+            "$ref": "#/$defs/BenchmarkMsesClauseV2"
+          },
+          "minItems": 1,
+          "title": "Clauses",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path_id",
+        "clauses"
+      ],
+      "title": "BenchmarkMsesPathV2",
+      "type": "object"
+    },
+    "BenchmarkSourceIdentityV2": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "media_type": {
+          "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "default": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "coordinate_system_version": {
+          "const": "ooxml-structural-v1",
+          "default": "ooxml-structural-v1",
+          "title": "Coordinate System Version",
+          "type": "string"
+        },
+        "canonical_schema_version": {
+          "minLength": 1,
+          "title": "Canonical Schema Version",
+          "type": "string"
+        },
+        "canonical_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Digest",
+          "type": "string"
+        },
+        "canonical_catalog_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Catalog Sha256",
+          "type": "string"
+        },
+        "parser_identity": {
+          "minLength": 1,
+          "title": "Parser Identity",
+          "type": "string"
+        },
+        "canonicalizer_identity": {
+          "minLength": 1,
+          "title": "Canonicalizer Identity",
+          "type": "string"
+        },
+        "configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "canonical_schema_version",
+        "canonical_digest",
+        "canonical_catalog_sha256",
+        "parser_identity",
+        "canonicalizer_identity",
+        "configuration_digest"
+      ],
+      "title": "BenchmarkSourceIdentityV2",
+      "type": "object"
+    },
+    "CanonicalObjectType": {
+      "enum": [
+        "document",
+        "section",
+        "heading",
+        "paragraph",
+        "text_span",
+        "table",
+        "row",
+        "cell",
+        "logical_row",
+        "logical_column",
+        "logical_cell",
+        "figure",
+        "caption",
+        "equation",
+        "reference",
+        "footnote",
+        "endnote",
+        "embedded_object",
+        "media_resource"
+      ],
+      "title": "CanonicalObjectType",
+      "type": "string"
+    },
+    "SourceSpan": {
+      "additionalProperties": false,
+      "description": "One directly observed source location in ``ooxml-structural-v1``.",
+      "properties": {
+        "coordinate_system": {
+          "const": "ooxml-structural-v1",
+          "default": "ooxml-structural-v1",
+          "title": "Coordinate System",
+          "type": "string"
+        },
+        "part": {
+          "minLength": 1,
+          "title": "Part",
+          "type": "string"
+        },
+        "coordinates": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "minProperties": 1,
+          "title": "Coordinates",
+          "type": "object"
+        },
+        "text_start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text Start"
+        },
+        "text_end": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text End"
+        }
+      },
+      "required": [
+        "part",
+        "coordinates"
+      ],
+      "title": "SourceSpan",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "case_id": {
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "case_revision_id": {
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Case Revision Id",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "question": {
+      "minLength": 1,
+      "title": "Question",
+      "type": "string"
+    },
+    "language": {
+      "minLength": 1,
+      "title": "Language",
+      "type": "string"
+    },
+    "source_object_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Source Object Ids",
+      "type": "array"
+    },
+    "gold": {
+      "$ref": "#/$defs/BenchmarkGoldV2"
+    }
+  },
+  "required": [
+    "case_id",
+    "case_revision_id",
+    "target_id",
+    "question",
+    "language",
+    "source_object_ids",
+    "gold"
+  ],
+  "title": "BenchmarkCaseV2",
+  "type": "object"
+}

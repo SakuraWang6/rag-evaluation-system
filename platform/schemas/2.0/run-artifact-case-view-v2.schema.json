@@ -299,6 +299,465 @@
       "title": "ArtifactViewAvailability",
       "type": "string"
     },
+    "BenchmarkAnswerKindV2": {
+      "enum": [
+        "text",
+        "numeric",
+        "formula",
+        "set",
+        "abstain"
+      ],
+      "title": "BenchmarkAnswerKindV2",
+      "type": "string"
+    },
+    "BenchmarkAnswerV2": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/BenchmarkAnswerKindV2"
+        },
+        "canonical": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical"
+        },
+        "accepted_values": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Accepted Values",
+          "type": "array"
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locale"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "tolerance": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tolerance"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "BenchmarkAnswerV2",
+      "type": "object"
+    },
+    "BenchmarkCaseV2": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_revision_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Revision Id",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "language": {
+          "minLength": 1,
+          "title": "Language",
+          "type": "string"
+        },
+        "source_object_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Object Ids",
+          "type": "array"
+        },
+        "gold": {
+          "$ref": "#/$defs/BenchmarkGoldV2"
+        }
+      },
+      "required": [
+        "case_id",
+        "case_revision_id",
+        "target_id",
+        "question",
+        "language",
+        "source_object_ids",
+        "gold"
+      ],
+      "title": "BenchmarkCaseV2",
+      "type": "object"
+    },
+    "BenchmarkEvidenceDependencyV2": {
+      "additionalProperties": false,
+      "properties": {
+        "dependency_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Dependency Id",
+          "type": "string"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dependency_id",
+        "description"
+      ],
+      "title": "BenchmarkEvidenceDependencyV2",
+      "type": "object"
+    },
+    "BenchmarkEvidenceRoleV2": {
+      "enum": [
+        "required",
+        "supporting",
+        "conflicting",
+        "near_miss",
+        "negative_scope"
+      ],
+      "title": "BenchmarkEvidenceRoleV2",
+      "type": "string"
+    },
+    "BenchmarkEvidenceV2": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "canonical_object_id": {
+          "minLength": 1,
+          "title": "Canonical Object Id",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/BenchmarkEvidenceRoleV2"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rationale"
+        },
+        "canonical_object_type": {
+          "$ref": "#/$defs/CanonicalObjectType"
+        },
+        "representation_status": {
+          "const": "complete",
+          "default": "complete",
+          "title": "Representation Status",
+          "type": "string"
+        },
+        "source_spans": {
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          },
+          "minItems": 1,
+          "title": "Source Spans",
+          "type": "array"
+        },
+        "canonical_value": {
+          "minLength": 1,
+          "title": "Canonical Value",
+          "type": "string"
+        },
+        "canonical_witness_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Witness Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "document_id",
+        "canonical_object_id",
+        "role",
+        "canonical_object_type",
+        "source_spans",
+        "canonical_value",
+        "canonical_witness_sha256"
+      ],
+      "title": "BenchmarkEvidenceV2",
+      "type": "object"
+    },
+    "BenchmarkGoldV2": {
+      "additionalProperties": false,
+      "properties": {
+        "gold_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Gold Id",
+          "type": "string"
+        },
+        "gold_revision_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Gold Revision Id",
+          "type": "string"
+        },
+        "case_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_revision_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Case Revision Id",
+          "type": "string"
+        },
+        "source_identity": {
+          "$ref": "#/$defs/BenchmarkSourceIdentityV2"
+        },
+        "answer": {
+          "$ref": "#/$defs/BenchmarkAnswerV2"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BenchmarkEvidenceV2"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "mses_paths": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BenchmarkMsesPathV2"
+          },
+          "title": "Mses Paths",
+          "type": "array"
+        },
+        "dependencies": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BenchmarkEvidenceDependencyV2"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "negative_scope_object_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Negative Scope Object Ids",
+          "type": "array"
+        },
+        "negative_rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Rationale"
+        }
+      },
+      "required": [
+        "gold_id",
+        "gold_revision_id",
+        "case_id",
+        "case_revision_id",
+        "source_identity",
+        "answer"
+      ],
+      "title": "BenchmarkGoldV2",
+      "type": "object"
+    },
+    "BenchmarkMsesClauseV2": {
+      "additionalProperties": false,
+      "properties": {
+        "clause_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Clause Id",
+          "type": "string"
+        },
+        "alternatives": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Alternatives",
+          "type": "array"
+        }
+      },
+      "required": [
+        "clause_id",
+        "alternatives"
+      ],
+      "title": "BenchmarkMsesClauseV2",
+      "type": "object"
+    },
+    "BenchmarkMsesPathV2": {
+      "additionalProperties": false,
+      "properties": {
+        "path_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Path Id",
+          "type": "string"
+        },
+        "clauses": {
+          "items": {
+            "$ref": "#/$defs/BenchmarkMsesClauseV2"
+          },
+          "minItems": 1,
+          "title": "Clauses",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path_id",
+        "clauses"
+      ],
+      "title": "BenchmarkMsesPathV2",
+      "type": "object"
+    },
+    "BenchmarkSourceIdentityV2": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "media_type": {
+          "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "default": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "coordinate_system_version": {
+          "const": "ooxml-structural-v1",
+          "default": "ooxml-structural-v1",
+          "title": "Coordinate System Version",
+          "type": "string"
+        },
+        "canonical_schema_version": {
+          "minLength": 1,
+          "title": "Canonical Schema Version",
+          "type": "string"
+        },
+        "canonical_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Digest",
+          "type": "string"
+        },
+        "canonical_catalog_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Catalog Sha256",
+          "type": "string"
+        },
+        "parser_identity": {
+          "minLength": 1,
+          "title": "Parser Identity",
+          "type": "string"
+        },
+        "canonicalizer_identity": {
+          "minLength": 1,
+          "title": "Canonicalizer Identity",
+          "type": "string"
+        },
+        "configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_sha256",
+        "canonical_schema_version",
+        "canonical_digest",
+        "canonical_catalog_sha256",
+        "parser_identity",
+        "canonicalizer_identity",
+        "configuration_digest"
+      ],
+      "title": "BenchmarkSourceIdentityV2",
+      "type": "object"
+    },
     "CanonicalExtent": {
       "additionalProperties": false,
       "properties": {
@@ -366,6 +825,31 @@
       ],
       "title": "CanonicalMappingRecord",
       "type": "object"
+    },
+    "CanonicalObjectType": {
+      "enum": [
+        "document",
+        "section",
+        "heading",
+        "paragraph",
+        "text_span",
+        "table",
+        "row",
+        "cell",
+        "logical_row",
+        "logical_column",
+        "logical_cell",
+        "figure",
+        "caption",
+        "equation",
+        "reference",
+        "footnote",
+        "endnote",
+        "embedded_object",
+        "media_resource"
+      ],
+      "title": "CanonicalObjectType",
+      "type": "string"
     },
     "ContentObservation": {
       "additionalProperties": false,
@@ -633,284 +1117,6 @@
       ],
       "title": "FailureKind",
       "type": "string"
-    },
-    "GoldAnswer": {
-      "additionalProperties": false,
-      "properties": {
-        "gold_answer_id": {
-          "minLength": 1,
-          "title": "Gold Answer Id",
-          "type": "string"
-        },
-        "kind": {
-          "$ref": "#/$defs/GoldAnswerKind"
-        },
-        "canonical": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Canonical"
-        },
-        "accepted_values": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Accepted Values",
-          "type": "array"
-        },
-        "locale": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Locale"
-        },
-        "unit": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Unit"
-        },
-        "tolerance": {
-          "anyOf": [
-            {
-              "minimum": 0.0,
-              "type": "number"
-            },
-            {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tolerance"
-        }
-      },
-      "required": [
-        "gold_answer_id",
-        "kind"
-      ],
-      "title": "GoldAnswer",
-      "type": "object"
-    },
-    "GoldAnswerKind": {
-      "enum": [
-        "text",
-        "numeric",
-        "formula",
-        "set",
-        "abstain"
-      ],
-      "title": "GoldAnswerKind",
-      "type": "string"
-    },
-    "GoldEvidence": {
-      "additionalProperties": false,
-      "properties": {
-        "evidence_id": {
-          "minLength": 1,
-          "title": "Evidence Id",
-          "type": "string"
-        },
-        "document_id": {
-          "minLength": 1,
-          "title": "Document Id",
-          "type": "string"
-        },
-        "locator": {
-          "discriminator": {
-            "mapping": {
-              "object": "#/$defs/ObjectLocator",
-              "page_region": "#/$defs/PageRegionLocator",
-              "table_cell": "#/$defs/TableCellLocator",
-              "text_span": "#/$defs/TextSpanLocator"
-            },
-            "propertyName": "type"
-          },
-          "oneOf": [
-            {
-              "$ref": "#/$defs/TextSpanLocator"
-            },
-            {
-              "$ref": "#/$defs/ObjectLocator"
-            },
-            {
-              "$ref": "#/$defs/TableCellLocator"
-            },
-            {
-              "$ref": "#/$defs/PageRegionLocator"
-            }
-          ],
-          "title": "Locator"
-        },
-        "canonical_object_id": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Canonical Object Id"
-        },
-        "canonical_value": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Canonical Value"
-        },
-        "quote_anchor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Quote Anchor"
-        }
-      },
-      "required": [
-        "evidence_id",
-        "document_id",
-        "locator"
-      ],
-      "title": "GoldEvidence",
-      "type": "object"
-    },
-    "GoldEvidenceSet": {
-      "additionalProperties": false,
-      "properties": {
-        "gold_evidence_set_id": {
-          "minLength": 1,
-          "title": "Gold Evidence Set Id",
-          "type": "string"
-        },
-        "evidence": {
-          "items": {
-            "$ref": "#/$defs/GoldEvidence"
-          },
-          "title": "Evidence",
-          "type": "array"
-        },
-        "required_groups": {
-          "items": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "title": "Required Groups",
-          "type": "array"
-        },
-        "source_identities": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/GoldSourceIdentity"
-          },
-          "title": "Source Identities",
-          "type": "array"
-        },
-        "mses_paths": {
-          "anyOf": [
-            {
-              "items": {
-                "items": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "type": "array"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Mses Paths"
-        }
-      },
-      "required": [
-        "gold_evidence_set_id",
-        "evidence",
-        "required_groups"
-      ],
-      "title": "GoldEvidenceSet",
-      "type": "object"
-    },
-    "GoldSourceIdentity": {
-      "additionalProperties": false,
-      "description": "Canonical Benchmark source pin required by Unified Evaluation v2.",
-      "properties": {
-        "document_id": {
-          "minLength": 1,
-          "title": "Document Id",
-          "type": "string"
-        },
-        "source_sha256": {
-          "pattern": "^[0-9a-f]{64}$",
-          "title": "Source Sha256",
-          "type": "string"
-        },
-        "source_coordinate_schema": {
-          "minLength": 1,
-          "title": "Source Coordinate Schema",
-          "type": "string"
-        },
-        "canonical_catalog_sha256": {
-          "pattern": "^[0-9a-f]{64}$",
-          "title": "Canonical Catalog Sha256",
-          "type": "string"
-        }
-      },
-      "required": [
-        "document_id",
-        "source_sha256",
-        "source_coordinate_schema",
-        "canonical_catalog_sha256"
-      ],
-      "title": "GoldSourceIdentity",
-      "type": "object"
     },
     "IngestionCatalogObservation": {
       "additionalProperties": false,
@@ -1230,33 +1436,6 @@
       "title": "ObjectExtentDelta",
       "type": "object"
     },
-    "ObjectLocator": {
-      "additionalProperties": false,
-      "properties": {
-        "type": {
-          "const": "object",
-          "default": "object",
-          "title": "Type",
-          "type": "string"
-        },
-        "object_type": {
-          "minLength": 1,
-          "title": "Object Type",
-          "type": "string"
-        },
-        "object_id": {
-          "minLength": 1,
-          "title": "Object Id",
-          "type": "string"
-        }
-      },
-      "required": [
-        "object_type",
-        "object_id"
-      ],
-      "title": "ObjectLocator",
-      "type": "object"
-    },
     "ObservationCompleteness": {
       "enum": [
         "complete",
@@ -1379,47 +1558,6 @@
       "title": "ObservedStageItem",
       "type": "object"
     },
-    "PageRegionLocator": {
-      "additionalProperties": false,
-      "properties": {
-        "type": {
-          "const": "page_region",
-          "default": "page_region",
-          "title": "Type",
-          "type": "string"
-        },
-        "page": {
-          "minimum": 1,
-          "title": "Page",
-          "type": "integer"
-        },
-        "x0": {
-          "title": "X0",
-          "type": "number"
-        },
-        "y0": {
-          "title": "Y0",
-          "type": "number"
-        },
-        "x1": {
-          "title": "X1",
-          "type": "number"
-        },
-        "y1": {
-          "title": "Y1",
-          "type": "number"
-        }
-      },
-      "required": [
-        "page",
-        "x0",
-        "y0",
-        "x1",
-        "y1"
-      ],
-      "title": "PageRegionLocator",
-      "type": "object"
-    },
     "PersistedEvaluationV2": {
       "additionalProperties": false,
       "properties": {
@@ -1459,9 +1597,9 @@
           "default": null,
           "title": "Trace Digest"
         },
-        "gold_evidence_set_id": {
-          "minLength": 1,
-          "title": "Gold Evidence Set Id",
+        "gold_revision_id": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Gold Revision Id",
           "type": "string"
         },
         "metrics": {
@@ -1501,7 +1639,7 @@
       },
       "required": [
         "scorer_digest",
-        "gold_evidence_set_id",
+        "gold_revision_id",
         "metrics"
       ],
       "title": "PersistedEvaluationV2",
@@ -1854,16 +1992,8 @@
           "title": "Status",
           "type": "string"
         },
-        "question": {
-          "minLength": 1,
-          "title": "Question",
-          "type": "string"
-        },
-        "gold_answer": {
-          "$ref": "#/$defs/GoldAnswer"
-        },
-        "gold_evidence_set": {
-          "$ref": "#/$defs/GoldEvidenceSet"
+        "benchmark_case": {
+          "$ref": "#/$defs/BenchmarkCaseV2"
         },
         "trace_validation": {
           "$ref": "#/$defs/TraceValidationRecordV2"
@@ -1920,9 +2050,7 @@
         "repetition",
         "seed",
         "status",
-        "question",
-        "gold_answer",
-        "gold_evidence_set",
+        "benchmark_case",
         "trace_validation",
         "evaluation",
         "answer_judgment",
@@ -2379,78 +2507,6 @@
       ],
       "title": "StageTransitionMode",
       "type": "string"
-    },
-    "TableCellLocator": {
-      "additionalProperties": false,
-      "properties": {
-        "type": {
-          "const": "table_cell",
-          "default": "table_cell",
-          "title": "Type",
-          "type": "string"
-        },
-        "table_id": {
-          "minLength": 1,
-          "title": "Table Id",
-          "type": "string"
-        },
-        "row": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "title": "Row"
-        },
-        "column": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "title": "Column"
-        }
-      },
-      "required": [
-        "table_id",
-        "row",
-        "column"
-      ],
-      "title": "TableCellLocator",
-      "type": "object"
-    },
-    "TextSpanLocator": {
-      "additionalProperties": false,
-      "properties": {
-        "type": {
-          "const": "text_span",
-          "default": "text_span",
-          "title": "Type",
-          "type": "string"
-        },
-        "start": {
-          "minimum": 0,
-          "title": "Start",
-          "type": "integer"
-        },
-        "end": {
-          "exclusiveMinimum": 0,
-          "title": "End",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "start",
-        "end"
-      ],
-      "title": "TextSpanLocator",
-      "type": "object"
     },
     "TraceValidationRecordV2": {
       "additionalProperties": false,

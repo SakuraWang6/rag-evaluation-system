@@ -4,7 +4,7 @@ import pytest
 
 from rag_eval.artifact_contract import artifact_digest
 from rag_eval.authoring.providers import LocalOllamaProvider
-from rag_eval.contracts.dataset import GoldAnswer, GoldAnswerKind
+from rag_eval.contracts.benchmark import BenchmarkAnswerKindV2, BenchmarkAnswerV2
 from rag_eval.contracts.observation import (
     AdapterRunResultV2,
     ContentObservation,
@@ -59,8 +59,7 @@ def _semantic_case(case_id: str) -> RunArtifactCaseV2:
     )
     replaced = {
         "case_digest",
-        "question",
-        "gold_answer",
+        "benchmark_case",
         "adapter_result",
         "trace_validation",
         "evaluation",
@@ -72,14 +71,22 @@ def _semantic_case(case_id: str) -> RunArtifactCaseV2:
         for field_name in type(original).model_fields
         if field_name not in replaced
     }
+    benchmark_case = original.benchmark_case.model_copy(
+        update={
+            "question": "中国的首都是什么？",
+            "gold": original.gold.model_copy(
+                update={
+                    "answer": BenchmarkAnswerV2(
+                        kind=BenchmarkAnswerKindV2.TEXT,
+                        canonical="中国首都是北京",
+                    )
+                }
+            ),
+        }
+    )
     return RunArtifactCaseV2.build(
         **values,
-        question="中国的首都是什么？",
-        gold_answer=GoldAnswer(
-            gold_answer_id=f"gold-{case_id}",
-            kind=GoldAnswerKind.TEXT,
-            canonical="中国首都是北京",
-        ),
+        benchmark_case=benchmark_case,
         adapter_result=adapter_result,
         trace_validation=original.trace_validation.model_copy(
             update={"adapter_result_digest": artifact_digest(adapter_result)}

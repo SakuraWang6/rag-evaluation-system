@@ -33,7 +33,6 @@ from rag_eval.comparison import (
 )
 from rag_eval.contracts.research import ComparisonSpec
 from rag_eval.contracts.run import ComparisonTier, ExperimentSpec
-from rag_eval.datasets.drafts import DatasetDraft
 from rag_eval.datasets.docx_render import render_docx_html
 from rag_eval.datasets.formal import FormalDatasetError
 from rag_eval.execution_provider import ExecutionRequest, cleanup_managed_run
@@ -75,10 +74,6 @@ from rag_eval.runs.views import (
 
 class APIModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-
-class DatasetRegisterRequest(APIModel):
-    path: str
 
 
 class SystemConnectionRequest(APIModel):
@@ -149,7 +144,7 @@ class NativeEvaluationDraftRequest(APIModel):
         values = self.model_dump(mode="python")
         if self.draft_id is None:
             values.pop("draft_id")
-        return EvaluationDraft(**values, bundle_id=None, formal=False)
+        return EvaluationDraft(**values, formal=False)
 
 
 class ComparisonRequest(APIModel):
@@ -347,20 +342,6 @@ def create_app(
             return Path(source_name).stem or source_name
         except (AssertionError, FileNotFoundError, OSError, ValueError):
             return item.release_version
-
-    def bundle_display_name(bundle: Any) -> str:
-        """Use a formal release's product name for its legacy Bundle 2.0 view."""
-
-        if service.formal_datasets is None:
-            return bundle.manifest.name
-        projection = bundle.manifest.metadata.get("formal_runtime_projection")
-        release_id = projection.get("release_id") if isinstance(projection, dict) else None
-        if not isinstance(release_id, str):
-            return bundle.manifest.name
-        try:
-            return formal_release_display_name(service.formal_datasets.releases.get(release_id))
-        except (FileNotFoundError, OSError, ValueError):
-            return bundle.manifest.name
 
     def require_authoring():
         if not service.product_enabled or service.authoring is None:
@@ -932,25 +913,24 @@ def create_app(
         except (ValueError, AuthoringWorkflowError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.get("/api/v1/datasets")
-    async def datasets() -> list[dict[str, Any]]:
-        return [
-            {
-                "bundle_id": bundle.bundle_id,
-                "name": bundle_display_name(bundle),
-                "version": bundle.manifest.version,
-                "cases": len(bundle.questions),
-            }
-            for bundle in service.datasets.list()
-        ]
-
     @app.get("/api/v1/product/formal-datasets")
     async def formal_datasets() -> dict[str, Any]:
-        """Expose immutable formal releases and their standard-runtime status."""
+        """Expose immutable Benchmark Releases and direct-native readiness."""
         if service.formal_datasets is None:
-            return {"releases": [], "bundles_v3": []}
-        releases = [
-            {
+            return {"releases": []}
+        releases: list[dict[str, Any]] = []
+        for item in service.formal_datasets.releases.list():
+            runnable = True
+            runtime_reason: str | None = None
+            try:
+                service.formal_datasets.resolve_native_benchmark(
+                    item.release_id,
+                    seed=0,
+                )
+            except (OSError, ValueError) as exc:
+                runnable = False
+                runtime_reason = str(exc)
+            releases.append({
                 "release_id": item.release_id,
                 "dataset_id": item.dataset_id,
                 "name": formal_release_display_name(item),
@@ -961,33 +941,10 @@ def create_app(
                 "gold_count": len(item.gold),
                 "canonical_digest": item.document.canonical_digest,
                 "validation_report_digest": item.validation_report_digest,
-                # The execution projection is generated only at preview/finalise
-                # time from immutable release pins, never from a workspace.
-                # It preserves formal MSES alternatives when the legacy Bundle
-                # 2.0 view would be lossy.
-                "runnable": bool(item.bundle_projection.projections),
-                "runtime_reason": None
-                if item.bundle_projection.projections
-                else "no runtime projection assessment",
-            }
-            for item in service.formal_datasets.releases.list()
-        ]
-        bundles: list[dict[str, Any]] = []
-        if service.bundles_v3 is not None:
-            for bundle_id, manifest in service.bundles_v3.list_manifest_records():
-                bundles.append(
-                    {
-                        "bundle_id": bundle_id,
-                        "target_release_id": manifest.target_release_id,
-                        "dataset_id": manifest.dataset_id,
-                        "case_count": manifest.case_count,
-                        "gold_count": manifest.gold_count,
-                        "evidence_count": manifest.evidence_count,
-                        "runnable": False,
-                        "visibility": "bundle_v3_private_and_runtime_exports",
-                    }
-                )
-        return {"releases": sorted(releases, key=lambda value: value["release_id"]), "bundles_v3": sorted(bundles, key=lambda value: value["bundle_id"])}
+                "runnable": runnable,
+                "runtime_reason": runtime_reason,
+            })
+        return {"releases": sorted(releases, key=lambda value: value["release_id"])}
 
     @app.get("/api/v1/product/formal-datasets/{release_id}/content")
     async def formal_dataset_content(release_id: str) -> dict[str, Any]:
@@ -1113,14 +1070,6 @@ def create_app(
         except (FileNotFoundError, OSError, ValueError, KeyError, zipfile.BadZipFile) as exc:
             raise HTTPException(status_code=404, detail=f"formal Dataset Release not found: {release_id}") from exc
 
-    @app.post("/api/v1/datasets")
-    async def register_dataset(request: DatasetRegisterRequest) -> dict[str, Any]:
-        try:
-            bundle = service.datasets.register(Path(request.path))
-        except (OSError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {"bundle_id": bundle.bundle_id}
-
     @app.get("/api/v1/systems")
     async def systems() -> list[dict[str, Any]]:
         return [
@@ -1145,8 +1094,7 @@ def create_app(
     @app.post("/api/v1/experiments")
     async def create_experiment(experiment: ExperimentSpec) -> dict[str, Any]:
         try:
-            bundle = service.datasets.get(experiment.bundle_id)
-            service.admit_new_public_experiment(experiment, bundle)
+            service.admit_new_public_experiment(experiment)
             if not service.system_resolver.exists(experiment.system_id):
                 raise FileNotFoundError(experiment.system_id)
             service.experiments.create(experiment)
@@ -1158,8 +1106,7 @@ def create_app(
     async def queue_run(experiment_id: str) -> dict[str, Any]:
         try:
             experiment = service.experiments.get(experiment_id)
-            bundle = service.datasets.get(experiment.bundle_id)
-            job = service.queue_new_public_experiment(experiment, bundle)
+            job = service.queue_new_public_experiment(experiment)
         except NewRunAdmissionError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except (OSError, ValueError) as exc:
@@ -1504,7 +1451,7 @@ def create_app(
         }
 
     def require_product() -> None:
-        if not service.product_enabled or service.products is None or service.dataset_drafts is None:
+        if not service.product_enabled or service.products is None:
             raise HTTPException(status_code=404, detail="product layer is disabled")
 
     def require_llm():
@@ -1726,7 +1673,7 @@ def create_app(
         Local and Docker are execution providers for the same product system
         identity; they are never separate records.  Deleting the connection
         therefore removes the one active provider selection, while immutable
-        runs, datasets, releases, and bundles remain untouched.  Refuse the
+        run artifacts and immutable Benchmark Releases remain untouched.  Refuse the
         operation while a queued/running job still depends on this system so
         a live evaluation cannot lose its resolver input.
         """
@@ -1826,48 +1773,6 @@ def create_app(
             if sandbox is not None:
                 shutil.rmtree(sandbox, ignore_errors=True)
 
-    @app.post("/api/v1/product/datasets/upload")
-    async def upload_dataset_bundle(request: Request) -> dict[str, Any]:
-        require_product()
-        filename = _upload_filename(request)
-        if filename and not filename.lower().endswith(".zip"):
-            raise HTTPException(status_code=400, detail="dataset upload must be one .zip file")
-        target = service.paths.product_uploads / f"bundle-upload-{uuid4_hex()}"
-        archive = target.with_suffix(".zip")
-        target.mkdir(parents=True)
-        try:
-            content = await request.body()
-            if not content:
-                raise ValueError("uploaded Bundle ZIP is empty")
-            if len(content) > 1024 * 1024 * 1024:
-                raise ValueError("uploaded Bundle ZIP exceeds the 1 GiB limit")
-            archive.write_bytes(content)
-            _safe_extract_zip(archive, target)
-            root = _bundle_root(target)
-            bundle = service.datasets.register(root)
-            return {"bundle_id": bundle.bundle_id}
-        except (OSError, ValueError, zipfile.BadZipFile) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        finally:
-            shutil.rmtree(target, ignore_errors=True)
-            archive.unlink(missing_ok=True)
-
-    @app.post("/api/v1/product/dataset-drafts")
-    async def create_dataset_draft(draft: DatasetDraft) -> dict[str, Any]:
-        require_product()
-        assert service.dataset_drafts is not None
-        return service.dataset_drafts.save(draft).model_dump(mode="json")
-
-    @app.post("/api/v1/product/dataset-drafts/{draft_id}/seal")
-    async def seal_dataset_draft(draft_id: str) -> dict[str, Any]:
-        require_product()
-        assert service.dataset_drafts is not None
-        try:
-            bundle = service.dataset_drafts.seal(service.dataset_drafts.get(draft_id), service.datasets)
-            return {"bundle_id": bundle.bundle_id, "sealed": True}
-        except (OSError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.get("/api/v1/product/evaluation-drafts")
     async def evaluation_drafts() -> list[dict[str, Any]]:
         require_product()
@@ -1900,12 +1805,11 @@ def create_app(
         require_product()
         try:
             spec = _canonical_draft(service, draft_id)
-            bundle = service.datasets.get(spec.bundle_id)
-            service.admit_new_public_experiment(spec, bundle)
+            service.admit_new_public_experiment(spec)
             service.experiments.create(spec)
             response: dict[str, Any] = {"experiment": spec.model_dump(mode="json")}
             if request.queue:
-                job = service.queue_new_public_experiment(spec, bundle)
+                job = service.queue_new_public_experiment(spec)
                 service.supervisor.notify()
                 response["job"] = job.model_dump(mode="json")
             return response
@@ -1929,17 +1833,14 @@ def _canonical_draft(service: PlatformService, draft_id: str) -> ExperimentSpec:
             "Benchmark Release, System, and profile version are required "
             "before creating an evaluation"
         )
-    if draft.bundle_id is not None:
-        raise ValueError(
-            "legacy Bundle drafts cannot create new evaluations; select a "
-            "Benchmark Release"
-        )
     if service.formal_datasets is None:
         raise ValueError(
             "formal Dataset Releases are unavailable in this Platform mode"
         )
-    bundle = service.formal_datasets.materialize_runtime_bundle(
-        draft.dataset_release_id, service.datasets
+    benchmark = service.formal_datasets.resolve_native_benchmark(
+        draft.dataset_release_id,
+        case_ids=None if draft.case_ids is None else tuple(draft.case_ids),
+        seed=draft.seed,
     )
     connection = service.products.get_connection(draft.system_id)
     profile = service.products.profiles.get(draft.profile_id, draft.profile_version)
@@ -1947,35 +1848,10 @@ def _canonical_draft(service: PlatformService, draft_id: str) -> ExperimentSpec:
         draft,
         connection,
         profile,
-        case_ids=[item.case_id for item in bundle.questions],
-        bundle_id=bundle.bundle_id,
+        case_ids=list(benchmark.case_ids),
     )
-    service.resolve_new_public_experiment(experiment, bundle)
+    service.resolve_new_public_experiment(experiment)
     return experiment
-
-
-def _safe_extract_zip(archive: Path, target: Path) -> None:
-    expanded = 0
-    with zipfile.ZipFile(archive) as value:
-        for info in value.infolist():
-            member = Path(info.filename)
-            is_link = (info.external_attr >> 16) & 0o170000 == 0o120000
-            if member.is_absolute() or ".." in member.parts or is_link:
-                raise ValueError("Bundle ZIP contains an unsafe path")
-            expanded += info.file_size
-            if expanded > 4 * 1024 * 1024 * 1024:
-                raise ValueError("Bundle ZIP expands beyond the 4 GiB limit")
-        value.extractall(target)
-
-
-def _bundle_root(target: Path) -> Path:
-    if (target / "manifest.json").is_file():
-        return target
-    directories = [path for path in target.iterdir() if path.is_dir()]
-    files = [path for path in target.iterdir() if path.is_file()]
-    if len(directories) == 1 and not files and (directories[0] / "manifest.json").is_file():
-        return directories[0]
-    raise ValueError("Bundle ZIP must contain one Bundle root with manifest.json")
 
 
 def uuid4_hex() -> str:

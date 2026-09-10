@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from rag_eval.contracts.dataset import GoldAnswer, GoldEvidenceSet
+from rag_eval.contracts.benchmark import BenchmarkAnswerV2, BenchmarkGoldV2
 from rag_eval.contracts.observation import StageName, UnifiedTrace
 from rag_eval.evaluation.unified.failures import failure_attribution
 from rag_eval.evaluation.unified.models import (
@@ -38,11 +38,11 @@ def scorer_source_digest() -> str:
 
 
 def evaluate_unified_trace(
-    gold: GoldEvidenceSet,
+    gold: BenchmarkGoldV2,
     trace: UnifiedTrace,
     *,
     profile: EvaluationProfile,
-    gold_answer: GoldAnswer | None = None,
+    gold_answer: BenchmarkAnswerV2 | None = None,
 ) -> UnifiedEvaluationResult:
     """Score one validated Wire 2.0 trace without runtime-specific semantics."""
 
@@ -206,7 +206,7 @@ def evaluate_unified_trace(
         scorer_id=UNIFIED_SCORER_ID,
         scorer_version=UNIFIED_SCORER_VERSION,
         scorer_digest=digest,
-        gold_evidence_set_id=gold.gold_evidence_set_id,
+        gold_revision_id=gold.gold_revision_id,
         trace_digest=trace.trace_digest,
         metrics=tuple(metrics),
         localizations=(

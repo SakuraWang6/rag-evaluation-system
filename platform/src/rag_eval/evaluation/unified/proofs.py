@@ -5,11 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from rag_eval.contracts.dataset import (
-    GoldEvidence,
-    GoldEvidenceSet,
-    GoldSourceIdentity,
-    ObjectLocator,
+from rag_eval.contracts.benchmark import (
+    BenchmarkEvidenceV2,
+    BenchmarkGoldV2,
+    BenchmarkSourceIdentityV2,
 )
 from rag_eval.contracts.observation import (
     CanonicalMappingRecord,
@@ -57,16 +56,12 @@ class StageProof:
     items: tuple[ObservedStageItem, ...]
 
 
-def canonical_object_id(evidence: GoldEvidence) -> str | None:
-    if evidence.canonical_object_id is not None:
-        return evidence.canonical_object_id
-    if isinstance(evidence.locator, ObjectLocator):
-        return evidence.locator.object_id
-    return None
+def canonical_object_id(evidence: BenchmarkEvidenceV2) -> str:
+    return evidence.canonical_object_id
 
 
 def stage_proof(
-    gold: GoldEvidenceSet,
+    gold: BenchmarkGoldV2,
     trace: UnifiedTrace,
     observation: StageObservation,
     *,
@@ -90,7 +85,7 @@ def stage_proof(
     return _selected_proof(gold, trace, observation.stage, cutoff, items)
 
 
-def ingestion_proof(gold: GoldEvidenceSet, trace: UnifiedTrace) -> StageProof:
+def ingestion_proof(gold: BenchmarkGoldV2, trace: UnifiedTrace) -> StageProof:
     catalog = trace.ingestion_catalog
     if not (
         catalog.observation_status == ObservationStatus.OBSERVED
@@ -121,7 +116,7 @@ def ingestion_proof(gold: GoldEvidenceSet, trace: UnifiedTrace) -> StageProof:
 
 
 def _selected_proof(
-    gold: GoldEvidenceSet,
+    gold: BenchmarkGoldV2,
     trace: UnifiedTrace,
     stage: StageName | str,
     cutoff: int | None,
@@ -146,15 +141,13 @@ def _selected_proof(
     for edge_id in selected_edge_ids:
         edge = edge_by_id[edge_id]
         selected_edges_by_object.setdefault(edge.canonical_object_id, []).append(edge)
-    source_pins = {item.document_id: item for item in gold.source_identities}
-
     proofs: dict[str, EvidenceProof] = {}
     for evidence in gold.evidence:
         object_id = canonical_object_id(evidence)
         proof = _evidence_proof(
             evidence=evidence,
             object_id=object_id,
-            source_pin=source_pins.get(evidence.document_id),
+            source_pin=gold.source_identity,
             trace=trace,
             record=records.get(object_id) if object_id else None,
             all_edges=all_edges_by_object.get(object_id or "", []),
@@ -200,9 +193,9 @@ def _selected_proof(
 
 def _evidence_proof(
     *,
-    evidence: GoldEvidence,
+    evidence: BenchmarkEvidenceV2,
     object_id: str | None,
-    source_pin: GoldSourceIdentity | None,
+    source_pin: BenchmarkSourceIdentityV2 | None,
     trace: UnifiedTrace,
     record: CanonicalMappingRecord | None,
     all_edges: list[ProvenanceEdge],
@@ -217,7 +210,7 @@ def _evidence_proof(
         )
     if (
         source_pin.source_sha256 != trace.source_identity.source_sha256
-        or source_pin.source_coordinate_schema
+        or source_pin.coordinate_system_version
         != trace.source_identity.source_coordinate_schema
         or source_pin.canonical_catalog_sha256
         != trace.source_identity.canonical_catalog_sha256
@@ -363,7 +356,7 @@ def _evidence_proof(
 
 
 def _unknown_evidence(
-    evidence: GoldEvidence, object_id: str | None, reason: str
+    evidence: BenchmarkEvidenceV2, object_id: str | None, reason: str
 ) -> EvidenceProof:
     return EvidenceProof(
         evidence_id=evidence.evidence_id,
@@ -375,7 +368,7 @@ def _unknown_evidence(
 
 
 def _unknown_stage(
-    gold: GoldEvidenceSet,
+    gold: BenchmarkGoldV2,
     stage: StageName | str,
     cutoff: int | None,
     reason: str,
@@ -414,12 +407,15 @@ def _unknown_stage(
     )
 
 
-def paths(gold: GoldEvidenceSet) -> list[list[list[str]]]:
-    return gold.mses_paths or [gold.required_groups]
+def paths(gold: BenchmarkGoldV2) -> list[list[list[str]]]:
+    return [
+        [list(clause.alternatives) for clause in path.clauses]
+        for path in gold.scoring_paths()
+    ]
 
 
 def aggregate_bounds(
-    gold: GoldEvidenceSet,
+    gold: BenchmarkGoldV2,
     proofs: dict[str, EvidenceProof],
     *,
     complete: bool,
@@ -455,7 +451,7 @@ def aggregate_bounds(
     )
 
 
-def required_object_ids(gold: GoldEvidenceSet) -> set[str]:
+def required_object_ids(gold: BenchmarkGoldV2) -> set[str]:
     required_evidence = {
         evidence_id
         for path in paths(gold)

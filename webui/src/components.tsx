@@ -121,7 +121,7 @@ export function errorRemediation(detail: string): { title: MessageKey; action: M
   if (lower.includes('ollama') || lower.includes('logical endpoint')) return { title: 'error.runtimeTitle', action: 'error.runtimeAction' }
   if (lower.includes('model') && (lower.includes('not found') || lower.includes('missing'))) return { title: 'error.modelTitle', action: 'error.modelAction' }
   if (lower.includes('formal dataset release')) return { title: 'error.datasetTitle', action: 'error.datasetAction' }
-  if (lower.includes('zip') || lower.includes('bundle') || lower.includes('symlink') || lower.includes('archive')) return { title: 'error.datasetTitle', action: 'error.datasetAction' }
+  if (lower.includes('zip') || lower.includes('symlink') || lower.includes('archive')) return { title: 'error.datasetTitle', action: 'error.datasetAction' }
   if (lower.includes('secret') || lower.includes('keychain') || lower.includes('credential')) return { title: 'error.secretTitle', action: 'error.secretAction' }
   if (lower.includes('timeout') || lower.includes('timed out')) return { title: 'error.timeoutTitle', action: 'error.timeoutAction' }
   if (lower.includes('worker') || lower.includes('handshake') || lower.includes('adapter')) return { title: 'error.connectionTitle', action: 'error.connectionAction' }

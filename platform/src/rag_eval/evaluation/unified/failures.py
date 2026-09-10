@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rag_eval.contracts.dataset import GoldAnswer, GoldEvidenceSet
+from rag_eval.contracts.benchmark import BenchmarkAnswerV2, BenchmarkGoldV2
 from rag_eval.contracts.observation import (
     ObservationCompleteness,
     ObservationStatus,
@@ -27,7 +27,7 @@ from rag_eval.evaluation.unified.proofs import (
 
 def failure_attribution(
     *,
-    gold: GoldEvidenceSet,
+    gold: BenchmarkGoldV2,
     trace: UnifiedTrace,
     profile: EvaluationProfile,
     ingestion: StageProof,
@@ -36,7 +36,7 @@ def failure_attribution(
     context: StageProof,
     ranking_delta: PipelineDelta,
     context_delta: PipelineDelta,
-    gold_answer: GoldAnswer | None,
+    gold_answer: BenchmarkAnswerV2 | None,
 ) -> ProofGatedFailure | None:
     proofs = tuple(sorted(required_object_ids(gold)))
     if not same(

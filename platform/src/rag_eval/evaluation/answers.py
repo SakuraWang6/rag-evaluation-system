@@ -17,7 +17,7 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
 
-from rag_eval.contracts.dataset import GoldAnswer, GoldAnswerKind
+from rag_eval.contracts.benchmark import BenchmarkAnswerKindV2, BenchmarkAnswerV2
 
 ANSWER_SCORER_ID = "typed-answer"
 ANSWER_SCORER_VERSION = "1.3"
@@ -48,9 +48,9 @@ class AnswerScore:
         return self.verdict == AnswerVerdict.PASS
 
 
-def score_answer(answer: str | None, gold: GoldAnswer) -> AnswerScore:
+def score_answer(answer: str | None, gold: BenchmarkAnswerV2) -> AnswerScore:
     text = answer or ""
-    if gold.kind == GoldAnswerKind.ABSTAIN:
+    if gold.kind == BenchmarkAnswerKindV2.ABSTAIN:
         passed = _looks_like_abstain(text)
         return AnswerScore(
             AnswerVerdict.PASS if passed else AnswerVerdict.FAIL,
@@ -60,21 +60,23 @@ def score_answer(answer: str | None, gold: GoldAnswer) -> AnswerScore:
         return AnswerScore(AnswerVerdict.FAIL, "answer is empty")
 
     accepted = _accepted_values(gold)
-    if gold.kind == GoldAnswerKind.TEXT:
+    if gold.kind == BenchmarkAnswerKindV2.TEXT:
         return _score_text(text, accepted)
-    if gold.kind == GoldAnswerKind.NUMERIC:
+    if gold.kind == BenchmarkAnswerKindV2.NUMERIC:
         return _score_numeric(text, accepted, gold.unit, gold.tolerance)
-    if gold.kind == GoldAnswerKind.FORMULA:
+    if gold.kind == BenchmarkAnswerKindV2.FORMULA:
         return _score_formula(text, accepted)
-    if gold.kind == GoldAnswerKind.SET:
-        canonical = gold.canonical if isinstance(gold.canonical, list) else accepted
+    if gold.kind == BenchmarkAnswerKindV2.SET:
+        canonical = list(gold.canonical) if isinstance(gold.canonical, tuple) else accepted
         return _score_set(text, canonical)
     return AnswerScore(AnswerVerdict.NEEDS_REVIEW, "unsupported answer kind")
 
 
-def _accepted_values(gold: GoldAnswer) -> list[str]:
+def _accepted_values(gold: BenchmarkAnswerV2) -> list[str]:
     canonical = (
-        gold.canonical if isinstance(gold.canonical, list) else [gold.canonical or ""]
+        list(gold.canonical)
+        if isinstance(gold.canonical, tuple)
+        else [gold.canonical or ""]
     )
     return [value for value in [*canonical, *gold.accepted_values] if value]
 

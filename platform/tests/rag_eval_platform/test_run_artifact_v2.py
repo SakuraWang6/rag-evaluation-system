@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from rag_eval.adapters.native_observation import unavailable_native_result
-from rag_eval.contracts.dataset import GoldAnswer, GoldAnswerKind, Question
+from rag_eval.contracts.benchmark import (
+    BenchmarkAnswerKindV2,
+    BenchmarkAnswerV2,
+    BenchmarkCaseV2,
+)
 from rag_eval.contracts.native import (
     IngestionReceiptV2,
     NativeQueryV2,
@@ -33,6 +37,7 @@ from rag_eval.runs import (
 )
 from tests.rag_eval_platform.test_unified_evaluation_v2 import (
     SHA_A,
+    SHA_B,
     SHA_C,
     _chunk,
     _edge,
@@ -86,18 +91,26 @@ def _observed_fixture(case_id: str = "case-1"):
         system_version=trace.runtime_profile.system_version,
         trace=trace,
     )
-    question = Question(
+    gold = _gold(("gold-a",)).model_copy(
+        update={
+            "case_id": case_id,
+            "case_revision_id": f"{case_id}-revision-1",
+            "answer": BenchmarkAnswerV2(
+                kind=BenchmarkAnswerKindV2.NUMERIC,
+                canonical="42",
+            ),
+        }
+    )
+    benchmark_case = BenchmarkCaseV2(
         case_id=case_id,
+        case_revision_id=f"{case_id}-revision-1",
+        target_id=f"target-{case_id}",
         question="What value is recorded?",
-        gold_answer_id="answer-1",
-        gold_evidence_set_id="gold-1",
+        language="en",
+        source_object_ids=("gold-a",),
+        gold=gold,
     )
-    answer = GoldAnswer(
-        gold_answer_id="answer-1",
-        kind=GoldAnswerKind.NUMERIC,
-        canonical="42",
-    )
-    return question, answer, _gold(("gold-a",)), adapter_result
+    return benchmark_case, benchmark_case.gold.answer, benchmark_case.gold, adapter_result
 
 
 def _prepared_fixture(result: AdapterRunResultV2) -> PreparedSystemV2:
@@ -130,11 +143,7 @@ def _native_query(case_id: str = "case-1") -> NativeQueryV2:
 def _resolver(case_ids: tuple[str, ...] = ("case-1",)) -> BenchmarkResolver:
     fixtures = [_observed_fixture(case_id) for case_id in case_ids]
     return BenchmarkResolver(
-        questions={item[0].case_id: item[0] for item in fixtures},
-        gold_answers={item[1].gold_answer_id: item[1] for item in fixtures},
-        gold_evidence_sets={
-            item[2].gold_evidence_set_id: item[2] for item in fixtures
-        },
+        cases={item[0].case_id: item[0] for item in fixtures},
     )
 
 
@@ -143,12 +152,8 @@ def _evaluated_case(
     *,
     context_budget: int = 4096,
 ):
-    question, answer, gold, adapter_result = _observed_fixture(case_id)
-    resolved = BenchmarkResolver(
-        questions={case_id: question},
-        gold_answers={answer.gold_answer_id: answer},
-        gold_evidence_sets={gold.gold_evidence_set_id: gold},
-    ).resolve(case_id)
+    benchmark_case, _answer, _gold_value, adapter_result = _observed_fixture(case_id)
+    resolved = BenchmarkResolver(cases={case_id: benchmark_case}).resolve(case_id)
     validation = TraceValidator().validate(
         adapter_result,
         expected_case_id=case_id,
@@ -171,12 +176,14 @@ def _evaluated_case(
 
 
 def _benchmark_identity(*resolved) -> BenchmarkIdentityV2:
-    return BenchmarkIdentityV2.build(
-        dataset_release_id="dataset-release-1",
-        dataset_release_digest=SHA_C,
-        bundle_id=SHA_A,
-        case_selection_id="selection-1",
-        cases=tuple(resolved),
+    return BenchmarkIdentityV2(
+        release_id="dataset-release-1",
+        release_digest=SHA_C,
+        validation_report_digest=SHA_A,
+        payload_snapshot_digest=SHA_B,
+        case_selection_id=SHA_A,
+        benchmark_snapshot_digest=SHA_C,
+        source_identity=resolved[0].gold.source_identity,
     )
 
 

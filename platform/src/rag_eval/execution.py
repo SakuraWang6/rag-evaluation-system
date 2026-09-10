@@ -15,7 +15,11 @@ import httpx
 
 from rag_eval import __version__
 from rag_eval.artifact_contract import artifact_digest as contract_digest
-from rag_eval.contracts.dataset import Question
+from rag_eval.contracts.benchmark import (
+    BenchmarkCaseV2,
+    NativeBenchmarkReleaseV2,
+    native_canonical_catalog_bytes,
+)
 from rag_eval.contracts.native import (
     NativeQueryV2,
     OriginalDocumentV2,
@@ -26,8 +30,7 @@ from rag_eval.contracts.observation import ObservationStatus
 from rag_eval.contracts.research import LatencyProtocol, ModelArtifactIdentity
 from rag_eval.contracts.run import ExperimentSpec
 from rag_eval.contracts.wire import WorkerIdentityV2
-from rag_eval.datasets.bundle import DatasetBundle, DatasetBundleStore, case_selection_id
-from rag_eval.datasets.formal import DatasetReleaseStore
+from rag_eval.datasets.formal import FormalDatasetReleaseService
 from rag_eval.evaluation.unified import EvaluationProfile
 from rag_eval.execution_provider import (
     ExecutionProvider,
@@ -46,7 +49,7 @@ from rag_eval.runs import (
     TraceValidationRecordV2,
     TraceValidationResult,
     TraceValidator,
-    benchmark_identity_from_release_metadata,
+    benchmark_identity_from_release,
 )
 from rag_eval.runs.plans import (
     ResolvedRunPlanReferenceV2,
@@ -54,7 +57,6 @@ from rag_eval.runs.plans import (
     formal_metric_descriptors,
 )
 from rag_eval.runs.records import RunRecordStoreV2, RunRecordV2
-from rag_eval.runtime_admission import NATIVE_DOCUMENT_EXECUTION_CONTRACT
 from rag_eval.worker.client import WorkerProtocolError, WorkerRemoteError
 from rag_eval.worker.process import WorkerCommand
 
@@ -64,15 +66,13 @@ class RunExecutor:
 
     def __init__(
         self,
-        dataset_store: DatasetBundleStore,
+        benchmark_service: FormalDatasetReleaseService | None,
         run_records: RunRecordStoreV2,
         provider: ExecutionProvider | None = None,
-        dataset_release_store: DatasetReleaseStore | None = None,
     ) -> None:
-        self.dataset_store = dataset_store
+        self.benchmark_service = benchmark_service
         self.run_records = run_records
         self.provider = provider or LocalProcessProvider()
-        self.dataset_release_store = dataset_release_store
 
     def execute(
         self,
@@ -92,18 +92,17 @@ class RunExecutor:
                 "RunExecutor accepts only an admitted Native v2 resolved plan"
             )
 
-        bundle = self.dataset_store.get(experiment.bundle_id)
+        benchmark = self._resolve_benchmark(experiment, resolved_plan)
         self._validate_plan_inputs(
             experiment,
             command,
-            bundle,
+            benchmark,
             resolved_plan,
             resolved_plan_reference,
         )
-        self._validate_dataset_release_reference(experiment, bundle)
-        questions = select_questions(bundle, experiment)
+        cases = list(benchmark.cases)
         question_orders = {
-            seed: order_questions(questions, seed)
+            seed: order_cases(cases, seed)
             for seed in (
                 experiment.seed + offset
                 for offset in range(experiment.repetitions)
@@ -123,7 +122,7 @@ class RunExecutor:
         try:
             run_dir = self.run_records.prepare_execution_layout(run_id)
             source_dir = run_dir / "source"
-            original_docx = stage_original_document(bundle, source_dir)
+            original_docx = stage_original_document(benchmark, source_dir)
             validate_original_document(original_docx, resolved_plan)
 
             for repetition in range(1, experiment.repetitions + 1):
@@ -220,15 +219,14 @@ class RunExecutor:
                         )
                         run_latency_warmup(client, prepared, experiment)
 
-                    for question in question_orders[repetition_seed]:
+                    for benchmark_case in question_orders[repetition_seed]:
                         if cancelled():
                             cancelled_run = True
                             break
                         artifact_case = execute_native_case(
                             client,
                             prepared,
-                            question,
-                            bundle,
+                            benchmark_case,
                             experiment,
                             cancelled,
                             repetition,
@@ -252,26 +250,15 @@ class RunExecutor:
                 return self.run_records.mark_cancelled(run_id)
             if first_worker_identity is None:
                 raise RuntimeError("run did not start")
-            expected_cases = len(questions) * experiment.repetitions
+            expected_cases = len(cases) * experiment.repetitions
             if len(artifact_cases) != expected_cases:
                 raise ValueError(
                     "Native v2 Run did not produce one Artifact case per planned execution"
                 )
-            benchmark_identity = benchmark_identity_from_release_metadata(
-                bundle_id=bundle.bundle_id,
-                case_selection_id=experiment.case_selection_id,
-                dataset_release_id=experiment.dataset_release_id,
-                metadata=bundle.manifest.metadata,
-                document_sources={
-                    document.document_id: document.sha256
-                    for document in bundle.manifest.documents
-                },
-                cases=tuple(artifact_cases),
+            benchmark_identity = benchmark_identity_from_release(
+                benchmark,
+                tuple(artifact_cases),
             )
-            if benchmark_identity is None:
-                raise ValueError(
-                    "Native v2 Run could not bind Artifact 2.0 to its Benchmark Release"
-                )
             running = self.run_records.get(run_id)
             if running.started_at is None:
                 raise ValueError("running RunRecordV2 has no start timestamp")
@@ -305,7 +292,7 @@ class RunExecutor:
     def _validate_plan_inputs(
         experiment: ExperimentSpec,
         command: WorkerCommand,
-        bundle: DatasetBundle,
+        benchmark: NativeBenchmarkReleaseV2,
         plan: ResolvedRunPlanV2,
         reference: ResolvedRunPlanReferenceV2,
     ) -> None:
@@ -326,65 +313,47 @@ class RunExecutor:
             )
         if reference.digest != contract_digest(plan):
             raise ValueError("resolved plan reference digest mismatch")
-        documents_by_id = {
-            document.document_id: document for document in bundle.manifest.documents
-        }
-        planned_document = documents_by_id.get(plan.original_document.document_id)
         if (
-            planned_document is None
-            or planned_document.sha256 != plan.original_document.source_sha256
-            or planned_document.path != plan.original_document.runtime_path
+            benchmark.release_id != plan.benchmark_release.release_id
+            or benchmark.release_digest != plan.benchmark_release.release_digest
+            or benchmark.validation_report_digest
+            != plan.benchmark_release.validation_report_digest
+            or benchmark.payload_snapshot_digest
+            != plan.benchmark_release.payload_snapshot_digest
+            or benchmark.snapshot_digest
+            != plan.benchmark_release.benchmark_snapshot_digest
+            or benchmark.case_selection_id != plan.case_selection_id
+            or benchmark.case_ids != plan.case_ids
+            or benchmark.source_identity.document_id
+            != plan.original_document.document_id
+            or benchmark.source_identity.source_sha256
+            != plan.original_document.source_sha256
+            or benchmark.source_identity.canonical_digest
+            != plan.original_document.canonical_digest
+            or benchmark.source_identity.canonical_catalog_sha256
+            != plan.original_document.canonical_catalog_sha256
+            or benchmark.source_identity.media_type
+            != plan.original_document.mime_type
         ):
             raise ValueError(
-                "runtime Bundle does not match the resolved original DOCX identity"
+                "resolved Benchmark snapshot does not match the immutable Run plan"
             )
 
-    def _validate_dataset_release_reference(
+    def _resolve_benchmark(
         self,
         experiment: ExperimentSpec,
-        bundle: DatasetBundle,
-    ) -> None:
-        """Bind an opted-in Run to exactly one immutable Benchmark Release."""
-
-        if experiment.dataset_release_id is None:
-            return
-        if self.dataset_release_store is None:
-            raise ValueError(
-                "Dataset Release references are unavailable in this Platform mode"
-            )
-        release = self.dataset_release_store.get(experiment.dataset_release_id)
-        runtime_projection = bundle.manifest.metadata.get("formal_runtime_projection")
-        if (
-            isinstance(runtime_projection, Mapping)
-            and runtime_projection.get("release_id") == release.release_id
-            and runtime_projection.get("release_digest") == release.release_digest
-            and runtime_projection.get("validation_report_digest")
-            == release.validation_report_digest
-            and runtime_projection.get("projection_version") == "4"
-            and runtime_projection.get("execution_contract")
-            == NATIVE_DOCUMENT_EXECUTION_CONTRACT
-        ):
-            return
-        raise ValueError(
-            "selected formal Dataset Release does not expose the Native v2 DOCX projection"
+        plan: ResolvedRunPlanV2,
+    ) -> NativeBenchmarkReleaseV2:
+        if self.benchmark_service is None:
+            raise ValueError("immutable Benchmark Releases are unavailable")
+        return self.benchmark_service.resolve_native_benchmark(
+            experiment.dataset_release_id,
+            case_ids=(
+                None if experiment.case_ids is None else tuple(experiment.case_ids)
+            ),
+            seed=experiment.seed,
+            expected_case_selection_id=plan.case_selection_id,
         )
-
-
-def execution_view_identity(
-    _experiment: ExperimentSpec,
-    bundle: DatasetBundle,
-) -> tuple[str, bool]:
-    """Return the sole admitted Native v2 execution view."""
-
-    formal_projection = bundle.manifest.metadata.get("formal_runtime_projection")
-    if (
-        isinstance(formal_projection, dict)
-        and formal_projection.get("projection_version") == "4"
-        and formal_projection.get("execution_contract")
-        == NATIVE_DOCUMENT_EXECUTION_CONTRACT
-    ):
-        return NATIVE_DOCUMENT_EXECUTION_CONTRACT, False
-    raise ValueError("execution requires an admitted Native v2 DOCX projection")
 
 
 def validate_worker_identity(
@@ -509,8 +478,7 @@ def prepared_model_artifacts(
 def execute_native_case(
     client,
     prepared: PreparedSystemV2,
-    question: Question,
-    bundle: DatasetBundle,
+    benchmark_case: BenchmarkCaseV2,
     experiment: ExperimentSpec,
     cancelled: Callable[[], bool],
     repetition: int,
@@ -522,16 +490,12 @@ def execute_native_case(
     """Execute one Direct Wire 2.0 query and produce unified evaluation."""
 
     started = datetime.now(UTC)
-    gold_answer = bundle.gold_answers[question.gold_answer_id]
-    evidence_set = bundle.gold_evidence_sets[question.gold_evidence_set_id]
     resolver = BenchmarkResolver(
-        questions={question.case_id: question},
-        gold_answers={question.gold_answer_id: gold_answer},
-        gold_evidence_sets={question.gold_evidence_set_id: evidence_set},
+        cases={benchmark_case.case_id: benchmark_case},
     )
     query = NativeQueryV2(
-        case_id=question.case_id,
-        question=question.question,
+        case_id=benchmark_case.case_id,
+        question=benchmark_case.question,
         generate_answer=experiment.query_config["generate_answer"],
         retrieval_candidate_k=experiment.query_config["retrieval_candidate_k"],
         final_context_k=experiment.query_config["final_context_k"],
@@ -550,7 +514,7 @@ def execute_native_case(
     )
     try:
         return flow.execute(
-            case_id=question.case_id,
+            case_id=benchmark_case.case_id,
             prepared_system=prepared,
             query=query,
             repetition=repetition,
@@ -573,7 +537,7 @@ def execute_native_case(
             code = getattr(exc, "code", "adapter_error")
         message = str(exc)
     return EvaluationEngine(profile).evaluate(
-        resolver.resolve(question.case_id),
+        resolver.resolve(benchmark_case.case_id),
         TraceValidationResult(
             record=TraceValidationRecordV2(
                 status=ObservationStatus.FAILED,
@@ -611,33 +575,16 @@ def watch_cancellation(
             return
 
 
-def select_questions(
-    bundle: DatasetBundle,
-    experiment: ExperimentSpec,
-) -> list[Question]:
-    question_by_id = bundle.question_by_id()
-    case_ids = experiment.case_ids or sorted(question_by_id)
-    unknown = [case_id for case_id in case_ids if case_id not in question_by_id]
-    if unknown:
-        raise ValueError(f"experiment references unknown cases: {unknown}")
-    expected_selection_id = case_selection_id(
-        case_ids,
-        policy="explicit" if experiment.case_ids is not None else "all",
-        seed=experiment.seed,
-    )
-    if expected_selection_id != experiment.case_selection_id:
-        raise ValueError("case_selection_id does not match selected cases/policy/seed")
-    return [question_by_id[case_id] for case_id in case_ids]
-
-
-def order_questions(questions: list[Question], seed: int) -> list[Question]:
+def order_cases(
+    cases: list[BenchmarkCaseV2], seed: int
+) -> list[BenchmarkCaseV2]:
     """Generate a stable per-seed order without changing selection."""
 
-    def order_key(question: Question) -> tuple[str, str]:
-        payload = f"{seed}\0{question.case_id}".encode()
-        return hashlib.sha256(payload).hexdigest(), question.case_id
+    def order_key(case: BenchmarkCaseV2) -> tuple[str, str]:
+        payload = f"{seed}\0{case.case_id}".encode()
+        return hashlib.sha256(payload).hexdigest(), case.case_id
 
-    return sorted(questions, key=order_key)
+    return sorted(cases, key=order_key)
 
 
 INGESTION_RPC_RESPONSE_GRACE_SECONDS = 30.0
@@ -668,38 +615,37 @@ def ingestion_rpc_timeout(
 
 
 def stage_original_document(
-    bundle: DatasetBundle,
+    benchmark: NativeBenchmarkReleaseV2,
     source_dir: Path,
 ) -> OriginalDocumentV2:
     """Stage the Benchmark's one original DOCX and Canonical Catalog."""
 
     source_dir.mkdir(parents=True, exist_ok=True)
-    if len(bundle.manifest.documents) != 1:
-        raise ValueError("Direct Wire 2.0 requires exactly one original DOCX")
-    document = bundle.manifest.documents[0]
-    original = bundle.root / document.path
+    original = benchmark.original_docx_path
     if original.suffix.lower() != ".docx":
         raise ValueError("Direct Wire 2.0 accepts only an original DOCX")
-    if document.canonical_path is None:
-        raise ValueError("Direct Wire 2.0 requires a pinned Canonical Catalog sidecar")
 
-    safe_digest = hashlib.sha256(document.document_id.encode()).hexdigest()[:12]
+    source = benchmark.source_identity
+    safe_digest = hashlib.sha256(source.document_id.encode()).hexdigest()[:12]
     sandbox_path = source_dir / f"source-00000-{safe_digest}.docx"
     shutil.copyfile(original, sandbox_path)
-    canonical = bundle.root / document.canonical_path
-    canonical_suffix = "".join(canonical.suffixes).lower() or ".data"
-    canonical_sandbox_path = (
-        source_dir / f"canonical-00000-{safe_digest}{canonical_suffix}"
-    )
-    shutil.copyfile(canonical, canonical_sandbox_path)
+    if hashlib.sha256(sandbox_path.read_bytes()).hexdigest() != source.source_sha256:
+        sandbox_path.unlink(missing_ok=True)
+        raise ValueError("staged DOCX differs from the immutable Benchmark identity")
+    canonical_sandbox_path = source_dir / f"canonical-00000-{safe_digest}.jsonl"
+    canonical_payload = native_canonical_catalog_bytes(benchmark.canonical_snapshot)
+    canonical_sandbox_path.write_bytes(canonical_payload)
+    canonical_digest = hashlib.sha256(canonical_payload).hexdigest()
+    if canonical_digest != source.canonical_catalog_sha256:
+        raise ValueError("Canonical observation sidecar differs from Benchmark identity")
     return OriginalDocumentV2(
-        document_id=document.document_id,
+        document_id=source.document_id,
         source_path=sandbox_path.name,
-        source_sha256=document.sha256,
-        media_type=document.mime_type,
+        source_sha256=source.source_sha256,
+        media_type=source.media_type,
         original_name=original.name,
         canonical_catalog_path=canonical_sandbox_path.name,
-        canonical_catalog_sha256=hashlib.sha256(canonical.read_bytes()).hexdigest(),
+        canonical_catalog_sha256=canonical_digest,
     )
 
 
@@ -713,6 +659,8 @@ def validate_original_document(
         document.document_id != plan.original_document.document_id
         or document.source_sha256 != plan.original_document.source_sha256
         or document.media_type != plan.original_document.mime_type
+        or document.canonical_catalog_sha256
+        != plan.original_document.canonical_catalog_sha256
     ):
         raise ValueError("staged DOCX identity differs from the resolved plan")
 
@@ -720,12 +668,10 @@ def validate_original_document(
 __all__ = [
     "RunExecutor",
     "command_for_seed",
-    "execution_view_identity",
     "ingestion_rpc_timeout",
-    "order_questions",
+    "order_cases",
     "prepared_model_artifacts",
     "run_latency_warmup",
-    "select_questions",
     "stage_original_document",
     "validate_latency_runtime",
     "validate_original_document",
