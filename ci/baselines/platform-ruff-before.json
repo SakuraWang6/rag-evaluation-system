@@ -6,7 +6,7 @@
       "column": 23,
       "row": 1
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/scripts/build_bundle_v3.py",
+    "filename": "scripts/build_bundle_v3.py",
     "fix": null,
     "location": {
       "column": 1,
@@ -14,7 +14,7 @@
     },
     "message": "Shebang is present but file is not executable",
     "name": "shebang-not-executable",
-    "noqa_row": 8,
+    "noqa_row": 7,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/shebang-not-executable"
   },
@@ -23,17 +23,17 @@
     "code": "I001",
     "end_location": {
       "column": 2,
-      "row": 73
+      "row": 72
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/api.py",
+    "filename": "src/rag_eval/api.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "from __future__ import annotations\n\nimport json\nimport shutil\nimport zipfile\nfrom asyncio import CancelledError, Task, create_task\nfrom contextlib import asynccontextmanager, suppress\nfrom datetime import UTC, datetime\nfrom pathlib import Path\nfrom typing import Any\nfrom urllib.parse import unquote_to_bytes\n\nfrom fastapi import BackgroundTasks, FastAPI, HTTPException, Request\nfrom fastapi.middleware.cors import CORSMiddleware\nfrom fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse\nfrom pydantic import BaseModel, ConfigDict, Field, model_validator\nfrom starlette.concurrency import run_in_threadpool\n\nfrom rag_eval.authoring.models import (\n    AnswerEvidenceCandidate,\n    AuthoringState,\n    DiscoveryJobStatus,\n    DiscoveryMethod,\n    GenerationJobStatus,\n)\nfrom rag_eval.authoring.storage import AuthoringStorageError\nfrom rag_eval.authoring.workflow import AuthoringWorkflowError\nfrom rag_eval.comparison import (\n    ArtifactComparisonRunV2,\n    validate_artifact_comparison_v2,\n)\nfrom rag_eval.contracts.research import ComparisonSpec\nfrom rag_eval.contracts.run import ComparisonTier, ExperimentSpec\nfrom rag_eval.datasets.docx_render import render_docx_html\nfrom rag_eval.datasets.drafts import DatasetDraft\nfrom rag_eval.datasets.formal import FormalDatasetError\nfrom rag_eval.execution_provider import ExecutionRequest, cleanup_managed_run\nfrom rag_eval.jobs import TERMINAL_JOB_STATUSES\nfrom rag_eval.llm import (\n    LLMProviderConfig,\n    LLMProviderKind,\n    LLMStage,\n    LLMStageBinding,\n    provider_api_view,\n    revision_api_view,\n)\nfrom rag_eval.products import (\n    EvaluationDraft,\n    ProductMode,\n    SystemConnection,\n    canonical_experiment,\n)\nfrom rag_eval.reviews import (\n    AnswerSupportVerdict,\n    CaseReviewSource,\n    CaseReviewVerdict,\n    SemanticReviewError,\n)\nfrom rag_eval.runs.views import (\n    RunArtifactCaseCollectionView,\n    RunArtifactCaseIndexView,\n    RunArtifactCaseView,\n    RunArtifactOverviewView,\n    RunRecordViewV2,\n)\nfrom rag_eval.runtime_admission import (\n    NewRunAdmissionError,\n    require_no_public_corpus_selector,\n)\nfrom rag_eval.service import PlatformService\nfrom rag_eval.storage.ids import safe_id\n\n\n",
+          "content": "from __future__ import annotations\n\nimport json\nimport shutil\nimport zipfile\nfrom asyncio import CancelledError, Task, create_task\nfrom contextlib import asynccontextmanager, suppress\nfrom datetime import UTC, datetime\nfrom pathlib import Path\nfrom typing import Any\nfrom urllib.parse import unquote_to_bytes\n\nfrom fastapi import BackgroundTasks, FastAPI, HTTPException, Request\nfrom fastapi.middleware.cors import CORSMiddleware\nfrom fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse\nfrom pydantic import BaseModel, ConfigDict, Field, model_validator\nfrom starlette.concurrency import run_in_threadpool\n\nfrom rag_eval.authoring.models import (\n    AnswerEvidenceCandidate,\n    AuthoringState,\n    DiscoveryJobStatus,\n    DiscoveryMethod,\n    GenerationJobStatus,\n)\nfrom rag_eval.authoring.storage import AuthoringStorageError\nfrom rag_eval.authoring.workflow import AuthoringWorkflowError\nfrom rag_eval.comparison import (\n    ArtifactComparisonRunV2,\n    validate_artifact_comparison_v2,\n)\nfrom rag_eval.contracts.research import ComparisonSpec\nfrom rag_eval.contracts.run import ComparisonTier, ExperimentSpec\nfrom rag_eval.datasets.docx_render import render_docx_html\nfrom rag_eval.datasets.formal import FormalDatasetError\nfrom rag_eval.execution_provider import ExecutionRequest, cleanup_managed_run\nfrom rag_eval.jobs import TERMINAL_JOB_STATUSES\nfrom rag_eval.llm import (\n    LLMProviderConfig,\n    LLMProviderKind,\n    LLMStage,\n    LLMStageBinding,\n    provider_api_view,\n    revision_api_view,\n)\nfrom rag_eval.products import (\n    EvaluationDraft,\n    ProductMode,\n    SystemConnection,\n    canonical_experiment,\n)\nfrom rag_eval.reviews import (\n    AnswerSupportVerdict,\n    CaseReviewSource,\n    CaseReviewVerdict,\n    SemanticReviewError,\n)\nfrom rag_eval.runs.views import (\n    RunArtifactCaseCollectionView,\n    RunArtifactCaseIndexView,\n    RunArtifactCaseView,\n    RunArtifactOverviewView,\n    RunRecordViewV2,\n)\nfrom rag_eval.runtime_admission import (\n    NewRunAdmissionError,\n    require_no_public_corpus_selector,\n)\nfrom rag_eval.service import PlatformService\nfrom rag_eval.storage.ids import safe_id\n\n\n",
           "end_location": {
             "column": 1,
-            "row": 76
+            "row": 75
           },
           "location": {
             "column": 1,
@@ -58,17 +58,17 @@
     "code": "B008",
     "end_location": {
       "column": 73,
-      "row": 1898
+      "row": 1803
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/api.py",
+    "filename": "src/rag_eval/api.py",
     "fix": null,
     "location": {
       "column": 46,
-      "row": 1898
+      "row": 1803
     },
     "message": "Do not perform function call `EvaluationFinalizeRequest` in argument defaults; instead, perform the call within the function, or read the default from a module-level singleton variable",
     "name": "function-call-in-default-argument",
-    "noqa_row": 1898,
+    "noqa_row": 1803,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/function-call-in-default-argument"
   },
@@ -79,7 +79,7 @@
       "column": 74,
       "row": 24
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/canonical.py",
+    "filename": "src/rag_eval/authoring/canonical.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -114,7 +114,7 @@
       "column": 33,
       "row": 16
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/canonical.py",
+    "filename": "src/rag_eval/authoring/canonical.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -149,7 +149,7 @@
       "column": 96,
       "row": 947
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/canonical.py",
+    "filename": "src/rag_eval/authoring/canonical.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -195,7 +195,7 @@
       "column": 18,
       "row": 1491
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/canonical.py",
+    "filename": "src/rag_eval/authoring/canonical.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -241,7 +241,7 @@
       "column": 2,
       "row": 25
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/canonical_adapter.py",
+    "filename": "src/rag_eval/authoring/canonical_adapter.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -276,7 +276,7 @@
       "column": 66,
       "row": 198
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/canonical_adapter.py",
+    "filename": "src/rag_eval/authoring/canonical_adapter.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -311,7 +311,7 @@
       "column": 87,
       "row": 371
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/canonical_adapter.py",
+    "filename": "src/rag_eval/authoring/canonical_adapter.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -357,7 +357,7 @@
       "column": 37,
       "row": 381
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/canonical_adapter.py",
+    "filename": "src/rag_eval/authoring/canonical_adapter.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -403,7 +403,7 @@
       "column": 33,
       "row": 385
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/canonical_adapter.py",
+    "filename": "src/rag_eval/authoring/canonical_adapter.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -447,21 +447,21 @@
     "code": "I001",
     "end_location": {
       "column": 41,
-      "row": 31
+      "row": 30
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/ledger.py",
+    "filename": "src/rag_eval/authoring/ledger.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "from __future__ import annotations\n\nimport hashlib\nimport json\nimport uuid\nfrom datetime import UTC, datetime\nfrom enum import StrEnum\nfrom pathlib import Path\nfrom typing import Any, Literal\n\nfrom pydantic import BaseModel, ConfigDict, Field, model_validator\n\nfrom rag_eval.authoring.models import (\n    AnswerEvidenceCandidate,\n    AuthoringDataset,\n    CandidateState,\n    DiscoveryMethod,\n    QuestionCandidate,\n)\nfrom rag_eval.authoring.storage import AuthoringWorkspaceStore\nfrom rag_eval.storage.atomic import atomic_write_json\nfrom rag_eval.storage.ids import safe_id\n\n",
+          "content": "from __future__ import annotations\n\nimport hashlib\nimport json\nimport uuid\nfrom datetime import UTC, datetime\nfrom enum import StrEnum\nfrom pathlib import Path\nfrom typing import Literal\n\nfrom pydantic import BaseModel, ConfigDict, Field, model_validator\n\nfrom rag_eval.authoring.models import (\n    AnswerEvidenceCandidate,\n    AuthoringDataset,\n    CandidateState,\n    DiscoveryMethod,\n    QuestionCandidate,\n)\nfrom rag_eval.authoring.storage import AuthoringWorkspaceStore\nfrom rag_eval.storage.atomic import atomic_write_json\nfrom rag_eval.storage.ids import safe_id\n\n",
           "end_location": {
             "column": 1,
-            "row": 34
+            "row": 33
           },
           "location": {
             "column": 1,
-            "row": 10
+            "row": 9
           }
         }
       ],
@@ -469,57 +469,22 @@
     },
     "location": {
       "column": 1,
-      "row": 10
+      "row": 9
     },
     "message": "Import block is un-sorted or un-formatted",
     "name": "unsorted-imports",
-    "noqa_row": 10,
+    "noqa_row": 9,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
-  },
-  {
-    "cell": null,
-    "code": "F401",
-    "end_location": {
-      "column": 23,
-      "row": 18
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/ledger.py",
-    "fix": {
-      "applicability": "safe",
-      "edits": [
-        {
-          "content": "from typing import Literal",
-          "end_location": {
-            "column": 32,
-            "row": 18
-          },
-          "location": {
-            "column": 1,
-            "row": 18
-          }
-        }
-      ],
-      "message": "Remove unused import: `typing.Any`"
-    },
-    "location": {
-      "column": 20,
-      "row": 18
-    },
-    "message": "`typing.Any` imported but unused",
-    "name": "unused-import",
-    "noqa_row": 18,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/unused-import"
   },
   {
     "cell": null,
     "code": "UP037",
     "end_location": {
       "column": 72,
-      "row": 126
+      "row": 125
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/ledger.py",
+    "filename": "src/rag_eval/authoring/ledger.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -527,11 +492,11 @@
           "content": "AuthoringOrigin",
           "end_location": {
             "column": 72,
-            "row": 126
+            "row": 125
           },
           "location": {
             "column": 55,
-            "row": 126
+            "row": 125
           }
         }
       ],
@@ -539,11 +504,11 @@
     },
     "location": {
       "column": 55,
-      "row": 126
+      "row": 125
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 126,
+    "noqa_row": 125,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -552,9 +517,9 @@
     "code": "UP037",
     "end_location": {
       "column": 50,
-      "row": 186
+      "row": 185
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/ledger.py",
+    "filename": "src/rag_eval/authoring/ledger.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -562,11 +527,11 @@
           "content": "CaseRevision",
           "end_location": {
             "column": 50,
-            "row": 186
+            "row": 185
           },
           "location": {
             "column": 36,
-            "row": 186
+            "row": 185
           }
         }
       ],
@@ -574,11 +539,11 @@
     },
     "location": {
       "column": 36,
-      "row": 186
+      "row": 185
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 186,
+    "noqa_row": 185,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -587,9 +552,9 @@
     "code": "UP037",
     "end_location": {
       "column": 62,
-      "row": 228
+      "row": 227
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/ledger.py",
+    "filename": "src/rag_eval/authoring/ledger.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -597,11 +562,11 @@
           "content": "GoldAnswer",
           "end_location": {
             "column": 62,
-            "row": 228
+            "row": 227
           },
           "location": {
             "column": 50,
-            "row": 228
+            "row": 227
           }
         }
       ],
@@ -609,11 +574,11 @@
     },
     "location": {
       "column": 50,
-      "row": 228
+      "row": 227
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 228,
+    "noqa_row": 227,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -622,9 +587,9 @@
     "code": "UP037",
     "end_location": {
       "column": 60,
-      "row": 246
+      "row": 245
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/ledger.py",
+    "filename": "src/rag_eval/authoring/ledger.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -632,11 +597,11 @@
           "content": "GoldPayload",
           "end_location": {
             "column": 60,
-            "row": 246
+            "row": 245
           },
           "location": {
             "column": 47,
-            "row": 246
+            "row": 245
           }
         }
       ],
@@ -644,11 +609,11 @@
     },
     "location": {
       "column": 47,
-      "row": 246
+      "row": 245
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 246,
+    "noqa_row": 245,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -657,9 +622,9 @@
     "code": "PYI055",
     "end_location": {
       "column": 55,
-      "row": 1122
+      "row": 1090
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/ledger.py",
+    "filename": "src/rag_eval/authoring/ledger.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -667,11 +632,11 @@
           "content": "type[CaseRevision | GoldRevision]",
           "end_location": {
             "column": 55,
-            "row": 1122
+            "row": 1090
           },
           "location": {
             "column": 16,
-            "row": 1122
+            "row": 1090
           }
         }
       ],
@@ -679,11 +644,11 @@
     },
     "location": {
       "column": 16,
-      "row": 1122
+      "row": 1090
     },
     "message": "Multiple `type` members in a union. Combine them into one, e.g., `type[CaseRevision | GoldRevision]`.",
     "name": "unnecessary-type-union",
-    "noqa_row": 1122,
+    "noqa_row": 1090,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/unnecessary-type-union"
   },
@@ -692,9 +657,9 @@
     "code": "B009",
     "end_location": {
       "column": 62,
-      "row": 1175
+      "row": 1143
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/ledger.py",
+    "filename": "src/rag_eval/authoring/ledger.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -702,11 +667,11 @@
           "content": "self._active_dataset_id",
           "end_location": {
             "column": 62,
-            "row": 1175
+            "row": 1143
           },
           "location": {
             "column": 27,
-            "row": 1175
+            "row": 1143
           }
         }
       ],
@@ -714,11 +679,11 @@
     },
     "location": {
       "column": 27,
-      "row": 1175
+      "row": 1143
     },
     "message": "Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.",
     "name": "get-attr-with-constant",
-    "noqa_row": 1175,
+    "noqa_row": 1143,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/get-attr-with-constant"
   },
@@ -729,7 +694,7 @@
       "column": 50,
       "row": 10
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/models.py",
+    "filename": "src/rag_eval/authoring/models.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -764,7 +729,7 @@
       "column": 13,
       "row": 11
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/providers.py",
+    "filename": "src/rag_eval/authoring/providers.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -799,7 +764,7 @@
       "column": 49,
       "row": 16
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/service.py",
+    "filename": "src/rag_eval/authoring/service.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -834,7 +799,7 @@
       "column": 13,
       "row": 116
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/service.py",
+    "filename": "src/rag_eval/authoring/service.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -869,7 +834,7 @@
       "column": 41,
       "row": 20
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/storage.py",
+    "filename": "src/rag_eval/authoring/storage.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -904,7 +869,7 @@
       "column": 59,
       "row": 54
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/workflow.py",
+    "filename": "src/rag_eval/authoring/workflow.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -939,7 +904,7 @@
       "column": 43,
       "row": 13
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/workflow.py",
+    "filename": "src/rag_eval/authoring/workflow.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -974,7 +939,7 @@
       "column": 29,
       "row": 187
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/workflow.py",
+    "filename": "src/rag_eval/authoring/workflow.py",
     "fix": null,
     "location": {
       "column": 20,
@@ -993,7 +958,7 @@
       "column": 25,
       "row": 928
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/workflow.py",
+    "filename": "src/rag_eval/authoring/workflow.py",
     "fix": null,
     "location": {
       "column": 16,
@@ -1012,7 +977,7 @@
       "column": 29,
       "row": 1203
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/workflow.py",
+    "filename": "src/rag_eval/authoring/workflow.py",
     "fix": null,
     "location": {
       "column": 20,
@@ -1031,7 +996,7 @@
       "column": 14,
       "row": 1638
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/workflow.py",
+    "filename": "src/rag_eval/authoring/workflow.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -1066,7 +1031,7 @@
       "column": 68,
       "row": 1645
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/workflow.py",
+    "filename": "src/rag_eval/authoring/workflow.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -1112,7 +1077,7 @@
       "column": 58,
       "row": 1703
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/authoring/workflow.py",
+    "filename": "src/rag_eval/authoring/workflow.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -1153,47 +1118,12 @@
   },
   {
     "cell": null,
-    "code": "RUF022",
-    "end_location": {
-      "column": 2,
-      "row": 177
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/__init__.py",
-    "fix": {
-      "applicability": "safe",
-      "edits": [
-        {
-          "content": "[\n    \"CANONICAL_CONFORMANCE_SCHEMA_VERSION\",\n    \"CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY\",\n    \"CANONICAL_SCHEMA_VERSION\",\n    \"CONTRACT_VERSION\",\n    \"DOCX_MEDIA_TYPE\",\n    \"NATIVE_ADAPTER_PROTOCOL_VERSION\",\n    \"OBSERVATION_SCHEMA_VERSION\",\n    \"PRODUCER\",\n    \"PROTOCOL_VERSION\",\n    \"SCHEMA_VERSION\",\n    \"AdapterCapabilitiesV2\",\n    \"AdapterRunResultV2\",\n    \"CanonicalConformanceReport\",\n    \"CanonicalConformanceStatus\",\n    \"CanonicalDocument\",\n    \"CanonicalDocumentManifest\",\n    \"CanonicalExtent\",\n    \"CanonicalGoldEligibilityRule\",\n    \"CanonicalMappingRecord\",\n    \"CanonicalObject\",\n    \"CanonicalObjectConformance\",\n    \"CanonicalObjectType\",\n    \"CanonicalRelation\",\n    \"CanonicalRelationType\",\n    \"ComparisonTier\",\n    \"ContentObservation\",\n    \"DatasetBundleManifest\",\n    \"DocumentManifest\",\n    \"ExperimentSpec\",\n    \"ExtentUnit\",\n    \"GoldAnswer\",\n    \"GoldAnswerKind\",\n    \"GoldEvidence\",\n    \"GoldEvidenceSet\",\n    \"GoldSourceIdentity\",\n    \"IngestionCatalogObservation\",\n    \"IngestionReceiptV2\",\n    \"LineageIntegrityStatus\",\n    \"MappingDiagnostic\",\n    \"MappingDiagnosticStatus\",\n    \"MappingTier\",\n    \"NativeHealthReportV2\",\n    \"NativeLineage\",\n    \"NativeQueryV2\",\n    \"NativeRAGAdapterV2\",\n    \"NativeSpan\",\n    \"ObjectLocator\",\n    \"ObservationCompleteness\",\n    \"ObservationProfileIdentity\",\n    \"ObservationStatus\",\n    \"ObservedStageItem\",\n    \"OriginalDocumentV2\",\n    \"PageRegionLocator\",\n    \"PhysicalCellFootprint\",\n    \"PreparedSystemV2\",\n    \"ProvenanceCoverageStatus\",\n    \"ProvenanceEdge\",\n    \"Question\",\n    \"ReceiptStatus\",\n    \"RepresentationStatus\",\n    \"ResolvedAdapterConfigV2\",\n    \"ReverseMappingStatus\",\n    \"RuntimeChunkRecord\",\n    \"RuntimeProfileIdentity\",\n    \"SourceIdentity\",\n    \"SourceSpan\",\n    \"StageItemReference\",\n    \"StageName\",\n    \"StageObservation\",\n    \"StageTransitionDeclaration\",\n    \"StageTransitionMode\",\n    \"TableCellLocator\",\n    \"TextSpanLocator\",\n    \"TransformationRecord\",\n    \"UnifiedTrace\",\n    \"ValidationReceipt\",\n    \"WireError\",\n    \"WireRequestV2\",\n    \"WireResponseV2\",\n    \"WorkerHealthV2\",\n    \"WorkerIdentityV2\",\n]",
-          "end_location": {
-            "column": 2,
-            "row": 177
-          },
-          "location": {
-            "column": 11,
-            "row": 95
-          }
-        }
-      ],
-      "message": "Apply an isort-style sorting to `__all__`"
-    },
-    "location": {
-      "column": 11,
-      "row": 95
-    },
-    "message": "`__all__` is not sorted",
-    "name": "unsorted-dunder-all",
-    "noqa_row": 95,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/unsorted-dunder-all"
-  },
-  {
-    "cell": null,
     "code": "I001",
     "end_location": {
       "column": 67,
       "row": 22
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -1228,7 +1158,7 @@
       "column": 19,
       "row": 464
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 13,
@@ -1247,7 +1177,7 @@
       "column": 119,
       "row": 496
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1266,7 +1196,7 @@
       "column": 113,
       "row": 499
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1285,7 +1215,7 @@
       "column": 112,
       "row": 502
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1304,7 +1234,7 @@
       "column": 121,
       "row": 505
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1323,7 +1253,7 @@
       "column": 124,
       "row": 508
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1342,7 +1272,7 @@
       "column": 128,
       "row": 511
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1361,7 +1291,7 @@
       "column": 131,
       "row": 514
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1380,7 +1310,7 @@
       "column": 121,
       "row": 517
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1399,7 +1329,7 @@
       "column": 129,
       "row": 520
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1418,7 +1348,7 @@
       "column": 114,
       "row": 523
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1437,7 +1367,7 @@
       "column": 151,
       "row": 526
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1456,7 +1386,7 @@
       "column": 125,
       "row": 531
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1475,7 +1405,7 @@
       "column": 120,
       "row": 534
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1494,7 +1424,7 @@
       "column": 122,
       "row": 537
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1513,7 +1443,7 @@
       "column": 118,
       "row": 540
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1532,7 +1462,7 @@
       "column": 120,
       "row": 543
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/canonical.py",
+    "filename": "src/rag_eval/contracts/canonical.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -1549,17 +1479,17 @@
     "code": "I001",
     "end_location": {
       "column": 2,
-      "row": 59
+      "row": 60
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/contracts/schema.py",
+    "filename": "src/rag_eval/contracts/schema.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "from __future__ import annotations\n\nimport json\nfrom pathlib import Path\n\nfrom pydantic import BaseModel\n\nfrom rag_eval.contracts.canonical import CanonicalConformanceReport, CanonicalDocument\nfrom rag_eval.contracts.dataset import (\n    DatasetBundleManifest,\n    GoldAnswer,\n    GoldEvidenceSet,\n    Question,\n)\nfrom rag_eval.contracts.native import (\n    IngestionReceiptV2,\n    NativeHealthReportV2,\n    NativeQueryV2,\n    OriginalDocumentV2,\n    PreparedSystemV2,\n    ResolvedAdapterConfigV2,\n)\nfrom rag_eval.contracts.observation import (\n    AdapterCapabilitiesV2,\n    AdapterRunResultV2,\n    UnifiedTrace,\n)\nfrom rag_eval.contracts.research import (\n    AnalysisContract,\n    BlindProtocol,\n    ComparisonSpec,\n    LatencyProtocol,\n    ModelArtifactIdentity,\n    ModelLock,\n)\nfrom rag_eval.contracts.run import ExperimentSpec\nfrom rag_eval.contracts.wire import (\n    WireRequestV2,\n    WireResponseV2,\n    WorkerHealthV2,\n    WorkerIdentityV2,\n)\nfrom rag_eval.runs.models import (\n    ArtifactCaseIndexV2,\n    RunArtifactCaseV2,\n    RunArtifactManifestV2,\n    RunArtifactSummaryV2,\n)\nfrom rag_eval.runs.plans import ResolvedRunPlanV2\nfrom rag_eval.runs.records import RunRecordV2\nfrom rag_eval.runs.views import (\n    RunArtifactCaseCollectionView,\n    RunArtifactCaseIndexView,\n    RunArtifactCaseView,\n    RunArtifactOverviewView,\n    RunRecordViewV2,\n)\n\n",
+          "content": "from __future__ import annotations\n\nimport json\nfrom pathlib import Path\n\nfrom pydantic import BaseModel\n\nfrom rag_eval.contracts.benchmark import (\n    BenchmarkCaseV2,\n    BenchmarkEvidenceV2,\n    BenchmarkGoldV2,\n    BenchmarkSourceIdentityV2,\n    NativeBenchmarkReleaseV2,\n)\nfrom rag_eval.contracts.canonical import CanonicalConformanceReport, CanonicalDocument\nfrom rag_eval.contracts.native import (\n    IngestionReceiptV2,\n    NativeHealthReportV2,\n    NativeQueryV2,\n    OriginalDocumentV2,\n    PreparedSystemV2,\n    ResolvedAdapterConfigV2,\n)\nfrom rag_eval.contracts.observation import (\n    AdapterCapabilitiesV2,\n    AdapterRunResultV2,\n    UnifiedTrace,\n)\nfrom rag_eval.contracts.research import (\n    AnalysisContract,\n    BlindProtocol,\n    ComparisonSpec,\n    LatencyProtocol,\n    ModelArtifactIdentity,\n    ModelLock,\n)\nfrom rag_eval.contracts.run import ExperimentSpec\nfrom rag_eval.contracts.wire import (\n    WireRequestV2,\n    WireResponseV2,\n    WorkerHealthV2,\n    WorkerIdentityV2,\n)\nfrom rag_eval.runs.models import (\n    ArtifactCaseIndexV2,\n    RunArtifactCaseV2,\n    RunArtifactManifestV2,\n    RunArtifactSummaryV2,\n)\nfrom rag_eval.runs.plans import ResolvedRunPlanV2\nfrom rag_eval.runs.records import RunRecordV2\nfrom rag_eval.runs.views import (\n    RunArtifactCaseCollectionView,\n    RunArtifactCaseIndexView,\n    RunArtifactCaseView,\n    RunArtifactOverviewView,\n    RunRecordViewV2,\n)\n\n",
           "end_location": {
             "column": 1,
-            "row": 61
+            "row": 62
           },
           "location": {
             "column": 1,
@@ -1578,76 +1508,6 @@
     "noqa_row": 3,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
-  },
-  {
-    "cell": null,
-    "code": "I001",
-    "end_location": {
-      "column": 2,
-      "row": 30
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/__init__.py",
-    "fix": {
-      "applicability": "safe",
-      "edits": [
-        {
-          "content": "from rag_eval.datasets.admission import (\n    BenchmarkAdmissionService,\n    CalibrationReferenceProcess,\n    DocumentSourceRecord,\n)\nfrom rag_eval.datasets.bundle import DatasetBundle, DatasetBundleStore\nfrom rag_eval.datasets.bundle_v3 import (\n    BundleV3IntegrityError,\n    BundleV3Store,\n    DatasetBundleV3,\n    DatasetBundleV3Runtime,\n    load_bundle_v3,\n    load_bundle_v3_runtime,\n)\nfrom rag_eval.datasets.formal import (\n    DatasetRelease,\n    DatasetReleaseStore,\n    FormalDatasetReleaseService,\n    FormalDatasetValidator,\n    FormalReleaseContent,\n    ValidationReport,\n)\nfrom rag_eval.datasets.portfolio import (\n    BenchmarkPortfolio,\n    BenchmarkPortfolioService,\n    PortfolioCoverageReport,\n)\nfrom rag_eval.datasets.registry import DatasetRegistry, DatasetRegistryRecord\n\n",
-          "end_location": {
-            "column": 1,
-            "row": 32
-          },
-          "location": {
-            "column": 1,
-            "row": 3
-          }
-        }
-      ],
-      "message": "Organize imports"
-    },
-    "location": {
-      "column": 1,
-      "row": 3
-    },
-    "message": "Import block is un-sorted or un-formatted",
-    "name": "unsorted-imports",
-    "noqa_row": 3,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
-  },
-  {
-    "cell": null,
-    "code": "RUF022",
-    "end_location": {
-      "column": 2,
-      "row": 55
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/__init__.py",
-    "fix": {
-      "applicability": "safe",
-      "edits": [
-        {
-          "content": "[\n    \"BenchmarkAdmissionService\",\n    \"BenchmarkPortfolio\",\n    \"BenchmarkPortfolioService\",\n    \"BundleV3IntegrityError\",\n    \"BundleV3Store\",\n    \"CalibrationReferenceProcess\",\n    \"DatasetBundle\",\n    \"DatasetBundleStore\",\n    \"DatasetBundleV3\",\n    \"DatasetBundleV3Runtime\",\n    \"DatasetRegistry\",\n    \"DatasetRegistryRecord\",\n    \"DatasetRelease\",\n    \"DatasetReleaseStore\",\n    \"DocumentSourceRecord\",\n    \"FormalDatasetReleaseService\",\n    \"FormalDatasetValidator\",\n    \"FormalReleaseContent\",\n    \"PortfolioCoverageReport\",\n    \"ValidationReport\",\n    \"load_bundle_v3\",\n    \"load_bundle_v3_runtime\",\n]",
-          "end_location": {
-            "column": 2,
-            "row": 55
-          },
-          "location": {
-            "column": 11,
-            "row": 32
-          }
-        }
-      ],
-      "message": "Apply an isort-style sorting to `__all__`"
-    },
-    "location": {
-      "column": 11,
-      "row": 32
-    },
-    "message": "`__all__` is not sorted",
-    "name": "unsorted-dunder-all",
-    "noqa_row": 32,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/unsorted-dunder-all"
   },
   {
     "cell": null,
@@ -1656,7 +1516,7 @@
       "column": 41,
       "row": 37
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -1691,7 +1551,7 @@
       "column": 19,
       "row": 26
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -1726,7 +1586,7 @@
       "column": 53,
       "row": 128
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -1761,7 +1621,7 @@
       "column": 30,
       "row": 145
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -1796,7 +1656,7 @@
       "column": 59,
       "row": 165
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -1831,7 +1691,7 @@
       "column": 65,
       "row": 199
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -1866,7 +1726,7 @@
       "column": 63,
       "row": 214
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -1901,7 +1761,7 @@
       "column": 56,
       "row": 243
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -1936,7 +1796,7 @@
       "column": 34,
       "row": 270
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -1971,7 +1831,7 @@
       "column": 61,
       "row": 316
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2006,7 +1866,7 @@
       "column": 72,
       "row": 348
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2041,7 +1901,7 @@
       "column": 54,
       "row": 372
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2076,7 +1936,7 @@
       "column": 60,
       "row": 402
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2111,7 +1971,7 @@
       "column": 199,
       "row": 422
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2146,7 +2006,7 @@
       "column": 55,
       "row": 471
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2181,7 +2041,7 @@
       "column": 52,
       "row": 494
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2216,7 +2076,7 @@
       "column": 59,
       "row": 528
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2251,7 +2111,7 @@
       "column": 67,
       "row": 550
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/admission.py",
+    "filename": "src/rag_eval/datasets/admission.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2284,21 +2144,21 @@
     "code": "I001",
     "end_location": {
       "column": 41,
-      "row": 52
+      "row": 48
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
+    "filename": "src/rag_eval/datasets/bundle_v3.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "from __future__ import annotations\n\nimport hashlib\nimport json\nimport shutil\nimport tempfile\nfrom dataclasses import dataclass\nfrom pathlib import Path\nfrom typing import Iterable, Literal\n\nfrom pydantic import BaseModel, ConfigDict, Field, model_validator\n\nfrom rag_eval.authoring.ledger import (\n    Adjudication,\n    Approval,\n    AuthoringLedger,\n    CaseRevision,\n    EvidenceRole,\n    GoldEvidence,\n    GoldRevision,\n    LifecycleState,\n    Review,\n)\nfrom rag_eval.authoring.storage import AuthoringWorkspaceStore\nfrom rag_eval.contracts.canonical import CanonicalDocument, CanonicalObject\nfrom rag_eval.datasets.bundle import canonical_file_hashes, digest_file_hashes\nfrom rag_eval.datasets.formal import (\n    DatasetRelease,\n    DatasetReleaseStore,\n    FormalDatasetError,\n    ReleaseCasePin,\n    ReleaseGoldPin,\n    ValidationReport,\n)\nfrom rag_eval.datasets.portfolio import (\n    BenchmarkPortfolio,\n    PortfolioAssignment,\n    PortfolioSlot,\n    PortfolioSlotState,\n    PortfolioStore,\n)\nfrom rag_eval.storage.atomic import atomic_write_bytes\nfrom rag_eval.storage.ids import safe_id\n\n",
+          "content": "from __future__ import annotations\n\nimport hashlib\nimport json\nimport shutil\nimport tempfile\nfrom dataclasses import dataclass\nfrom pathlib import Path\nfrom typing import Iterable, Literal\n\nfrom pydantic import BaseModel, ConfigDict, Field, model_validator\n\nfrom rag_eval.authoring.ledger import (\n    Adjudication,\n    Approval,\n    AuthoringLedger,\n    CaseRevision,\n    EvidenceRole,\n    GoldEvidence,\n    GoldRevision,\n    LifecycleState,\n    Review,\n)\nfrom rag_eval.authoring.storage import AuthoringWorkspaceStore\nfrom rag_eval.contracts.canonical import CanonicalDocument, CanonicalObject\nfrom rag_eval.datasets.formal import (\n    DatasetRelease,\n    DatasetReleaseStore,\n    ReleaseCasePin,\n    ReleaseGoldPin,\n    ValidationReport,\n)\nfrom rag_eval.datasets.portfolio import (\n    PortfolioAssignment,\n    PortfolioSlot,\n    PortfolioSlotState,\n    PortfolioStore,\n)\nfrom rag_eval.storage.atomic import atomic_write_bytes\nfrom rag_eval.storage.ids import safe_id\n\n",
           "end_location": {
             "column": 1,
-            "row": 55
+            "row": 51
           },
           "location": {
             "column": 1,
-            "row": 10
+            "row": 9
           }
         }
       ],
@@ -2306,11 +2166,11 @@
     },
     "location": {
       "column": 1,
-      "row": 10
+      "row": 9
     },
     "message": "Import block is un-sorted or un-formatted",
     "name": "unsorted-imports",
-    "noqa_row": 10,
+    "noqa_row": 9,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
   },
@@ -2319,9 +2179,9 @@
     "code": "UP035",
     "end_location": {
       "column": 37,
-      "row": 18
+      "row": 17
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
+    "filename": "src/rag_eval/datasets/bundle_v3.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2329,11 +2189,11 @@
           "content": "from typing import Literal\nfrom collections.abc import Iterable",
           "end_location": {
             "column": 37,
-            "row": 18
+            "row": 17
           },
           "location": {
             "column": 1,
-            "row": 18
+            "row": 17
           }
         }
       ],
@@ -2341,92 +2201,22 @@
     },
     "location": {
       "column": 1,
-      "row": 18
+      "row": 17
     },
     "message": "Import from `collections.abc` instead: `Iterable`",
     "name": "deprecated-import",
-    "noqa_row": 18,
+    "noqa_row": 17,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/deprecated-import"
-  },
-  {
-    "cell": null,
-    "code": "F401",
-    "end_location": {
-      "column": 23,
-      "row": 39
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
-    "fix": {
-      "applicability": "safe",
-      "edits": [
-        {
-          "content": "from rag_eval.datasets.formal import (\n    DatasetRelease,\n    DatasetReleaseStore,\n    ReleaseCasePin,\n    ReleaseGoldPin,\n    ValidationReport,\n)",
-          "end_location": {
-            "column": 2,
-            "row": 43
-          },
-          "location": {
-            "column": 1,
-            "row": 36
-          }
-        }
-      ],
-      "message": "Remove unused import: `rag_eval.datasets.formal.FormalDatasetError`"
-    },
-    "location": {
-      "column": 5,
-      "row": 39
-    },
-    "message": "`rag_eval.datasets.formal.FormalDatasetError` imported but unused",
-    "name": "unused-import",
-    "noqa_row": 39,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/unused-import"
-  },
-  {
-    "cell": null,
-    "code": "F401",
-    "end_location": {
-      "column": 23,
-      "row": 45
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
-    "fix": {
-      "applicability": "safe",
-      "edits": [
-        {
-          "content": "from rag_eval.datasets.portfolio import (\n    PortfolioAssignment,\n    PortfolioSlot,\n    PortfolioSlotState,\n    PortfolioStore,\n)",
-          "end_location": {
-            "column": 2,
-            "row": 50
-          },
-          "location": {
-            "column": 1,
-            "row": 44
-          }
-        }
-      ],
-      "message": "Remove unused import: `rag_eval.datasets.portfolio.BenchmarkPortfolio`"
-    },
-    "location": {
-      "column": 5,
-      "row": 45
-    },
-    "message": "`rag_eval.datasets.portfolio.BenchmarkPortfolio` imported but unused",
-    "name": "unused-import",
-    "noqa_row": 45,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/unused-import"
   },
   {
     "cell": null,
     "code": "UP037",
     "end_location": {
       "column": 75,
-      "row": 105
+      "row": 120
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
+    "filename": "src/rag_eval/datasets/bundle_v3.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2434,11 +2224,11 @@
           "content": "BundleV3ReleasePin",
           "end_location": {
             "column": 75,
-            "row": 105
+            "row": 120
           },
           "location": {
             "column": 55,
-            "row": 105
+            "row": 120
           }
         }
       ],
@@ -2446,11 +2236,11 @@
     },
     "location": {
       "column": 55,
-      "row": 105
+      "row": 120
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 105,
+    "noqa_row": 120,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -2459,9 +2249,9 @@
     "code": "UP037",
     "end_location": {
       "column": 54,
-      "row": 151
+      "row": 165
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
+    "filename": "src/rag_eval/datasets/bundle_v3.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2469,11 +2259,11 @@
           "content": "BundleV3Manifest",
           "end_location": {
             "column": 54,
-            "row": 151
+            "row": 165
           },
           "location": {
             "column": 36,
-            "row": 151
+            "row": 165
           }
         }
       ],
@@ -2481,11 +2271,11 @@
     },
     "location": {
       "column": 36,
-      "row": 151
+      "row": 165
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 151,
+    "noqa_row": 165,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -2494,9 +2284,9 @@
     "code": "UP037",
     "end_location": {
       "column": 62,
-      "row": 185
+      "row": 199
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
+    "filename": "src/rag_eval/datasets/bundle_v3.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2504,11 +2294,11 @@
           "content": "BundleV3PortfolioBinding",
           "end_location": {
             "column": 62,
-            "row": 185
+            "row": 199
           },
           "location": {
             "column": 36,
-            "row": 185
+            "row": 199
           }
         }
       ],
@@ -2516,41 +2306,6 @@
     },
     "location": {
       "column": 36,
-      "row": 185
-    },
-    "message": "Remove quotes from type annotation",
-    "name": "quoted-annotation",
-    "noqa_row": 185,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
-  },
-  {
-    "cell": null,
-    "code": "UP037",
-    "end_location": {
-      "column": 53,
-      "row": 199
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
-    "fix": {
-      "applicability": "safe",
-      "edits": [
-        {
-          "content": "BundleV3CaseRecord",
-          "end_location": {
-            "column": 53,
-            "row": 199
-          },
-          "location": {
-            "column": 33,
-            "row": 199
-          }
-        }
-      ],
-      "message": "Remove quotes"
-    },
-    "location": {
-      "column": 33,
       "row": 199
     },
     "message": "Remove quotes from type annotation",
@@ -2564,21 +2319,21 @@
     "code": "UP037",
     "end_location": {
       "column": 53,
-      "row": 212
+      "row": 213
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
+    "filename": "src/rag_eval/datasets/bundle_v3.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "BundleV3GoldRecord",
+          "content": "BundleV3CaseRecord",
           "end_location": {
             "column": 53,
-            "row": 212
+            "row": 213
           },
           "location": {
             "column": 33,
-            "row": 212
+            "row": 213
           }
         }
       ],
@@ -2586,11 +2341,46 @@
     },
     "location": {
       "column": 33,
-      "row": 212
+      "row": 213
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 212,
+    "noqa_row": 213,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
+  },
+  {
+    "cell": null,
+    "code": "UP037",
+    "end_location": {
+      "column": 53,
+      "row": 226
+    },
+    "filename": "src/rag_eval/datasets/bundle_v3.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "BundleV3GoldRecord",
+          "end_location": {
+            "column": 53,
+            "row": 226
+          },
+          "location": {
+            "column": 33,
+            "row": 226
+          }
+        }
+      ],
+      "message": "Remove quotes"
+    },
+    "location": {
+      "column": 33,
+      "row": 226
+    },
+    "message": "Remove quotes from type annotation",
+    "name": "quoted-annotation",
+    "noqa_row": 226,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -2599,9 +2389,9 @@
     "code": "UP037",
     "end_location": {
       "column": 61,
-      "row": 231
+      "row": 245
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
+    "filename": "src/rag_eval/datasets/bundle_v3.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2609,11 +2399,11 @@
           "content": "BundleV3EvidenceRecord",
           "end_location": {
             "column": 61,
-            "row": 231
+            "row": 245
           },
           "location": {
             "column": 37,
-            "row": 231
+            "row": 245
           }
         }
       ],
@@ -2621,11 +2411,11 @@
     },
     "location": {
       "column": 37,
-      "row": 231
+      "row": 245
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 231,
+    "noqa_row": 245,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -2634,9 +2424,9 @@
     "code": "UP037",
     "end_location": {
       "column": 79,
-      "row": 344
+      "row": 331
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
+    "filename": "src/rag_eval/datasets/bundle_v3.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2644,11 +2434,11 @@
           "content": "BundleV3Materialization",
           "end_location": {
             "column": 79,
-            "row": 344
+            "row": 331
           },
           "location": {
             "column": 54,
-            "row": 344
+            "row": 331
           }
         }
       ],
@@ -2656,11 +2446,11 @@
     },
     "location": {
       "column": 54,
-      "row": 344
+      "row": 331
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 344,
+    "noqa_row": 331,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -2669,9 +2459,9 @@
     "code": "PERF102",
     "end_location": {
       "column": 69,
-      "row": 374
+      "row": 361
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/bundle_v3.py",
+    "filename": "src/rag_eval/datasets/bundle_v3.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -2679,22 +2469,22 @@
           "content": "(release, case_pin, gold_pin)",
           "end_location": {
             "column": 51,
-            "row": 374
+            "row": 361
           },
           "location": {
             "column": 13,
-            "row": 374
+            "row": 361
           }
         },
         {
           "content": "values",
           "end_location": {
             "column": 69,
-            "row": 374
+            "row": 361
           },
           "location": {
             "column": 64,
-            "row": 374
+            "row": 361
           }
         }
       ],
@@ -2702,11 +2492,11 @@
     },
     "location": {
       "column": 55,
-      "row": 374
+      "row": 361
     },
     "message": "When using only the values of a dict use the `values()` method",
     "name": "incorrect-dict-iterator",
-    "noqa_row": 374,
+    "noqa_row": 361,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/incorrect-dict-iterator"
   },
@@ -2717,7 +2507,7 @@
       "column": 23,
       "row": 22
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/docx_render.py",
+    "filename": "src/rag_eval/datasets/docx_render.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2752,7 +2542,7 @@
       "column": 23,
       "row": 20
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/docx_render.py",
+    "filename": "src/rag_eval/datasets/docx_render.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2787,7 +2577,7 @@
       "column": 72,
       "row": 195
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/docx_render.py",
+    "filename": "src/rag_eval/datasets/docx_render.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2822,7 +2612,7 @@
       "column": 59,
       "row": 236
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/docx_render.py",
+    "filename": "src/rag_eval/datasets/docx_render.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2863,55 +2653,20 @@
   },
   {
     "cell": null,
-    "code": "F401",
-    "end_location": {
-      "column": 10,
-      "row": 6
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/drafts.py",
-    "fix": {
-      "applicability": "safe",
-      "edits": [
-        {
-          "content": "",
-          "end_location": {
-            "column": 1,
-            "row": 7
-          },
-          "location": {
-            "column": 1,
-            "row": 6
-          }
-        }
-      ],
-      "message": "Remove unused import: `re`"
-    },
-    "location": {
-      "column": 8,
-      "row": 6
-    },
-    "message": "`re` imported but unused",
-    "name": "unused-import",
-    "noqa_row": 6,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/unused-import"
-  },
-  {
-    "cell": null,
     "code": "I001",
     "end_location": {
       "column": 41,
-      "row": 54
+      "row": 65
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "from __future__ import annotations\n\nimport hashlib\nimport json\nimport re\nimport shutil\nimport zipfile\nfrom datetime import UTC, datetime\nfrom enum import StrEnum\nfrom pathlib import Path\nfrom threading import Lock\nfrom typing import Literal\n\nfrom lxml import etree\nfrom pydantic import BaseModel, ConfigDict, Field, model_validator\n\nfrom rag_eval.authoring.ledger import (\n    LEDGER_SCHEMA_VERSION,\n    Adjudication,\n    Approval,\n    AuthoringLedger,\n    AuthoringOrigin,\n    AuthoringRelease,\n    BundleV2Projection,\n    CaseRevision,\n    EvidenceRole,\n    GoldRevision,\n    LedgerError,\n    LifecycleState,\n    Review,\n)\nfrom rag_eval.authoring.models import AuthoringDataset, CanonicalView\nfrom rag_eval.authoring.storage import AuthoringWorkspaceStore\nfrom rag_eval.contracts.canonical import (\n    CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY,\n    CANONICAL_SCHEMA_VERSION,\n    LEGACY_CANONICAL_SCHEMA_VERSION,\n    PREVIOUS_CANONICAL_SCHEMA_VERSION,\n    CanonicalConformanceReport,\n    CanonicalDocument,\n    CanonicalObject,\n    CanonicalRelation,\n    RepresentationStatus,\n)\nfrom rag_eval.datasets.bundle import DatasetBundle, DatasetBundleStore\nfrom rag_eval.storage.atomic import atomic_write_bytes, atomic_write_json\nfrom rag_eval.storage.ids import safe_id\n\n",
+          "content": "from __future__ import annotations\n\nimport hashlib\nimport json\nimport re\nimport zipfile\nfrom datetime import UTC, datetime\nfrom enum import StrEnum\nfrom pathlib import Path\nfrom threading import Lock\nfrom typing import Literal\n\nfrom lxml import etree\nfrom pydantic import BaseModel, ConfigDict, Field, model_validator\n\nfrom rag_eval.authoring.ledger import (\n    LEDGER_SCHEMA_VERSION,\n    Adjudication,\n    Approval,\n    AuthoringLedger,\n    AuthoringOrigin,\n    AuthoringRelease,\n    CaseRevision,\n    EvidenceRole,\n    GoldRevision,\n    LedgerError,\n    LifecycleState,\n    Review,\n)\nfrom rag_eval.authoring.models import AuthoringDataset, CanonicalView\nfrom rag_eval.authoring.storage import AuthoringWorkspaceStore\nfrom rag_eval.contracts.benchmark import (\n    BenchmarkAnswerV2,\n    BenchmarkCaseV2,\n    BenchmarkEvidenceDependencyV2,\n    BenchmarkEvidenceV2,\n    BenchmarkGoldV2,\n    BenchmarkMsesClauseV2,\n    BenchmarkMsesPathV2,\n    BenchmarkSourceIdentityV2,\n    NativeBenchmarkReleaseV2,\n    benchmark_case_selection_id,\n    native_benchmark_snapshot_digest,\n    native_canonical_catalog_bytes,\n)\nfrom rag_eval.contracts.canonical import (\n    CANONICAL_GOLD_ELIGIBILITY_POLICY_IDENTITY,\n    CANONICAL_SCHEMA_VERSION,\n    LEGACY_CANONICAL_SCHEMA_VERSION,\n    PREVIOUS_CANONICAL_SCHEMA_VERSION,\n    CanonicalConformanceReport,\n    CanonicalDocument,\n    CanonicalObject,\n    CanonicalRelation,\n    RepresentationStatus,\n)\nfrom rag_eval.storage.atomic import atomic_write_bytes, atomic_write_json\nfrom rag_eval.storage.ids import safe_id\n\n",
           "end_location": {
             "column": 1,
-            "row": 57
+            "row": 68
           },
           "location": {
             "column": 1,
@@ -2936,9 +2691,9 @@
     "code": "UP037",
     "end_location": {
       "column": 61,
-      "row": 142
+      "row": 147
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2946,11 +2701,11 @@
           "content": "ValidationReport",
           "end_location": {
             "column": 61,
-            "row": 142
+            "row": 147
           },
           "location": {
             "column": 43,
-            "row": 142
+            "row": 147
           }
         }
       ],
@@ -2958,11 +2713,11 @@
     },
     "location": {
       "column": 43,
-      "row": 142
+      "row": 147
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 142,
+    "noqa_row": 147,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -2971,9 +2726,9 @@
     "code": "UP037",
     "end_location": {
       "column": 28,
-      "row": 178
+      "row": 183
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -2981,11 +2736,11 @@
           "content": "ValidationReport",
           "end_location": {
             "column": 28,
-            "row": 178
+            "row": 183
           },
           "location": {
             "column": 10,
-            "row": 178
+            "row": 183
           }
         }
       ],
@@ -2993,46 +2748,11 @@
     },
     "location": {
       "column": 10,
-      "row": 178
+      "row": 183
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 178,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
-  },
-  {
-    "cell": null,
-    "code": "UP037",
-    "end_location": {
-      "column": 71,
-      "row": 280
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
-    "fix": {
-      "applicability": "safe",
-      "edits": [
-        {
-          "content": "ReleaseBundleProjection",
-          "end_location": {
-            "column": 71,
-            "row": 280
-          },
-          "location": {
-            "column": 46,
-            "row": 280
-          }
-        }
-      ],
-      "message": "Remove quotes"
-    },
-    "location": {
-      "column": 46,
-      "row": 280
-    },
-    "message": "Remove quotes from type annotation",
-    "name": "quoted-annotation",
-    "noqa_row": 280,
+    "noqa_row": 183,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -3041,9 +2761,9 @@
     "code": "UP037",
     "end_location": {
       "column": 60,
-      "row": 315
+      "row": 304
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3051,11 +2771,11 @@
           "content": "DatasetRelease",
           "end_location": {
             "column": 60,
-            "row": 315
+            "row": 304
           },
           "location": {
             "column": 44,
-            "row": 315
+            "row": 304
           }
         }
       ],
@@ -3063,11 +2783,11 @@
     },
     "location": {
       "column": 44,
-      "row": 315
+      "row": 304
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 315,
+    "noqa_row": 304,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -3076,9 +2796,9 @@
     "code": "UP037",
     "end_location": {
       "column": 57,
-      "row": 341
+      "row": 336
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3086,11 +2806,11 @@
           "content": "DatasetRelease",
           "end_location": {
             "column": 57,
-            "row": 341
+            "row": 336
           },
           "location": {
             "column": 41,
-            "row": 341
+            "row": 336
           }
         }
       ],
@@ -3098,11 +2818,11 @@
     },
     "location": {
       "column": 41,
-      "row": 341
+      "row": 336
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 341,
+    "noqa_row": 336,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -3111,17 +2831,17 @@
     "code": "BLE001",
     "end_location": {
       "column": 25,
-      "row": 768
+      "row": 819
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": null,
     "location": {
       "column": 16,
-      "row": 768
+      "row": 819
     },
     "message": "Do not catch blind exception: `Exception`",
     "name": "blind-except",
-    "noqa_row": 768,
+    "noqa_row": 819,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/blind-except"
   },
@@ -3130,9 +2850,9 @@
     "code": "F841",
     "end_location": {
       "column": 28,
-      "row": 769
+      "row": 820
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -3140,11 +2860,11 @@
           "content": "",
           "end_location": {
             "column": 1,
-            "row": 770
+            "row": 821
           },
           "location": {
             "column": 1,
-            "row": 769
+            "row": 820
           }
         }
       ],
@@ -3152,11 +2872,11 @@
     },
     "location": {
       "column": 13,
-      "row": 769
+      "row": 820
     },
     "message": "Local variable `canonical_error` is assigned to but never used",
     "name": "unused-variable",
-    "noqa_row": 769,
+    "noqa_row": 820,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/unused-variable"
   },
@@ -3165,17 +2885,17 @@
     "code": "BLE001",
     "end_location": {
       "column": 29,
-      "row": 952
+      "row": 1001
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": null,
     "location": {
       "column": 20,
-      "row": 952
+      "row": 1001
     },
     "message": "Do not catch blind exception: `Exception`",
     "name": "blind-except",
-    "noqa_row": 952,
+    "noqa_row": 1001,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/blind-except"
   },
@@ -3184,17 +2904,17 @@
     "code": "BLE001",
     "end_location": {
       "column": 29,
-      "row": 965
+      "row": 1014
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": null,
     "location": {
       "column": 20,
-      "row": 965
+      "row": 1014
     },
     "message": "Do not catch blind exception: `Exception`",
     "name": "blind-except",
-    "noqa_row": 965,
+    "noqa_row": 1014,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/blind-except"
   },
@@ -3203,17 +2923,17 @@
     "code": "B023",
     "end_location": {
       "column": 36,
-      "row": 1112
+      "row": 1161
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": null,
     "location": {
       "column": 28,
-      "row": 1112
+      "row": 1161
     },
     "message": "Function definition does not bind loop variable `visiting`",
     "name": "function-uses-loop-variable",
-    "noqa_row": 1112,
+    "noqa_row": 1161,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/function-uses-loop-variable"
   },
@@ -3222,17 +2942,17 @@
     "code": "B023",
     "end_location": {
       "column": 35,
-      "row": 1114
+      "row": 1163
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": null,
     "location": {
       "column": 28,
-      "row": 1114
+      "row": 1163
     },
     "message": "Function definition does not bind loop variable `visited`",
     "name": "function-uses-loop-variable",
-    "noqa_row": 1114,
+    "noqa_row": 1163,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/function-uses-loop-variable"
   },
@@ -3241,17 +2961,17 @@
     "code": "B023",
     "end_location": {
       "column": 25,
-      "row": 1116
+      "row": 1165
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": null,
     "location": {
       "column": 17,
-      "row": 1116
+      "row": 1165
     },
     "message": "Function definition does not bind loop variable `visiting`",
     "name": "function-uses-loop-variable",
-    "noqa_row": 1116,
+    "noqa_row": 1165,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/function-uses-loop-variable"
   },
@@ -3260,17 +2980,17 @@
     "code": "B023",
     "end_location": {
       "column": 60,
-      "row": 1117
+      "row": 1166
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": null,
     "location": {
       "column": 55,
-      "row": 1117
+      "row": 1166
     },
     "message": "Function definition does not bind loop variable `graph`",
     "name": "function-uses-loop-variable",
-    "noqa_row": 1117,
+    "noqa_row": 1166,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/function-uses-loop-variable"
   },
@@ -3279,17 +2999,17 @@
     "code": "B023",
     "end_location": {
       "column": 25,
-      "row": 1118
+      "row": 1167
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": null,
     "location": {
       "column": 17,
-      "row": 1118
+      "row": 1167
     },
     "message": "Function definition does not bind loop variable `visiting`",
     "name": "function-uses-loop-variable",
-    "noqa_row": 1118,
+    "noqa_row": 1167,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/function-uses-loop-variable"
   },
@@ -3298,17 +3018,17 @@
     "code": "B023",
     "end_location": {
       "column": 24,
-      "row": 1119
+      "row": 1168
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": null,
     "location": {
       "column": 17,
-      "row": 1119
+      "row": 1168
     },
     "message": "Function definition does not bind loop variable `visited`",
     "name": "function-uses-loop-variable",
-    "noqa_row": 1119,
+    "noqa_row": 1168,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/function-uses-loop-variable"
   },
@@ -3317,9 +3037,9 @@
     "code": "FURB192",
     "end_location": {
       "column": 38,
-      "row": 2385
+      "row": 2363
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/formal.py",
+    "filename": "src/rag_eval/datasets/formal.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -3327,11 +3047,11 @@
           "content": "min(matches)",
           "end_location": {
             "column": 38,
-            "row": 2385
+            "row": 2363
           },
           "location": {
             "column": 20,
-            "row": 2385
+            "row": 2363
           }
         }
       ],
@@ -3339,11 +3059,11 @@
     },
     "location": {
       "column": 20,
-      "row": 2385
+      "row": 2363
     },
     "message": "Prefer `min` over `sorted()` to compute the minimum value in a sequence",
     "name": "sorted-min-max",
-    "noqa_row": 2385,
+    "noqa_row": 2363,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/sorted-min-max"
   },
@@ -3352,9 +3072,9 @@
     "code": "UP037",
     "end_location": {
       "column": 52,
-      "row": 271
+      "row": 270
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/portfolio.py",
+    "filename": "src/rag_eval/datasets/portfolio.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3362,11 +3082,11 @@
           "content": "BlueprintMatrixRow",
           "end_location": {
             "column": 52,
-            "row": 271
+            "row": 270
           },
           "location": {
             "column": 32,
-            "row": 271
+            "row": 270
           }
         }
       ],
@@ -3374,11 +3094,11 @@
     },
     "location": {
       "column": 32,
-      "row": 271
+      "row": 270
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 271,
+    "noqa_row": 270,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -3387,9 +3107,9 @@
     "code": "UP037",
     "end_location": {
       "column": 55,
-      "row": 305
+      "row": 304
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/portfolio.py",
+    "filename": "src/rag_eval/datasets/portfolio.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3397,11 +3117,11 @@
           "content": "PortfolioSlot",
           "end_location": {
             "column": 55,
-            "row": 305
+            "row": 304
           },
           "location": {
             "column": 40,
-            "row": 305
+            "row": 304
           }
         }
       ],
@@ -3409,11 +3129,11 @@
     },
     "location": {
       "column": 40,
-      "row": 305
+      "row": 304
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 305,
+    "noqa_row": 304,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -3422,9 +3142,9 @@
     "code": "UP037",
     "end_location": {
       "column": 52,
-      "row": 344
+      "row": 343
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/portfolio.py",
+    "filename": "src/rag_eval/datasets/portfolio.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3432,11 +3152,11 @@
           "content": "PortfolioAssignment",
           "end_location": {
             "column": 52,
-            "row": 344
+            "row": 343
           },
           "location": {
             "column": 31,
-            "row": 344
+            "row": 343
           }
         }
       ],
@@ -3444,11 +3164,11 @@
     },
     "location": {
       "column": 31,
-      "row": 344
+      "row": 343
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 344,
+    "noqa_row": 343,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -3457,17 +3177,17 @@
     "code": "SIM102",
     "end_location": {
       "column": 77,
-      "row": 350
+      "row": 349
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/portfolio.py",
+    "filename": "src/rag_eval/datasets/portfolio.py",
     "fix": null,
     "location": {
       "column": 9,
-      "row": 349
+      "row": 348
     },
     "message": "Use a single `if` statement instead of nested `if` statements",
     "name": "collapsible-if",
-    "noqa_row": 349,
+    "noqa_row": 348,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/collapsible-if"
   },
@@ -3476,17 +3196,17 @@
     "code": "SIM102",
     "end_location": {
       "column": 87,
-      "row": 353
+      "row": 352
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/portfolio.py",
+    "filename": "src/rag_eval/datasets/portfolio.py",
     "fix": null,
     "location": {
       "column": 9,
-      "row": 352
+      "row": 351
     },
     "message": "Use a single `if` statement instead of nested `if` statements",
     "name": "collapsible-if",
-    "noqa_row": 352,
+    "noqa_row": 351,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/collapsible-if"
   },
@@ -3495,9 +3215,9 @@
     "code": "UP037",
     "end_location": {
       "column": 63,
-      "row": 370
+      "row": 369
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/portfolio.py",
+    "filename": "src/rag_eval/datasets/portfolio.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3505,11 +3225,11 @@
           "content": "BenchmarkPortfolio",
           "end_location": {
             "column": 63,
-            "row": 370
+            "row": 369
           },
           "location": {
             "column": 43,
-            "row": 370
+            "row": 369
           }
         }
       ],
@@ -3517,11 +3237,11 @@
     },
     "location": {
       "column": 43,
-      "row": 370
+      "row": 369
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 370,
+    "noqa_row": 369,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -3530,9 +3250,9 @@
     "code": "UP037",
     "end_location": {
       "column": 30,
-      "row": 403
+      "row": 402
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/portfolio.py",
+    "filename": "src/rag_eval/datasets/portfolio.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3540,11 +3260,11 @@
           "content": "BenchmarkPortfolio",
           "end_location": {
             "column": 30,
-            "row": 403
+            "row": 402
           },
           "location": {
             "column": 10,
-            "row": 403
+            "row": 402
           }
         }
       ],
@@ -3552,11 +3272,11 @@
     },
     "location": {
       "column": 10,
-      "row": 403
+      "row": 402
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 403,
+    "noqa_row": 402,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -3565,9 +3285,9 @@
     "code": "UP037",
     "end_location": {
       "column": 58,
-      "row": 459
+      "row": 446
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/portfolio.py",
+    "filename": "src/rag_eval/datasets/portfolio.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3575,11 +3295,11 @@
           "content": "PortfolioCoverageReport",
           "end_location": {
             "column": 58,
-            "row": 459
+            "row": 446
           },
           "location": {
             "column": 33,
-            "row": 459
+            "row": 446
           }
         }
       ],
@@ -3587,11 +3307,11 @@
     },
     "location": {
       "column": 33,
-      "row": 459
+      "row": 446
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 459,
+    "noqa_row": 446,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -3600,9 +3320,9 @@
     "code": "UP037",
     "end_location": {
       "column": 35,
-      "row": 491
+      "row": 476
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/portfolio.py",
+    "filename": "src/rag_eval/datasets/portfolio.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3610,11 +3330,11 @@
           "content": "PortfolioCoverageReport",
           "end_location": {
             "column": 35,
-            "row": 491
+            "row": 476
           },
           "location": {
             "column": 10,
-            "row": 491
+            "row": 476
           }
         }
       ],
@@ -3622,11 +3342,11 @@
     },
     "location": {
       "column": 10,
-      "row": 491
+      "row": 476
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 491,
+    "noqa_row": 476,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -3635,9 +3355,9 @@
     "code": "UP037",
     "end_location": {
       "column": 47,
-      "row": 666
+      "row": 650
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/portfolio.py",
+    "filename": "src/rag_eval/datasets/portfolio.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3645,11 +3365,11 @@
           "content": "DatasetReleaseStore | None",
           "end_location": {
             "column": 47,
-            "row": 666
+            "row": 650
           },
           "location": {
             "column": 19,
-            "row": 666
+            "row": 650
           }
         }
       ],
@@ -3657,11 +3377,11 @@
     },
     "location": {
       "column": 19,
-      "row": 666
+      "row": 650
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 666,
+    "noqa_row": 650,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -3670,108 +3390,19 @@
     "code": "SIM102",
     "end_location": {
       "column": 87,
-      "row": 815
+      "row": 786
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/portfolio.py",
+    "filename": "src/rag_eval/datasets/portfolio.py",
     "fix": null,
     "location": {
       "column": 9,
-      "row": 814
+      "row": 785
     },
     "message": "Use a single `if` statement instead of nested `if` statements",
     "name": "collapsible-if",
-    "noqa_row": 814,
+    "noqa_row": 785,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/collapsible-if"
-  },
-  {
-    "cell": null,
-    "code": "I001",
-    "end_location": {
-      "column": 54,
-      "row": 17
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/registry.py",
-    "fix": {
-      "applicability": "safe",
-      "edits": [
-        {
-          "content": "from __future__ import annotations\n\nimport hashlib\nimport json\nfrom enum import StrEnum\nfrom pathlib import Path\n\nfrom pydantic import BaseModel, ConfigDict, Field, model_validator\n\nfrom rag_eval.storage.atomic import atomic_write_json\n\n",
-          "end_location": {
-            "column": 1,
-            "row": 20
-          },
-          "location": {
-            "column": 1,
-            "row": 8
-          }
-        }
-      ],
-      "message": "Organize imports"
-    },
-    "location": {
-      "column": 1,
-      "row": 8
-    },
-    "message": "Import block is un-sorted or un-formatted",
-    "name": "unsorted-imports",
-    "noqa_row": 8,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
-  },
-  {
-    "cell": null,
-    "code": "SIM102",
-    "end_location": {
-      "column": 67,
-      "row": 55
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/datasets/registry.py",
-    "fix": null,
-    "location": {
-      "column": 9,
-      "row": 54
-    },
-    "message": "Use a single `if` statement instead of nested `if` statements",
-    "name": "collapsible-if",
-    "noqa_row": 54,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/collapsible-if"
-  },
-  {
-    "cell": null,
-    "code": "I001",
-    "end_location": {
-      "column": 50,
-      "row": 59
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/execution.py",
-    "fix": {
-      "applicability": "safe",
-      "edits": [
-        {
-          "content": "from __future__ import annotations\n\nimport hashlib\nimport shutil\nimport uuid\nfrom collections.abc import Callable, Mapping\nfrom dataclasses import replace\nfrom datetime import UTC, datetime\nfrom pathlib import Path\nfrom threading import Event, Thread\n\nimport httpx\n\nfrom rag_eval import __version__\nfrom rag_eval.artifact_contract import artifact_digest as contract_digest\nfrom rag_eval.contracts.dataset import Question\nfrom rag_eval.contracts.native import (\n    NativeQueryV2,\n    OriginalDocumentV2,\n    PreparedSystemV2,\n    ResolvedAdapterConfigV2,\n)\nfrom rag_eval.contracts.observation import ObservationStatus\nfrom rag_eval.contracts.research import LatencyProtocol, ModelArtifactIdentity\nfrom rag_eval.contracts.run import ExperimentSpec\nfrom rag_eval.contracts.wire import WorkerIdentityV2\nfrom rag_eval.datasets.bundle import (\n    DatasetBundle,\n    DatasetBundleStore,\n    case_selection_id,\n)\nfrom rag_eval.datasets.formal import DatasetReleaseStore\nfrom rag_eval.evaluation.unified import EvaluationProfile\nfrom rag_eval.execution_provider import (\n    ExecutionProvider,\n    ExecutionRequest,\n    LocalProcessProvider,\n    WorkerHandle,\n)\nfrom rag_eval.runs import (\n    AdapterSession,\n    ArtifactCaseErrorV2,\n    ArtifactWriter,\n    BenchmarkResolver,\n    EvaluationEngine,\n    NativeCaseOrchestrator,\n    RunArtifactCaseV2,\n    TraceValidationRecordV2,\n    TraceValidationResult,\n    TraceValidator,\n    benchmark_identity_from_release_metadata,\n)\nfrom rag_eval.runs.plans import (\n    ResolvedRunPlanReferenceV2,\n    ResolvedRunPlanV2,\n    formal_metric_descriptors,\n)\nfrom rag_eval.runs.records import RunRecordStoreV2, RunRecordV2\nfrom rag_eval.runtime_admission import NATIVE_DOCUMENT_EXECUTION_CONTRACT\nfrom rag_eval.worker.client import WorkerProtocolError, WorkerRemoteError\nfrom rag_eval.worker.process import WorkerCommand\n\n\n",
-          "end_location": {
-            "column": 1,
-            "row": 62
-          },
-          "location": {
-            "column": 1,
-            "row": 3
-          }
-        }
-      ],
-      "message": "Organize imports"
-    },
-    "location": {
-      "column": 1,
-      "row": 3
-    },
-    "message": "Import block is un-sorted or un-formatted",
-    "name": "unsorted-imports",
-    "noqa_row": 3,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
   },
   {
     "cell": null,
@@ -3780,7 +3411,7 @@
       "column": 17,
       "row": 151
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/execution_provider.py",
+    "filename": "src/rag_eval/execution_provider.py",
     "fix": null,
     "location": {
       "column": 9,
@@ -3799,7 +3430,7 @@
       "column": 177,
       "row": 430
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/llm.py",
+    "filename": "src/rag_eval/llm.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3834,7 +3465,7 @@
       "column": 95,
       "row": 443
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/llm.py",
+    "filename": "src/rag_eval/llm.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3869,7 +3500,7 @@
       "column": 29,
       "row": 469
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/llm.py",
+    "filename": "src/rag_eval/llm.py",
     "fix": null,
     "location": {
       "column": 20,
@@ -3888,7 +3519,7 @@
       "column": 25,
       "row": 526
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/llm.py",
+    "filename": "src/rag_eval/llm.py",
     "fix": null,
     "location": {
       "column": 16,
@@ -3907,7 +3538,7 @@
       "column": 29,
       "row": 545
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/llm.py",
+    "filename": "src/rag_eval/llm.py",
     "fix": null,
     "location": {
       "column": 20,
@@ -3926,7 +3557,7 @@
       "column": 25,
       "row": 553
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/llm.py",
+    "filename": "src/rag_eval/llm.py",
     "fix": null,
     "location": {
       "column": 16,
@@ -3945,7 +3576,7 @@
       "column": 113,
       "row": 217
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/products.py",
+    "filename": "src/rag_eval/products.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -3978,17 +3609,17 @@
     "code": "TRY004",
     "end_location": {
       "column": 78,
-      "row": 354
+      "row": 352
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/products.py",
+    "filename": "src/rag_eval/products.py",
     "fix": null,
     "location": {
       "column": 9,
-      "row": 354
+      "row": 352
     },
     "message": "Prefer `TypeError` exception for invalid type",
     "name": "type-check-without-type-error",
-    "noqa_row": 354,
+    "noqa_row": 352,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/type-check-without-type-error"
   },
@@ -3999,7 +3630,7 @@
       "column": 43,
       "row": 17
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/reviews.py",
+    "filename": "src/rag_eval/reviews.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -4034,7 +3665,7 @@
       "column": 85,
       "row": 437
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/reviews.py",
+    "filename": "src/rag_eval/reviews.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -4067,9 +3698,9 @@
     "code": "UP037",
     "end_location": {
       "column": 46,
-      "row": 634
+      "row": 640
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/reviews.py",
+    "filename": "src/rag_eval/reviews.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -4077,11 +3708,11 @@
           "content": "LLMConfigurationService | None",
           "end_location": {
             "column": 46,
-            "row": 634
+            "row": 640
           },
           "location": {
             "column": 14,
-            "row": 634
+            "row": 640
           }
         }
       ],
@@ -4089,11 +3720,11 @@
     },
     "location": {
       "column": 14,
-      "row": 634
+      "row": 640
     },
     "message": "Remove quotes from type annotation",
     "name": "quoted-annotation",
-    "noqa_row": 634,
+    "noqa_row": 640,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
   },
@@ -4104,7 +3735,7 @@
       "column": 66,
       "row": 36
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/run_presentations.py",
+    "filename": "src/rag_eval/run_presentations.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -4139,7 +3770,7 @@
       "column": 25,
       "row": 98
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/secrets.py",
+    "filename": "src/rag_eval/secrets.py",
     "fix": null,
     "location": {
       "column": 16,
@@ -4158,7 +3789,7 @@
       "column": 81,
       "row": 126
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/src/rag_eval/secrets.py",
+    "filename": "src/rag_eval/secrets.py",
     "fix": null,
     "location": {
       "column": 13,
@@ -4177,7 +3808,7 @@
       "column": 50,
       "row": 28
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_authoring.py",
+    "filename": "tests/rag_eval_platform/test_authoring.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -4210,9 +3841,9 @@
     "code": "F841",
     "end_location": {
       "column": 12,
-      "row": 909
+      "row": 907
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_authoring.py",
+    "filename": "tests/rag_eval_platform/test_authoring.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -4220,11 +3851,11 @@
           "content": "",
           "end_location": {
             "column": 15,
-            "row": 909
+            "row": 907
           },
           "location": {
             "column": 5,
-            "row": 909
+            "row": 907
           }
         }
       ],
@@ -4232,11 +3863,11 @@
     },
     "location": {
       "column": 5,
-      "row": 909
+      "row": 907
     },
     "message": "Local variable `dataset` is assigned to but never used",
     "name": "unused-variable",
-    "noqa_row": 909,
+    "noqa_row": 907,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/unused-variable"
   },
@@ -4245,17 +3876,17 @@
     "code": "I001",
     "end_location": {
       "column": 61,
-      "row": 30
+      "row": 28
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_authoring_ledger.py",
+    "filename": "tests/rag_eval_platform/test_authoring_ledger.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "from __future__ import annotations\n\nimport json\nfrom pathlib import Path\n\nimport pytest\nfrom pydantic import ValidationError\n\nfrom rag_eval.authoring.ledger import (\n    ActorRole,\n    AuthoringOrigin,\n    CaseDraft,\n    EvidenceDependency,\n    EvidenceRole,\n    GoldAnswer,\n    GoldEvidence,\n    GoldPayload,\n    LedgerError,\n    LifecycleState,\n    MsesClause,\n    MsesPath,\n    OriginKind,\n    ReviewDecision,\n    TargetKind,\n    TrustLevel,\n)\nfrom rag_eval.authoring.models import (\n    AnswerEvidenceCandidate,\n    CandidateEvidence,\n    CandidateState,\n    DiscoveryMethod,\n)\nfrom rag_eval.authoring.service import AuthoringService\nfrom rag_eval.datasets.registry import FROZEN_20_CASE_BUNDLE_ID\nfrom tests.rag_eval_platform.test_authoring import mini_docx\n\n\n",
+          "content": "from __future__ import annotations\n\nfrom pathlib import Path\n\nimport pytest\nfrom pydantic import ValidationError\n\nfrom rag_eval.authoring.ledger import (\n    ActorRole,\n    AuthoringOrigin,\n    CaseDraft,\n    EvidenceDependency,\n    EvidenceRole,\n    GoldAnswer,\n    GoldEvidence,\n    GoldPayload,\n    LedgerError,\n    LifecycleState,\n    MsesClause,\n    MsesPath,\n    OriginKind,\n    ReviewDecision,\n    TargetKind,\n    TrustLevel,\n)\nfrom rag_eval.authoring.models import (\n    AnswerEvidenceCandidate,\n    CandidateEvidence,\n    CandidateState,\n    DiscoveryMethod,\n)\nfrom rag_eval.authoring.service import AuthoringService\nfrom tests.rag_eval_platform.test_authoring import mini_docx\n\n\n",
           "end_location": {
             "column": 1,
-            "row": 33
+            "row": 31
           },
           "location": {
             "column": 1,
@@ -4280,9 +3911,9 @@
     "code": "F401",
     "end_location": {
       "column": 14,
-      "row": 10
+      "row": 9
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_authoring_ledger.py",
+    "filename": "tests/rag_eval_platform/test_authoring_ledger.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -4290,11 +3921,11 @@
           "content": "from rag_eval.authoring.ledger import (\n    AuthoringOrigin,\n    CaseDraft,\n    EvidenceDependency,\n    EvidenceRole,\n    GoldAnswer,\n    GoldEvidence,\n    GoldPayload,\n    LedgerError,\n    LifecycleState,\n    MsesClause,\n    MsesPath,\n    OriginKind,\n    ReviewDecision,\n    TargetKind,\n    TrustLevel,\n)",
           "end_location": {
             "column": 2,
-            "row": 26
+            "row": 25
           },
           "location": {
             "column": 1,
-            "row": 9
+            "row": 8
           }
         }
       ],
@@ -4302,11 +3933,11 @@
     },
     "location": {
       "column": 5,
-      "row": 10
+      "row": 9
     },
     "message": "`rag_eval.authoring.ledger.ActorRole` imported but unused",
     "name": "unused-import",
-    "noqa_row": 10,
+    "noqa_row": 9,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/unused-import"
   },
@@ -4317,7 +3948,7 @@
       "column": 61,
       "row": 39
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_benchmark_admission_policy.py",
+    "filename": "tests/rag_eval_platform/test_benchmark_admission_policy.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -4352,7 +3983,7 @@
       "column": 53,
       "row": 8
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_benchmark_admission_policy.py",
+    "filename": "tests/rag_eval_platform/test_benchmark_admission_policy.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -4387,7 +4018,7 @@
       "column": 148,
       "row": 110
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_benchmark_admission_policy.py",
+    "filename": "tests/rag_eval_platform/test_benchmark_admission_policy.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -4431,17 +4062,17 @@
     "code": "I001",
     "end_location": {
       "column": 61,
-      "row": 27
+      "row": 26
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_benchmark_portfolio.py",
+    "filename": "tests/rag_eval_platform/test_benchmark_portfolio.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "from __future__ import annotations\n\nimport inspect\nfrom pathlib import Path\n\nimport pytest\nfrom pydantic import ValidationError\n\nfrom rag_eval.authoring.ledger import LifecycleState, TargetKind\nfrom rag_eval.authoring.models import (\n    AnswerEvidenceCandidate,\n    CandidateEvidence,\n    DiscoveryMethod,\n)\nfrom rag_eval.authoring.service import AuthoringService\nfrom rag_eval.datasets.formal import FormalDatasetReleaseService\nfrom rag_eval.datasets.portfolio import (\n    BenchmarkPortfolioService,\n    EvidenceRequirement,\n    PortfolioAssignment,\n    PortfolioBlockedReason,\n    PortfolioError,\n    PortfolioLinks,\n    PortfolioSlot,\n    PortfolioSlotState,\n    PortfolioUsage,\n)\nfrom rag_eval.datasets.registry import FROZEN_20_CASE_BUNDLE_ID\nfrom rag_eval.service import PlatformService\nfrom rag_eval.storage.layout import PlatformPaths\nfrom tests.rag_eval_platform.test_authoring import mini_docx\n\n\n",
+          "content": "from __future__ import annotations\n\nimport inspect\nfrom pathlib import Path\n\nimport pytest\nfrom pydantic import ValidationError\n\nfrom rag_eval.authoring.ledger import LifecycleState, TargetKind\nfrom rag_eval.authoring.models import (\n    AnswerEvidenceCandidate,\n    CandidateEvidence,\n    DiscoveryMethod,\n)\nfrom rag_eval.authoring.service import AuthoringService\nfrom rag_eval.datasets.formal import FormalDatasetReleaseService\nfrom rag_eval.datasets.portfolio import (\n    BenchmarkPortfolioService,\n    EvidenceRequirement,\n    PortfolioAssignment,\n    PortfolioBlockedReason,\n    PortfolioError,\n    PortfolioLinks,\n    PortfolioSlot,\n    PortfolioSlotState,\n    PortfolioUsage,\n)\nfrom rag_eval.service import PlatformService\nfrom rag_eval.storage.layout import PlatformPaths\nfrom tests.rag_eval_platform.test_authoring import mini_docx\n\n\n",
           "end_location": {
             "column": 1,
-            "row": 30
+            "row": 29
           },
           "location": {
             "column": 1,
@@ -4466,17 +4097,17 @@
     "code": "I001",
     "end_location": {
       "column": 85,
-      "row": 41
+      "row": 42
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_bundle_v3.py",
+    "filename": "tests/rag_eval_platform/test_bundle_v3.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "from __future__ import annotations\n\nimport json\nfrom datetime import UTC, datetime\nfrom pathlib import Path\n\nimport pytest\n\nfrom rag_eval.authoring.ledger import (\n    EvidenceDependency,\n    EvidenceRole,\n    GoldAnswer,\n    GoldEvidence,\n    GoldPayload,\n    GoldRevision,\n    MsesClause,\n    MsesPath,\n)\nfrom rag_eval.authoring.models import DiscoveryMethod\nfrom rag_eval.authoring.service import AuthoringService\nfrom rag_eval.contracts.canonical import CanonicalDocument\nfrom rag_eval.datasets.bundle import load_bundle\nfrom rag_eval.datasets.bundle_v3 import (\n    BundleV3Builder,\n    BundleV3EvidenceRecord,\n    BundleV3GoldRecord,\n    BundleV3IntegrityError,\n    BundleV3Store,\n    _validate_gold_semantics,\n    load_bundle_v3,\n)\nfrom rag_eval.datasets.formal import FormalDatasetReleaseService\nfrom rag_eval.datasets.portfolio import (\n    BenchmarkPortfolioService,\n    PortfolioAssignment,\n    PortfolioLinks,\n    PortfolioSlotState,\n)\nfrom rag_eval.datasets.registry import FROZEN_20_CASE_BUNDLE_ID\nfrom tests.rag_eval_platform.test_authoring import mini_docx\nfrom tests.rag_eval_platform.test_rich_content_canonicalization import _rich_fixture\n\n\n",
+          "content": "from __future__ import annotations\n\nimport json\nimport os\nimport subprocess\nimport sys\nfrom datetime import UTC, datetime\nfrom pathlib import Path\n\nimport pytest\n\nfrom rag_eval.authoring.ledger import (\n    EvidenceDependency,\n    EvidenceRole,\n    GoldAnswer,\n    GoldEvidence,\n    GoldPayload,\n    GoldRevision,\n    MsesClause,\n    MsesPath,\n)\nfrom rag_eval.authoring.models import DiscoveryMethod\nfrom rag_eval.authoring.service import AuthoringService\nfrom rag_eval.contracts.canonical import CanonicalDocument\nfrom rag_eval.datasets.bundle_v3 import (\n    BundleV3Builder,\n    BundleV3EvidenceRecord,\n    BundleV3GoldRecord,\n    BundleV3IntegrityError,\n    BundleV3Store,\n    _validate_gold_semantics,\n    load_bundle_v3,\n)\nfrom rag_eval.datasets.formal import FormalDatasetReleaseService\nfrom rag_eval.datasets.portfolio import (\n    BenchmarkPortfolioService,\n    PortfolioAssignment,\n    PortfolioLinks,\n    PortfolioSlotState,\n)\nfrom tests.rag_eval_platform.test_authoring import mini_docx\nfrom tests.rag_eval_platform.test_rich_content_canonicalization import _rich_fixture\n\n\n",
           "end_location": {
             "column": 1,
-            "row": 44
+            "row": 45
           },
           "location": {
             "column": 1,
@@ -4498,66 +4129,20 @@
   },
   {
     "cell": null,
-    "code": "C401",
-    "end_location": {
-      "column": 112,
-      "row": 142
-    },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_bundle_v3.py",
-    "fix": {
-      "applicability": "unsafe",
-      "edits": [
-        {
-          "content": "{",
-          "end_location": {
-            "column": 16,
-            "row": 142
-          },
-          "location": {
-            "column": 12,
-            "row": 142
-          }
-        },
-        {
-          "content": "}",
-          "end_location": {
-            "column": 112,
-            "row": 142
-          },
-          "location": {
-            "column": 111,
-            "row": 142
-          }
-        }
-      ],
-      "message": "Rewrite as a set comprehension"
-    },
-    "location": {
-      "column": 12,
-      "row": 142
-    },
-    "message": "Unnecessary generator (rewrite as a set comprehension)",
-    "name": "unnecessary-generator-set",
-    "noqa_row": 142,
-    "severity": "error",
-    "url": "https://docs.astral.sh/ruff/rules/unnecessary-generator-set"
-  },
-  {
-    "cell": null,
     "code": "I001",
     "end_location": {
       "column": 61,
-      "row": 40
+      "row": 32
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_canonical_contract.py",
+    "filename": "tests/rag_eval_platform/test_canonical_contract.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "from __future__ import annotations\n\nimport io\nimport json\nimport zipfile\nfrom pathlib import Path\n\nimport pytest\nfrom lxml import etree\nfrom pydantic import ValidationError\n\nfrom rag_eval.authoring.canonical import DocxCanonicalizer\nfrom rag_eval.authoring.service import AuthoringService\nfrom rag_eval.contracts.canonical import (\n    CANONICAL_SCHEMA_VERSION,\n    LEGACY_CANONICAL_SCHEMA_VERSION,\n    PREVIOUS_CANONICAL_SCHEMA_VERSION,\n    CanonicalContractError,\n    CanonicalDocument,\n    CanonicalObject,\n    CanonicalObjectProvenance,\n    CanonicalObjectType,\n    CanonicalRelation,\n    CanonicalRelationProvenance,\n    CanonicalRelationType,\n    RepresentationStatus,\n    SourceSpan,\n    build_canonical_manifest,\n)\nfrom rag_eval.datasets.registry import (\n    FROZEN_20_CASE_BUNDLE_ID,\n    FROZEN_20_CASE_REFERENCE,\n    DatasetLifecycle,\n    DatasetRegistryError,\n    DatasetRegistryRecord,\n    DatasetUsage,\n)\nfrom rag_eval.service import PlatformService\nfrom rag_eval.storage.layout import PlatformPaths\nfrom tests.rag_eval_platform.test_authoring import mini_docx\n\n",
+          "content": "from __future__ import annotations\n\nimport io\nimport json\nimport zipfile\nfrom pathlib import Path\n\nimport pytest\nfrom lxml import etree\nfrom pydantic import ValidationError\n\nfrom rag_eval.authoring.canonical import DocxCanonicalizer\nfrom rag_eval.authoring.service import AuthoringService\nfrom rag_eval.contracts.canonical import (\n    CANONICAL_SCHEMA_VERSION,\n    LEGACY_CANONICAL_SCHEMA_VERSION,\n    PREVIOUS_CANONICAL_SCHEMA_VERSION,\n    CanonicalContractError,\n    CanonicalDocument,\n    CanonicalObject,\n    CanonicalObjectProvenance,\n    CanonicalObjectType,\n    CanonicalRelation,\n    CanonicalRelationProvenance,\n    CanonicalRelationType,\n    RepresentationStatus,\n    SourceSpan,\n    build_canonical_manifest,\n)\nfrom rag_eval.service import PlatformService\nfrom rag_eval.storage.layout import PlatformPaths\nfrom tests.rag_eval_platform.test_authoring import mini_docx\n\n",
           "end_location": {
             "column": 1,
-            "row": 43
+            "row": 35
           },
           "location": {
             "column": 1,
@@ -4582,9 +4167,9 @@
     "code": "F841",
     "end_location": {
       "column": 16,
-      "row": 244
+      "row": 236
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_canonical_contract.py",
+    "filename": "tests/rag_eval_platform/test_canonical_contract.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -4592,11 +4177,11 @@
           "content": "",
           "end_location": {
             "column": 19,
-            "row": 244
+            "row": 236
           },
           "location": {
             "column": 5,
-            "row": 244
+            "row": 236
           }
         }
       ],
@@ -4604,11 +4189,11 @@
     },
     "location": {
       "column": 5,
-      "row": 244
+      "row": 236
     },
     "message": "Local variable `second_view` is assigned to but never used",
     "name": "unused-variable",
-    "noqa_row": 244,
+    "noqa_row": 236,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/unused-variable"
   },
@@ -4619,7 +4204,7 @@
       "column": 61,
       "row": 9
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_complex_table_canonicalization.py",
+    "filename": "tests/rag_eval_platform/test_complex_table_canonicalization.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -4652,17 +4237,17 @@
     "code": "I001",
     "end_location": {
       "column": 61,
-      "row": 31
+      "row": 28
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_formal_release_lineage.py",
+    "filename": "tests/rag_eval_platform/test_formal_release_lineage.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "from __future__ import annotations\n\nimport hashlib\nimport shutil\nfrom pathlib import Path\n\nimport pytest\nfrom pydantic import ValidationError\n\nfrom rag_eval.authoring.ledger import (\n    EvidenceRole,\n    GoldAnswer,\n    GoldEvidence,\n    GoldPayload,\n    MsesClause,\n    MsesPath,\n    ReviewDecision,\n    TargetKind,\n)\nfrom rag_eval.authoring.models import (\n    AnswerEvidenceCandidate,\n    CandidateEvidence,\n    DiscoveryMethod,\n)\nfrom rag_eval.authoring.service import AuthoringService\nfrom rag_eval.datasets.bundle import DatasetBundleStore\nfrom rag_eval.datasets.formal import (\n    BundleProjectionStatus,\n    FormalDatasetError,\n    FormalDatasetReleaseService,\n    ReleaseSchemaVersions,\n    RuleResult,\n    RuleSeverity,\n)\nfrom tests.rag_eval_platform.test_authoring import mini_docx\n\n\n",
+          "content": "from __future__ import annotations\n\nimport shutil\nfrom pathlib import Path\n\nimport pytest\nfrom pydantic import ValidationError\n\nfrom rag_eval.authoring.ledger import (\n    EvidenceRole,\n    GoldAnswer,\n    GoldEvidence,\n    GoldPayload,\n    MsesClause,\n    MsesPath,\n    ReviewDecision,\n    TargetKind,\n)\nfrom rag_eval.authoring.models import (\n    AnswerEvidenceCandidate,\n    CandidateEvidence,\n    DiscoveryMethod,\n)\nfrom rag_eval.authoring.service import AuthoringService\nfrom rag_eval.datasets.formal import (\n    FormalDatasetError,\n    FormalDatasetReleaseService,\n    ReleaseSchemaVersions,\n    RuleResult,\n    RuleSeverity,\n)\nfrom tests.rag_eval_platform.test_authoring import mini_docx\n\n\n",
           "end_location": {
             "column": 1,
-            "row": 34
+            "row": 31
           },
           "location": {
             "column": 1,
@@ -4687,9 +4272,9 @@
     "code": "RUF059",
     "end_location": {
       "column": 14,
-      "row": 117
+      "row": 111
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_formal_release_lineage.py",
+    "filename": "tests/rag_eval_platform/test_formal_release_lineage.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
@@ -4697,11 +4282,11 @@
           "content": "_authoring",
           "end_location": {
             "column": 14,
-            "row": 117
+            "row": 111
           },
           "location": {
             "column": 5,
-            "row": 117
+            "row": 111
           }
         }
       ],
@@ -4709,11 +4294,11 @@
     },
     "location": {
       "column": 5,
-      "row": 117
+      "row": 111
     },
     "message": "Unpacked variable `authoring` is never used",
     "name": "unused-unpacked-variable",
-    "noqa_row": 117,
+    "noqa_row": 111,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/unused-unpacked-variable"
   },
@@ -4721,18 +4306,18 @@
     "cell": null,
     "code": "I001",
     "end_location": {
-      "column": 67,
-      "row": 21
+      "column": 57,
+      "row": 16
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_product_layer.py",
+    "filename": "tests/rag_eval_platform/test_product_layer.py",
     "fix": {
       "applicability": "safe",
       "edits": [
         {
-          "content": "from __future__ import annotations\n\nimport base64\nimport io\nimport sys\nimport zipfile\nfrom pathlib import Path\nfrom urllib.parse import quote\n\nimport pytest\nfrom fastapi.testclient import TestClient\n\nfrom rag_eval.api import create_app\nfrom rag_eval.datasets.drafts import (\n    DatasetDraft,\n    DatasetDraftStore,\n    DraftCase,\n    DraftDocument,\n)\nfrom rag_eval.products import EvaluationDraft, SystemConnection, canonical_experiment\nfrom rag_eval.secrets import EncryptedDevFileSecretStore, safe_environment\nfrom rag_eval.service import PlatformService\nfrom rag_eval.storage.layout import PlatformPaths\nfrom rag_eval.systems import SystemRegistration\nfrom tests.rag_eval_platform.test_bundle_store import write_bundle\n\n\n",
+          "content": "from __future__ import annotations\n\nimport base64\nimport sys\nfrom pathlib import Path\n\nimport pytest\nfrom fastapi.testclient import TestClient\n\nfrom rag_eval.api import create_app\nfrom rag_eval.products import EvaluationDraft, SystemConnection, canonical_experiment\nfrom rag_eval.secrets import EncryptedDevFileSecretStore, safe_environment\nfrom rag_eval.service import PlatformService\nfrom rag_eval.storage.layout import PlatformPaths\nfrom rag_eval.systems import SystemRegistration\n\n\n",
           "end_location": {
             "column": 1,
-            "row": 24
+            "row": 19
           },
           "location": {
             "column": 1,
@@ -4757,21 +4342,21 @@
     "code": "C408",
     "end_location": {
       "column": 6,
-      "row": 173
+      "row": 99
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_product_layer.py",
+    "filename": "tests/rag_eval_platform/test_product_layer.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
         {
-          "content": "{\n        \"bundle_id\": \"a\" * 64,\n        \"system_id\": \"lightrag\",\n        \"profile_id\": \"lightrag\",\n        \"profile_version\": \"1.0.1\",\n        \"display_name\": \"same-input\",\n        \"adapter_overrides\": {\"model\": {\"llm_model\": \"qwen3:4b-instruct\", \"embedding_model\": \"bge-m3:latest\"}},\n        \"query_overrides\": {\"retrieval_candidate_k\": 20, \"final_context_k\": 5},\n    }",
+          "content": "{\n        \"dataset_release_id\": \"release-1\",\n        \"system_id\": \"lightrag\",\n        \"profile_id\": \"lightrag\",\n        \"profile_version\": \"1.0.1\",\n        \"display_name\": \"same-input\",\n        \"adapter_overrides\": {\"model\": {\"llm_model\": \"qwen3:4b-instruct\", \"embedding_model\": \"bge-m3:latest\"}},\n        \"query_overrides\": {\"retrieval_candidate_k\": 20, \"final_context_k\": 5},\n    }",
           "end_location": {
             "column": 6,
-            "row": 173
+            "row": 99
           },
           "location": {
             "column": 14,
-            "row": 165
+            "row": 91
           }
         }
       ],
@@ -4779,11 +4364,11 @@
     },
     "location": {
       "column": 14,
-      "row": 165
+      "row": 91
     },
     "message": "Unnecessary `dict()` call (rewrite as a literal)",
     "name": "unnecessary-collection-call",
-    "noqa_row": 165,
+    "noqa_row": 91,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/unnecessary-collection-call"
   },
@@ -4792,21 +4377,21 @@
     "code": "C408",
     "end_location": {
       "column": 6,
-      "row": 235
+      "row": 161
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_product_layer.py",
+    "filename": "tests/rag_eval_platform/test_product_layer.py",
     "fix": {
       "applicability": "unsafe",
       "edits": [
         {
-          "content": "{\n        \"bundle_id\": \"a\" * 64,\n        \"system_id\": \"lightrag\",\n        \"profile_id\": \"lightrag\",\n        \"profile_version\": \"1.0.1\",\n        \"display_name\": \"same-visible-name\",\n    }",
+          "content": "{\n        \"dataset_release_id\": \"release-1\",\n        \"system_id\": \"lightrag\",\n        \"profile_id\": \"lightrag\",\n        \"profile_version\": \"1.0.1\",\n        \"display_name\": \"same-visible-name\",\n    }",
           "end_location": {
             "column": 6,
-            "row": 235
+            "row": 161
           },
           "location": {
             "column": 14,
-            "row": 229
+            "row": 155
           }
         }
       ],
@@ -4814,11 +4399,11 @@
     },
     "location": {
       "column": 14,
-      "row": 229
+      "row": 155
     },
     "message": "Unnecessary `dict()` call (rewrite as a literal)",
     "name": "unnecessary-collection-call",
-    "noqa_row": 229,
+    "noqa_row": 155,
     "severity": "error",
     "url": "https://docs.astral.sh/ruff/rules/unnecessary-collection-call"
   },
@@ -4829,7 +4414,7 @@
       "column": 61,
       "row": 13
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_rich_content_canonicalization.py",
+    "filename": "tests/rag_eval_platform/test_rich_content_canonicalization.py",
     "fix": {
       "applicability": "safe",
       "edits": [
@@ -4864,7 +4449,7 @@
       "column": 46,
       "row": 25
     },
-    "filename": "/Users/sakura/RAG/evaluation-system/platform/tests/rag_eval_platform/test_supervisor.py",
+    "filename": "tests/rag_eval_platform/test_supervisor.py",
     "fix": {
       "applicability": "safe",
       "edits": [

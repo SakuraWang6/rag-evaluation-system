@@ -134,8 +134,8 @@ platform_ruff:
   tool: "ruff 0.16.1"
   command_before: "ruff check . --output-format=json"
   command_after: "cd platform && ruff check . --output-format=json"
-  expected_before_diagnostics: 156
-  expected_before_fixable: 97
+  expected_before_diagnostics: 144
+  expected_before_fixable: 87
   raw_baseline: ci/baselines/platform-ruff-before.json
-  raw_baseline_sha256: f15de985bddfd5e85c1ab72a929d92d9f6991b416abfb94f694d9cced834a297
+  raw_baseline_sha256: 4246f2244bb89db4aa345d789aa1f6687cfde7cd4458c4f11f2e35a21f8b8b57
   policy: no_new_normalized_diagnostics
